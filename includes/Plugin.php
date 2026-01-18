@@ -218,10 +218,9 @@ class Plugin
             wp_register_ability('hp-abilities/' . $tool_id, [
                 'label' => $tool['title'],
                 'description' => $tool['description'],
-                'callback' => $tool['callback'],
+                'execute_callback' => $tool['callback'],
                 'input_schema' => $tool['input_schema'] ?? (object)[],
                 'category' => 'hp-gmc',
-                'scope' => 'gmc',
             ]);
         }
     }
