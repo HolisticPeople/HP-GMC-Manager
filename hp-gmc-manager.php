@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.0.23
+ * Version: 1.0.24
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.0.23');
+define('HP_GMC_VERSION', '1.0.24');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -83,7 +83,15 @@ function hp_gmc_init() {
  * Create tables if they don't exist (handles Git deployments).
  */
 function hp_gmc_maybe_create_tables() {
+    // #region agent log - Debug table creation
+    $logPath = WP_CONTENT_DIR . '/hp-gmc-debug.log';
+    // #endregion
+    
     $db_version = get_option('hp_gmc_db_version', '0');
+    
+    // #region agent log - Version check
+    file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_maybe_create_tables','message'=>'Version check','data'=>['db_version'=>$db_version,'plugin_version'=>HP_GMC_VERSION,'will_skip'=>version_compare($db_version, HP_GMC_VERSION, '>=')],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'F'])."\n", FILE_APPEND);
+    // #endregion
     
     // Only run if version changed or tables missing
     if (version_compare($db_version, HP_GMC_VERSION, '>=')) {
@@ -96,9 +104,22 @@ function hp_gmc_maybe_create_tables() {
     // Quick check if main table exists
     $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") === $table_name;
     
+    // #region agent log - Table existence check
+    file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_maybe_create_tables','message'=>'Table check','data'=>['table_name'=>$table_name,'table_exists'=>$table_exists],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'F'])."\n", FILE_APPEND);
+    // #endregion
+    
     if (!$table_exists) {
+        // #region agent log - Calling activate
+        file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_maybe_create_tables','message'=>'Calling hp_gmc_activate','timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'F'])."\n", FILE_APPEND);
+        // #endregion
+        
         // Run the full activation routine
         hp_gmc_activate();
+        
+        // #region agent log - After activate
+        $table_exists_after = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") === $table_name;
+        file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_maybe_create_tables','message'=>'After hp_gmc_activate','data'=>['table_exists_after'=>$table_exists_after,'last_error'=>$wpdb->last_error],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'F'])."\n", FILE_APPEND);
+        // #endregion
     }
     
     // Update stored version
@@ -110,6 +131,11 @@ add_action('plugins_loaded', 'hp_gmc_init', 20);
  * Plugin activation hook.
  */
 function hp_gmc_activate() {
+    // #region agent log - Activate entry
+    $logPath = WP_CONTENT_DIR . '/hp-gmc-debug.log';
+    file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_activate','message'=>'ACTIVATE ENTRY','data'=>['ABSPATH'=>defined('ABSPATH')],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'G'])."\n", FILE_APPEND);
+    // #endregion
+    
     // Create custom tables for caching GMC data
     global $wpdb;
     $charset_collate = $wpdb->get_charset_collate();
@@ -144,8 +170,18 @@ function hp_gmc_activate() {
         KEY created_at (created_at)
     ) $charset_collate;";
 
+    // #region agent log - Before dbDelta
+    $upgrade_file = ABSPATH . 'wp-admin/includes/upgrade.php';
+    $upgrade_exists = file_exists($upgrade_file);
+    file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_activate','message'=>'Before dbDelta','data'=>['upgrade_file_exists'=>$upgrade_exists,'charset'=>$charset_collate,'table_name'=>$table_name],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'G'])."\n", FILE_APPEND);
+    // #endregion
+
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-    dbDelta($sql);
+    $result = dbDelta($sql);
+    
+    // #region agent log - After dbDelta
+    file_put_contents($logPath, json_encode(['location'=>'hp-gmc-manager.php:hp_gmc_activate','message'=>'After dbDelta','data'=>['dbDelta_result'=>$result,'last_error'=>$wpdb->last_error],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'G'])."\n", FILE_APPEND);
+    // #endregion
 
     // Set default options
     $defaults = [
