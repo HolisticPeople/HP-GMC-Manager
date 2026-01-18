@@ -10,22 +10,75 @@
     margin-left: 10px;
 }
 
-/* Environment banner */
-.hp-gmc-environment-banner {
-    margin: 15px 0;
-}
-
-.hp-gmc-environment-banner p {
-    margin: 0;
+/* Environment banner - prominent styling */
+.hp-gmc-env-banner {
     display: flex;
     align-items: center;
     gap: 10px;
+    padding: 12px 16px;
+    margin: 15px 0;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.hp-gmc-env-icon {
+    font-size: 18px;
+}
+
+.hp-gmc-env-message {
+    flex: 1;
 }
 
 .hp-gmc-env-details {
     font-weight: normal;
     font-size: 12px;
-    color: #666;
+    opacity: 0.8;
+}
+
+.hp-gmc-env-production {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.hp-gmc-env-staging {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    color: #856404;
+}
+
+.hp-gmc-env-dryrun {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+}
+
+.hp-gmc-env-mock {
+    background: #e2d4f0;
+    border: 1px solid #c9b3de;
+    color: #5a3d7a;
+}
+
+.hp-gmc-env-danger {
+    background: #f8d7da;
+    border: 2px solid #dc3545;
+    color: #721c24;
+    animation: pulse-danger 2s infinite;
+}
+
+@keyframes pulse-danger {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+/* Tab panels - hide inactive */
+.hp-gmc-tab-panel {
+    display: none;
+}
+
+.hp-gmc-tab-panel.active {
+    display: block;
 }
 
 /* Tab content */
@@ -34,6 +87,18 @@
     border: 1px solid #ccd0d4;
     border-top: none;
     padding: 20px;
+}
+
+/* Section header with refresh button */
+.hp-gmc-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+.hp-gmc-section-header h2 {
+    margin: 0;
 }
 
 /* Overview cards */
@@ -202,7 +267,6 @@
 .hp-gmc-log-actions {
     display: flex;
     gap: 10px;
-    margin-bottom: 15px;
 }
 
 .hp-gmc-dry-run-log details {
@@ -254,5 +318,15 @@
     
     .hp-gmc-card-value {
         font-size: 24px;
+    }
+    
+    .hp-gmc-env-banner {
+        flex-wrap: wrap;
+    }
+    
+    .hp-gmc-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
     }
 }
