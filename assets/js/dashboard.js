@@ -135,10 +135,6 @@
             const $btn = $(e.target);
             const originalText = $btn.text();
 
-            if (!confirm(hpGmcData.strings.confirmSync)) {
-                return;
-            }
-
             $btn.prop('disabled', true).text(hpGmcData.strings.syncing);
 
             $.ajax({
@@ -150,10 +146,6 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        alert(hpGmcData.strings.syncComplete + '\n\n' + 
-                              'Total: ' + response.data.total + '\n' +
-                              'Approved: ' + response.data.approved + '\n' +
-                              'Disapproved: ' + response.data.disapproved);
                         location.reload();
                     } else {
                         alert(hpGmcData.strings.error + '\n' + (response.data?.message || 'Unknown error'));

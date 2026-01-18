@@ -193,48 +193,61 @@ class Dashboard
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_product_status';
         
-        // Get all issues
-        $issues = $wpdb->get_results("
-            SELECT * FROM $table 
-            WHERE status IN ('disapproved', 'warning') 
-            ORDER BY status DESC, last_updated DESC 
-            LIMIT 500
-        ");
+        // Get ALL products from cache table for status counts
+        $all_products = $wpdb->get_results("SELECT * FROM $table ORDER BY status DESC, last_updated DESC");
         
-        $last_sync = get_option('hp_gmc_last_sync', null);
+        // Fresh read of last sync time (bypass any caching)
+        $last_sync = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'hp_gmc_last_sync' LIMIT 1");
         
-        // Collect unique brands and issue types for filters
+        // Count statuses across ALL products
+        $statuses = [
+            'approved' => 0,
+            'disapproved' => 0,
+            'pending' => 0,
+            'warning' => 0,
+        ];
+        
+        // Collect unique brands and issue types with counts
         $all_brands = [];
-        $all_issue_types = [];
-        $statuses = ['disapproved' => 0, 'warning' => 0];
+        $issue_type_counts = [];
         
-        foreach ($issues as $issue) {
-            $product = wc_get_product($issue->product_id);
-            if ($product) {
-                // Get brand from product attributes or taxonomy
-                $brand = self::get_product_brand($product);
-                if ($brand && !in_array($brand, $all_brands)) {
-                    $all_brands[] = $brand;
+        // Products to display (with issues)
+        $issues = [];
+        
+        foreach ($all_products as $product_row) {
+            // Count all statuses
+            if (isset($statuses[$product_row->status])) {
+                $statuses[$product_row->status]++;
+            }
+            
+            // Only process products with issues for display and brand/issue collection
+            if (in_array($product_row->status, ['disapproved', 'warning'])) {
+                $issues[] = $product_row;
+                
+                $product = wc_get_product($product_row->product_id);
+                if ($product) {
+                    $brand = self::get_product_brand($product);
+                    if ($brand && !in_array($brand, $all_brands)) {
+                        $all_brands[] = $brand;
+                    }
                 }
-            }
-            
-            // Count statuses
-            if (isset($statuses[$issue->status])) {
-                $statuses[$issue->status]++;
-            }
-            
-            // Collect issue types
-            $issue_data = json_decode($issue->issues, true) ?: [];
-            foreach ($issue_data as $i) {
-                $desc = $i['description'] ?? (is_string($i) ? $i : '');
-                if ($desc && !in_array($desc, $all_issue_types)) {
-                    $all_issue_types[] = $desc;
+                
+                // Collect issue types with counts
+                $issue_data = json_decode($product_row->issues, true) ?: [];
+                foreach ($issue_data as $i) {
+                    $desc = $i['description'] ?? (is_string($i) ? $i : '');
+                    if ($desc) {
+                        if (!isset($issue_type_counts[$desc])) {
+                            $issue_type_counts[$desc] = 0;
+                        }
+                        $issue_type_counts[$desc]++;
+                    }
                 }
             }
         }
         
         sort($all_brands);
-        sort($all_issue_types);
+        ksort($issue_type_counts);
         ?>
         <div class="hp-gmc-issues">
             <div class="hp-gmc-section-header">
@@ -262,8 +275,13 @@ class Dashboard
             <div class="hp-gmc-filters">
                 <select id="hp-gmc-filter-status" class="hp-gmc-filter">
                     <option value=""><?php esc_html_e('All Statuses', 'hp-gmc-manager'); ?></option>
-                    <option value="disapproved"><?php printf(esc_html__('Disapproved (%d)', 'hp-gmc-manager'), $statuses['disapproved']); ?></option>
-                    <option value="warning"><?php printf(esc_html__('Warning (%d)', 'hp-gmc-manager'), $statuses['warning']); ?></option>
+                    <?php foreach ($statuses as $status_key => $count): ?>
+                        <?php if ($count > 0): ?>
+                            <option value="<?php echo esc_attr($status_key); ?>">
+                                <?php echo esc_html(ucfirst($status_key) . ' (' . $count . ')'); ?>
+                            </option>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
                 </select>
                 
                 <select id="hp-gmc-filter-brand" class="hp-gmc-filter">
@@ -275,8 +293,10 @@ class Dashboard
                 
                 <select id="hp-gmc-filter-issue" class="hp-gmc-filter">
                     <option value=""><?php esc_html_e('All Issue Types', 'hp-gmc-manager'); ?></option>
-                    <?php foreach ($all_issue_types as $issue_type): ?>
-                        <option value="<?php echo esc_attr($issue_type); ?>"><?php echo esc_html($issue_type); ?></option>
+                    <?php foreach ($issue_type_counts as $issue_type => $count): ?>
+                        <option value="<?php echo esc_attr($issue_type); ?>">
+                            <?php echo esc_html($issue_type . ' (' . $count . ')'); ?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
                 
@@ -365,7 +385,8 @@ class Dashboard
     }
     
     /**
-     * Get brand from product (checks various sources).
+     * Get brand from product using same logic as HP-Product-Manager.
+     * Source of truth: yith_product_brand taxonomy, fallback to 'brand' attribute.
      */
     private static function get_product_brand($product): string
     {
@@ -373,37 +394,27 @@ class Dashboard
             return '';
         }
         
-        // Try product attribute 'brand'
+        $product_id = $product->get_id();
+        $names = [];
+        
+        // Primary: yith_product_brand taxonomy (same as HP-Product-Manager)
+        if (taxonomy_exists('yith_product_brand')) {
+            $terms = get_the_terms($product_id, 'yith_product_brand');
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $names[$term->name] = true;
+                }
+            }
+        }
+        
+        if (!empty($names)) {
+            return implode(', ', array_keys($names));
+        }
+        
+        // Fallback: 'brand' attribute (same as HP-Product-Manager)
         $brand = $product->get_attribute('brand');
         if ($brand) {
             return $brand;
-        }
-        
-        // Try product attribute 'pa_brand'
-        $brand = $product->get_attribute('pa_brand');
-        if ($brand) {
-            return $brand;
-        }
-        
-        // Try taxonomy 'product_brand' (some plugins use this)
-        $terms = get_the_terms($product->get_id(), 'product_brand');
-        if ($terms && !is_wp_error($terms)) {
-            return $terms[0]->name;
-        }
-        
-        // Try meta field '_brand'
-        $brand = get_post_meta($product->get_id(), '_brand', true);
-        if ($brand) {
-            return $brand;
-        }
-        
-        // Try YITH brand plugin meta
-        $brand_id = get_post_meta($product->get_id(), 'yith_product_brand', true);
-        if ($brand_id) {
-            $term = get_term($brand_id);
-            if ($term && !is_wp_error($term)) {
-                return $term->name;
-            }
         }
         
         return '';
