@@ -389,6 +389,22 @@ class Plugin
                 ],
                 'category' => 'test',
             ],
+            'gmc-diagnose-product' => [
+                'title' => 'Diagnose Product',
+                'description' => 'Compare WooCommerce data with GMC cached status to identify issues and provide recommendations',
+                'callback' => [Abilities\ProductAbilities::class, 'diagnoseProduct'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'sku' => [
+                            'type' => 'string',
+                            'description' => 'Product SKU to diagnose',
+                        ],
+                    ],
+                    'required' => ['sku'],
+                ],
+                'category' => 'product',
+            ],
         ];
     }
 
