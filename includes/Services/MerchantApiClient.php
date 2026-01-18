@@ -60,15 +60,79 @@ class MerchantApiClient
 
         $serviceAccountPath = get_option('hp_gmc_service_account_path', '');
 
-        if (empty($serviceAccountPath) || !file_exists($serviceAccountPath)) {
-            throw new \Exception('Service account JSON file not found: ' . $serviceAccountPath);
+        // Check 1: Path configured?
+        if (empty($serviceAccountPath)) {
+            throw new \Exception('Service account path not configured. Go to Settings and enter the JSON file path.');
         }
 
-        $json = file_get_contents($serviceAccountPath);
-        $this->credentials = json_decode($json, true);
+        // Check 2: File exists?
+        if (!file_exists($serviceAccountPath)) {
+            // Provide diagnostic info
+            $parentDir = dirname($serviceAccountPath);
+            $parentExists = is_dir($parentDir);
+            $details = sprintf(
+                'File not found: %s | Parent directory "%s" %s',
+                $serviceAccountPath,
+                $parentDir,
+                $parentExists ? 'exists' : 'does NOT exist'
+            );
+            throw new \Exception($details);
+        }
 
-        if (!$this->credentials || empty($this->credentials['client_email'])) {
-            throw new \Exception('Invalid service account JSON file');
+        // Check 3: File readable?
+        if (!is_readable($serviceAccountPath)) {
+            $perms = substr(sprintf('%o', fileperms($serviceAccountPath)), -4);
+            throw new \Exception(sprintf(
+                'File exists but is not readable: %s (permissions: %s). Check file ownership and permissions.',
+                $serviceAccountPath,
+                $perms
+            ));
+        }
+
+        // Check 4: File size?
+        $fileSize = filesize($serviceAccountPath);
+        if ($fileSize === 0) {
+            throw new \Exception('Service account JSON file is empty (0 bytes): ' . $serviceAccountPath);
+        }
+
+        // Check 5: Read content
+        $json = file_get_contents($serviceAccountPath);
+        if ($json === false) {
+            throw new \Exception('Failed to read service account JSON file: ' . $serviceAccountPath);
+        }
+
+        // Check 6: Valid JSON?
+        $this->credentials = json_decode($json, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception(sprintf(
+                'Service account JSON is malformed: %s (file size: %d bytes, JSON error: %s)',
+                $serviceAccountPath,
+                $fileSize,
+                json_last_error_msg()
+            ));
+        }
+
+        // Check 7: Required fields present?
+        $requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
+        $missingFields = [];
+        foreach ($requiredFields as $field) {
+            if (empty($this->credentials[$field])) {
+                $missingFields[] = $field;
+            }
+        }
+        if (!empty($missingFields)) {
+            throw new \Exception(sprintf(
+                'Service account JSON is missing required fields: %s',
+                implode(', ', $missingFields)
+            ));
+        }
+
+        // Check 8: Correct type?
+        if ($this->credentials['type'] !== 'service_account') {
+            throw new \Exception(sprintf(
+                'Invalid credential type: "%s". Expected "service_account".',
+                $this->credentials['type']
+            ));
         }
 
         return $this->credentials;
