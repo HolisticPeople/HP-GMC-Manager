@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.0.22
+ * Version: 1.0.23
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.0.22');
+define('HP_GMC_VERSION', '1.0.23');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -72,8 +72,37 @@ function hp_gmc_init() {
         return;
     }
 
+    // Ensure tables exist (for Git-deployed plugins that skip activation hook)
+    hp_gmc_maybe_create_tables();
+
     // Initialize the plugin
     \HP_GMC\Plugin::init();
+}
+
+/**
+ * Create tables if they don't exist (handles Git deployments).
+ */
+function hp_gmc_maybe_create_tables() {
+    $db_version = get_option('hp_gmc_db_version', '0');
+    
+    // Only run if version changed or tables missing
+    if (version_compare($db_version, HP_GMC_VERSION, '>=')) {
+        return;
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'hp_gmc_product_status';
+    
+    // Quick check if main table exists
+    $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table_name'") === $table_name;
+    
+    if (!$table_exists) {
+        // Run the full activation routine
+        hp_gmc_activate();
+    }
+    
+    // Update stored version
+    update_option('hp_gmc_db_version', HP_GMC_VERSION);
 }
 add_action('plugins_loaded', 'hp_gmc_init', 20);
 
