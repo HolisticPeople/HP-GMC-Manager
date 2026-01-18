@@ -442,26 +442,172 @@ class Dashboard
      */
     private static function render_exclusions_tab(): void
     {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+        
+        // Get products with destination data
+        $products = $wpdb->get_results("
+            SELECT * FROM $table 
+            WHERE destinations IS NOT NULL AND destinations != '' AND destinations != '[]'
+            ORDER BY status DESC, last_updated DESC
+            LIMIT 100
+        ");
+        
+        // Available destinations
+        $destinations = [
+            'SHOPPING_ADS' => ['label' => 'Shopping Ads', 'description' => 'Paid Shopping campaigns'],
+            'FREE_LISTINGS' => ['label' => 'Free Listings', 'description' => 'Organic Shopping tab'],
+            'DISPLAY_ADS' => ['label' => 'Display Ads', 'description' => 'Display network'],
+            'DEMAND_GEN_ADS' => ['label' => 'Demand Gen', 'description' => 'Demand generation ads'],
+            'VIDEO_ADS' => ['label' => 'Video Ads', 'description' => 'YouTube video ads'],
+            'YOUTUBE_SHOPPING' => ['label' => 'YouTube Shopping', 'description' => 'YouTube product listings'],
+        ];
+        
+        // Count products by destination approval status
+        $destinationStats = [];
+        foreach ($destinations as $destKey => $destInfo) {
+            $destinationStats[$destKey] = ['approved' => 0, 'disapproved' => 0];
+        }
+        
+        foreach ($products as $product) {
+            $productDestinations = json_decode($product->destinations, true) ?: [];
+            foreach ($productDestinations as $dest) {
+                $context = $dest['context'] ?? '';
+                if (isset($destinationStats[$context])) {
+                    $approved = $dest['approved_countries'] ?? [];
+                    if (!empty($approved)) {
+                        $destinationStats[$context]['approved']++;
+                    } else {
+                        $destinationStats[$context]['disapproved']++;
+                    }
+                }
+            }
+        }
         ?>
         <div class="hp-gmc-exclusions">
-            <h2><?php esc_html_e('Product Exclusions', 'hp-gmc-manager'); ?></h2>
-            <p><?php esc_html_e('Manage which products are excluded from specific Google destinations.', 'hp-gmc-manager'); ?></p>
-            
-            <div class="hp-gmc-exclusions-info">
-                <p><strong><?php esc_html_e('Available Destinations:', 'hp-gmc-manager'); ?></strong></p>
-                <ul>
-                    <li><code>Shopping_ads</code> - Paid Shopping campaigns</li>
-                    <li><code>Display_ads</code> - Display network</li>
-                    <li><code>Local_inventory_ads</code> - Local store inventory</li>
-                    <li><code>Free_listings</code> - Organic Shopping tab</li>
-                    <li><code>Free_local_listings</code> - Free local results</li>
-                    <li><code>YouTube_Shopping</code> - YouTube product listings</li>
-                </ul>
+            <div class="hp-gmc-section-header">
+                <h2><?php esc_html_e('Product Destinations & Exclusions', 'hp-gmc-manager'); ?></h2>
             </div>
-
-            <p class="description">
-                <?php esc_html_e('Use the MCP tool "gmc-set-exclusion" to manage exclusions via AI, or upload a supplemental feed in Google Merchant Center.', 'hp-gmc-manager'); ?>
-            </p>
+            <p><?php esc_html_e('View which Google destinations each product is approved for. Use exclusions to control where products appear.', 'hp-gmc-manager'); ?></p>
+            
+            <!-- Destination Summary -->
+            <div class="hp-gmc-destination-summary">
+                <?php foreach ($destinations as $destKey => $destInfo): ?>
+                <div class="hp-gmc-dest-card">
+                    <div class="hp-gmc-dest-header">
+                        <strong><?php echo esc_html($destInfo['label']); ?></strong>
+                    </div>
+                    <div class="hp-gmc-dest-stats">
+                        <span class="hp-gmc-dest-approved">
+                            <?php echo esc_html($destinationStats[$destKey]['approved']); ?> <?php esc_html_e('approved', 'hp-gmc-manager'); ?>
+                        </span>
+                        <?php if ($destinationStats[$destKey]['disapproved'] > 0): ?>
+                        <span class="hp-gmc-dest-disapproved">
+                            <?php echo esc_html($destinationStats[$destKey]['disapproved']); ?> <?php esc_html_e('blocked', 'hp-gmc-manager'); ?>
+                        </span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="hp-gmc-dest-desc">
+                        <?php echo esc_html($destInfo['description']); ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <!-- Products with Destination Status -->
+            <h3><?php esc_html_e('Products by Destination Status', 'hp-gmc-manager'); ?></h3>
+            
+            <?php if (empty($products)): ?>
+            <p><?php esc_html_e('No product destination data yet. Run a sync to fetch data from GMC.', 'hp-gmc-manager'); ?></p>
+            <?php else: ?>
+            
+            <div class="hp-gmc-exclusions-filters">
+                <select id="hp-gmc-dest-filter">
+                    <option value=""><?php esc_html_e('All Destinations', 'hp-gmc-manager'); ?></option>
+                    <?php foreach ($destinations as $destKey => $destInfo): ?>
+                    <option value="<?php echo esc_attr($destKey); ?>"><?php echo esc_html($destInfo['label']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select id="hp-gmc-dest-status-filter">
+                    <option value=""><?php esc_html_e('All Statuses', 'hp-gmc-manager'); ?></option>
+                    <option value="approved"><?php esc_html_e('Approved', 'hp-gmc-manager'); ?></option>
+                    <option value="blocked"><?php esc_html_e('Blocked', 'hp-gmc-manager'); ?></option>
+                </select>
+            </div>
+            
+            <table class="wp-list-table widefat fixed striped hp-gmc-exclusions-table" id="hp-gmc-exclusions-table">
+                <thead>
+                    <tr>
+                        <th style="width:25%"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                        <th style="width:55%"><?php esc_html_e('Destination Status', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach (array_slice($products, 0, 50) as $product): 
+                        $wcProduct = wc_get_product($product->product_id);
+                        $productDestinations = json_decode($product->destinations, true) ?: [];
+                        
+                        // Build destination status data
+                        $destData = [];
+                        foreach ($productDestinations as $dest) {
+                            $context = $dest['context'] ?? '';
+                            $approved = $dest['approved_countries'] ?? [];
+                            $destData[$context] = count($approved);
+                        }
+                    ?>
+                    <tr data-destinations="<?php echo esc_attr(json_encode(array_keys($destData))); ?>">
+                        <td>
+                            <?php if ($wcProduct): ?>
+                                <a href="<?php echo esc_url(get_edit_post_link($product->product_id)); ?>">
+                                    <?php echo esc_html($wcProduct->get_name()); ?>
+                                </a>
+                            <?php else: ?>
+                                <?php echo esc_html__('Product #', 'hp-gmc-manager') . esc_html($product->product_id); ?>
+                            <?php endif; ?>
+                        </td>
+                        <td><code><?php echo esc_html($wcProduct ? $wcProduct->get_sku() : '-'); ?></code></td>
+                        <td>
+                            <span class="hp-gmc-status hp-gmc-status-<?php echo esc_attr($product->status); ?>">
+                                <?php echo esc_html(ucfirst($product->status)); ?>
+                            </span>
+                        </td>
+                        <td>
+                            <div class="hp-gmc-dest-badges">
+                                <?php foreach ($destinations as $destKey => $destInfo): 
+                                    $countryCount = $destData[$destKey] ?? 0;
+                                    $isApproved = $countryCount > 0;
+                                ?>
+                                <span class="hp-gmc-dest-badge <?php echo $isApproved ? 'hp-gmc-dest-badge-approved' : 'hp-gmc-dest-badge-blocked'; ?>"
+                                      title="<?php echo esc_attr($destInfo['description']); ?>">
+                                    <?php echo esc_html($destInfo['label']); ?>
+                                    <?php if ($isApproved): ?>
+                                        <span class="hp-gmc-country-count">(<?php echo esc_html($countryCount); ?>)</span>
+                                    <?php endif; ?>
+                                </span>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+            
+            <!-- MCP Tools Reference -->
+            <div class="hp-gmc-exclusions-tools">
+                <h3><?php esc_html_e('Managing Exclusions via MCP', 'hp-gmc-manager'); ?></h3>
+                <div class="hp-gmc-mcp-commands">
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-set-exclusion</code>
+                        <span><?php esc_html_e('Exclude product from destinations (sku, destinations[])', 'hp-gmc-manager'); ?></span>
+                    </div>
+                </div>
+                <p class="description" style="margin-top:15px;">
+                    <?php esc_html_e('Example: To exclude a product with policy issues from Shopping ads, use gmc-set-exclusion with sku and destinations: ["Shopping_ads"]', 'hp-gmc-manager'); ?>
+                </p>
+            </div>
         </div>
         <?php
     }
@@ -471,27 +617,204 @@ class Dashboard
      */
     private static function render_shipping_tab(): void
     {
+        // Get shipping settings from GMC
+        $client = new \HP_GMC\Services\MerchantApiClient();
+        $shippingData = $client->getShippingSettings();
+        
+        $services = [];
+        $warehouses = [];
+        $allCountries = [];
+        
+        if ($shippingData['success'] && isset($shippingData['data'])) {
+            $services = $shippingData['data']['services'] ?? [];
+            $warehouses = $shippingData['data']['warehouses'] ?? [];
+            
+            foreach ($services as $service) {
+                $countries = $service['deliveryCountries'] ?? [];
+                $allCountries = array_merge($allCountries, $countries);
+            }
+            $allCountries = array_unique($allCountries);
+            sort($allCountries);
+        }
+        
+        // Country regions for filtering
+        $regions = [
+            'North America' => ['US', 'CA', 'MX'],
+            'Europe' => ['GB', 'DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'CH', 'PL', 'SE', 'NO', 'DK', 'FI', 'IE', 'PT', 'CZ', 'GR', 'HU', 'RO'],
+            'Asia Pacific' => ['JP', 'AU', 'NZ', 'SG', 'HK', 'TW', 'KR', 'MY', 'TH', 'PH', 'ID', 'VN', 'IN'],
+            'Middle East' => ['AE', 'SA', 'IL', 'TR'],
+            'South America' => ['BR', 'AR', 'CL', 'CO', 'PE'],
+        ];
         ?>
         <div class="hp-gmc-shipping">
             <div class="hp-gmc-section-header">
-                <h2><?php esc_html_e('Shipping Settings', 'hp-gmc-manager'); ?></h2>
+                <h2><?php esc_html_e('Shipping Configuration', 'hp-gmc-manager'); ?></h2>
                 <button type="button" class="button" id="hp-gmc-refresh-shipping">
-                    <?php esc_html_e('Refresh', 'hp-gmc-manager'); ?>
+                    <?php esc_html_e('Refresh from GMC', 'hp-gmc-manager'); ?>
                 </button>
             </div>
-            <p><?php esc_html_e('Manage account-level shipping configuration in Google Merchant Center.', 'hp-gmc-manager'); ?></p>
-
-            <div id="hp-gmc-shipping-data">
-                <p class="description"><?php esc_html_e('Click "Refresh" to load current shipping settings from GMC.', 'hp-gmc-manager'); ?></p>
+            
+            <?php if (!$shippingData['success']): ?>
+            <div class="notice notice-error inline">
+                <p><?php echo esc_html($shippingData['error'] ?? 'Failed to load shipping settings'); ?></p>
             </div>
-
+            <?php else: ?>
+            
+            <!-- Summary -->
+            <div class="hp-gmc-shipping-summary">
+                <div class="hp-gmc-stat-box">
+                    <span class="hp-gmc-stat-value"><?php echo count($services); ?></span>
+                    <span class="hp-gmc-stat-label"><?php esc_html_e('Shipping Services', 'hp-gmc-manager'); ?></span>
+                </div>
+                <div class="hp-gmc-stat-box">
+                    <span class="hp-gmc-stat-value"><?php echo count($allCountries); ?></span>
+                    <span class="hp-gmc-stat-label"><?php esc_html_e('Countries Covered', 'hp-gmc-manager'); ?></span>
+                </div>
+                <div class="hp-gmc-stat-box">
+                    <span class="hp-gmc-stat-value"><?php echo count($warehouses); ?></span>
+                    <span class="hp-gmc-stat-label"><?php esc_html_e('Warehouses', 'hp-gmc-manager'); ?></span>
+                </div>
+            </div>
+            
+            <!-- Services List -->
+            <h3><?php esc_html_e('Shipping Services', 'hp-gmc-manager'); ?></h3>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th style="width:25%"><?php esc_html_e('Service Name', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                        <th style="width:40%"><?php esc_html_e('Countries', 'hp-gmc-manager'); ?></th>
+                        <th style="width:25%"><?php esc_html_e('Delivery Time', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($services as $service): 
+                        $countries = $service['deliveryCountries'] ?? [];
+                        $deliveryTime = $service['deliveryTime'] ?? [];
+                        $isActive = $service['active'] ?? false;
+                    ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($service['serviceName'] ?? 'Unknown'); ?></strong></td>
+                        <td>
+                            <span class="hp-gmc-status hp-gmc-status-<?php echo $isActive ? 'approved' : 'pending'; ?>">
+                                <?php echo $isActive ? esc_html__('Active', 'hp-gmc-manager') : esc_html__('Inactive', 'hp-gmc-manager'); ?>
+                            </span>
+                        </td>
+                        <td>
+                            <div class="hp-gmc-country-tags">
+                                <?php foreach ($countries as $country): ?>
+                                    <span class="hp-gmc-country-tag"><?php echo esc_html($country); ?></span>
+                                <?php endforeach; ?>
+                            </div>
+                        </td>
+                        <td>
+                            <?php 
+                            if (!empty($deliveryTime['minTransitDays']) || !empty($deliveryTime['maxTransitDays'])) {
+                                printf(
+                                    '%d-%d %s',
+                                    $deliveryTime['minTransitDays'] ?? 0,
+                                    $deliveryTime['maxTransitDays'] ?? 0,
+                                    esc_html__('days', 'hp-gmc-manager')
+                                );
+                            } elseif (!empty($deliveryTime['warehouseBasedDeliveryTimes'])) {
+                                echo esc_html__('Carrier-based', 'hp-gmc-manager');
+                            } else {
+                                echo '-';
+                            }
+                            ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            
+            <!-- Country Coverage by Region -->
+            <h3><?php esc_html_e('Country Coverage', 'hp-gmc-manager'); ?></h3>
+            <p class="description"><?php esc_html_e('Countries with active shipping configuration are highlighted. Use MCP tools to add/remove countries.', 'hp-gmc-manager'); ?></p>
+            
+            <div class="hp-gmc-regions">
+                <?php foreach ($regions as $regionName => $regionCountries): ?>
+                <div class="hp-gmc-region-block">
+                    <h4><?php echo esc_html($regionName); ?></h4>
+                    <div class="hp-gmc-country-grid">
+                        <?php foreach ($regionCountries as $code): 
+                            $isEnabled = in_array($code, $allCountries);
+                        ?>
+                        <div class="hp-gmc-country-item <?php echo $isEnabled ? 'hp-gmc-country-enabled' : 'hp-gmc-country-disabled'; ?>"
+                             data-country="<?php echo esc_attr($code); ?>">
+                            <span class="hp-gmc-country-code"><?php echo esc_html($code); ?></span>
+                            <span class="hp-gmc-country-status"><?php echo $isEnabled ? '✓' : '○'; ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            
+            <!-- Warehouses -->
+            <?php if (!empty($warehouses)): ?>
+            <h3><?php esc_html_e('Warehouses', 'hp-gmc-manager'); ?></h3>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Name', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Location', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Cutoff Time', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Handling Days', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($warehouses as $warehouse): 
+                        $address = $warehouse['shippingAddress'] ?? [];
+                    ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($warehouse['name'] ?? 'Unknown'); ?></strong></td>
+                        <td>
+                            <?php 
+                            echo esc_html(sprintf(
+                                '%s, %s %s',
+                                $address['city'] ?? '',
+                                $address['administrativeArea'] ?? '',
+                                $address['regionCode'] ?? ''
+                            ));
+                            ?>
+                        </td>
+                        <td>
+                            <?php 
+                            $cutoff = $warehouse['cutoffTime'] ?? [];
+                            if (!empty($cutoff['hour'])) {
+                                printf('%02d:%02d', $cutoff['hour'], $cutoff['minute'] ?? 0);
+                            } else {
+                                echo '-';
+                            }
+                            ?>
+                        </td>
+                        <td><?php echo esc_html($warehouse['handlingDays'] ?? '-'); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+            
+            <?php endif; ?>
+            
+            <!-- MCP Tools Reference -->
             <div class="hp-gmc-shipping-tools">
-                <h3><?php esc_html_e('Quick Actions (via MCP)', 'hp-gmc-manager'); ?></h3>
-                <ul>
-                    <li><code>gmc-get-shipping-settings</code> - View all shipping services</li>
-                    <li><code>gmc-enable-country</code> - Add a country to shipping</li>
-                    <li><code>gmc-disable-country</code> - Remove a country from shipping</li>
-                </ul>
+                <h3><?php esc_html_e('Quick Actions (via MCP/AI)', 'hp-gmc-manager'); ?></h3>
+                <div class="hp-gmc-mcp-commands">
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-enable-country</code>
+                        <span><?php esc_html_e('Add a country to shipping (e.g., country_code: "GB")', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-disable-country</code>
+                        <span><?php esc_html_e('Remove a country from all services', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-get-shipping-settings</code>
+                        <span><?php esc_html_e('View full shipping configuration as JSON', 'hp-gmc-manager'); ?></span>
+                    </div>
+                </div>
             </div>
         </div>
         <?php
