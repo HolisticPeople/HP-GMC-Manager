@@ -4,55 +4,56 @@ on:
   push:
     branches:
       - dev
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+    env:
+      KINSTA_HOST: ${{ secrets.KINSTA_HOST }}
+      KINSTA_USER: ${{ secrets.KINSTA_USER }}
+      KINSTA_PORT: ${{ secrets.KINSTA_PORT }}
+      KINSTA_SSH_KEY: ${{ secrets.KINSTA_SSH_KEY }}
+      KINSTA_PLUGINS_BASE: ${{ secrets.KINSTA_PLUGINS_BASE }}
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
         with:
-          php-version: '8.2'
+          ssh-private-key: ${{ env.KINSTA_SSH_KEY }}
 
-      - name: Install Composer dependencies
-        run: composer install --no-dev --optimize-autoloader
-        continue-on-error: true
+      - name: Add known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "${KINSTA_PORT:-22}" "${KINSTA_HOST}" >> ~/.ssh/known_hosts
 
-      - name: Deploy to Kinsta Staging
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 35.236.219.140
-          port: 12872
-          username: holisticpeoplecom
-          key: ${{ secrets.KINSTA_SSH_KEY }}
-          script: |
-            cd /www/holisticpeoplecom_349/public/wp-content/plugins
-            
-            # Remove old version if exists
-            rm -rf hp-gmc-manager
-            
-            # Clone fresh from GitHub
-            git clone --branch dev --single-branch https://github.com/${{ github.repository }}.git hp-gmc-manager
-            
-            # Install composer dependencies if composer.json exists
-            if [ -f hp-gmc-manager/composer.json ]; then
-              cd hp-gmc-manager
-              composer install --no-dev --optimize-autoloader 2>/dev/null || echo "Composer install skipped"
-              cd ..
-            fi
-            
-            # Set permissions
-            chown -R www-data:www-data hp-gmc-manager
-            
-            # Clear WordPress cache
-            cd /www/holisticpeoplecom_349/public
-            wp cache flush 2>/dev/null || echo "Cache flush skipped"
-            
-            echo "HP GMC Manager deployed to staging successfully!"
+      - name: Resolve deploy path
+        run: |
+          REMOTE_PATH="${KINSTA_PLUGINS_BASE%/}/hp-gmc-manager"
+          echo "Deploying plugin to: ${REMOTE_PATH}"
+          echo "REMOTE_PATH=$REMOTE_PATH" >> $GITHUB_ENV
+          # Ensure remote dir exists
+          ssh -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" "mkdir -p '${REMOTE_PATH}'"
 
-      - name: Deployment notification
-        run: echo "Deployed HP GMC Manager v$(grep "Version:" hp-gmc-manager.php | head -1 | awk '{print $3}') to staging"
+      - name: Rsync to Kinsta staging
+        run: |
+          rsync -avz --delete \
+            --exclude='vendor' \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.specstory' \
+            --exclude='*.log' \
+            -e "ssh -p ${KINSTA_PORT:-22}" \
+            ./ "${KINSTA_USER}@${KINSTA_HOST}:${REMOTE_PATH}/"
+
+      - name: Clear WordPress cache
+        run: |
+          ssh -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" \
+            "cd ${KINSTA_PLUGINS_BASE%/plugins}/ && wp cache flush 2>/dev/null || echo 'Cache flush skipped'"
