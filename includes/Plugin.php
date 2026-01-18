@@ -199,7 +199,8 @@ class Plugin
                 'description' => $tool['description'],
                 'callback' => $tool['callback'],
                 'input_schema' => $tool['input_schema'] ?? (object)[],
-                'scope' => 'hp-gmc',
+                'category' => 'gmc',
+                'scope' => 'gmc',
             ]);
         }
     }
