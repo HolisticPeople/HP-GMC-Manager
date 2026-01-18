@@ -185,6 +185,11 @@ class Plugin
      */
     public static function register_ability_category(): void
     {
+        // #region agent log
+        $log_file = '/tmp/hp-gmc-debug.log';
+        file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_ability_category', 'msg' => 'called', 'fn_exists' => function_exists('wp_register_ability_category')]) . "\n", FILE_APPEND);
+        // #endregion
+
         if (!function_exists('wp_register_ability_category')) {
             return;
         }
@@ -193,6 +198,10 @@ class Plugin
             'label' => __('Google Merchant Center', 'hp-gmc-manager'),
             'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
         ]);
+
+        // #region agent log
+        file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_ability_category', 'msg' => 'registered hp-gmc category']) . "\n", FILE_APPEND);
+        // #endregion
     }
 
     /**
@@ -200,6 +209,11 @@ class Plugin
      */
     public static function register_abilities(): void
     {
+        // #region agent log
+        $log_file = '/tmp/hp-gmc-debug.log';
+        file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_abilities', 'msg' => 'called', 'fn_exists' => function_exists('wp_register_ability')]) . "\n", FILE_APPEND);
+        // #endregion
+
         if (!function_exists('wp_register_ability')) {
             return;
         }
@@ -207,25 +221,42 @@ class Plugin
         $enabled_tools = get_option('hp_gmc_enabled_tools', []);
         $all_tools = self::get_all_tools();
 
+        // #region agent log
+        file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_abilities', 'msg' => 'tools_count', 'count' => count($all_tools), 'enabled_tools_option' => $enabled_tools]) . "\n", FILE_APPEND);
+        // #endregion
+
         foreach ($all_tools as $tool_id => $tool) {
             // Check if tool is enabled (default to enabled if not explicitly set)
             $is_enabled = !isset($enabled_tools[$tool_id]) || $enabled_tools[$tool_id];
 
             if (!$is_enabled) {
+                // #region agent log
+                file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_abilities', 'msg' => 'skipped_disabled', 'tool_id' => $tool_id]) . "\n", FILE_APPEND);
+                // #endregion
                 continue;
             }
 
-            wp_register_ability('hp-abilities/' . $tool_id, [
-                'label' => $tool['title'],
-                'description' => $tool['description'],
-                'execute_callback' => $tool['callback'],
-                'permission_callback' => '__return_true',
-                'input_schema' => $tool['input_schema'] ?? [
-                    'type' => 'object',
-                    'properties' => (object)[],
-                ],
-                'category' => 'hp-gmc',
-            ]);
+            try {
+                wp_register_ability('hp-abilities/' . $tool_id, [
+                    'label' => $tool['title'],
+                    'description' => $tool['description'],
+                    'execute_callback' => $tool['callback'],
+                    'permission_callback' => '__return_true',
+                    'input_schema' => $tool['input_schema'] ?? [
+                        'type' => 'object',
+                        'properties' => (object)[],
+                    ],
+                    'category' => 'hp-gmc',
+                ]);
+
+                // #region agent log
+                file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_abilities', 'msg' => 'registered', 'tool_id' => $tool_id]) . "\n", FILE_APPEND);
+                // #endregion
+            } catch (\Throwable $e) {
+                // #region agent log
+                file_put_contents($log_file, json_encode(['ts' => time(), 'loc' => 'register_abilities', 'msg' => 'error', 'tool_id' => $tool_id, 'error' => $e->getMessage()]) . "\n", FILE_APPEND);
+                // #endregion
+            }
         }
     }
 
