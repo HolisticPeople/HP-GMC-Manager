@@ -183,6 +183,14 @@ class Plugin
             return;
         }
 
+        // Register the GMC category first
+        if (function_exists('wp_register_ability_category')) {
+            wp_register_ability_category('hp-gmc', [
+                'label' => __('Google Merchant Center', 'hp-gmc-manager'),
+                'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
+            ]);
+        }
+
         $enabled_tools = get_option('hp_gmc_enabled_tools', []);
         $all_tools = self::get_all_tools();
 
@@ -199,7 +207,7 @@ class Plugin
                 'description' => $tool['description'],
                 'callback' => $tool['callback'],
                 'input_schema' => $tool['input_schema'] ?? (object)[],
-                'category' => 'gmc',
+                'category' => 'hp-gmc',
                 'scope' => 'gmc',
             ]);
         }
