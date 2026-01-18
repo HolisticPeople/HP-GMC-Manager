@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.0.25
+ * Version: 1.0.26
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.0.25');
+define('HP_GMC_VERSION', '1.0.26');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -146,8 +146,9 @@ function hp_gmc_activate() {
     $charset_collate = $wpdb->get_charset_collate();
 
     // Product status cache table
+    // Note: dbDelta() does NOT support IF NOT EXISTS - it handles existence checks internally
     $table_name = $wpdb->prefix . 'hp_gmc_product_status';
-    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+    $sql = "CREATE TABLE $table_name (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         product_id bigint(20) NOT NULL,
         gla_id varchar(100) NOT NULL,
@@ -163,7 +164,7 @@ function hp_gmc_activate() {
 
     // Dry run log table
     $table_name_log = $wpdb->prefix . 'hp_gmc_dry_run_log';
-    $sql .= "CREATE TABLE IF NOT EXISTS $table_name_log (
+    $sql .= "CREATE TABLE $table_name_log (
         id bigint(20) NOT NULL AUTO_INCREMENT,
         action varchar(100) NOT NULL,
         endpoint varchar(255) NOT NULL,
