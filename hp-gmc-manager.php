@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.5.0');
+define('HP_GMC_VERSION', '1.6.0');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -148,6 +148,27 @@ function hp_gmc_activate() {
         created_at datetime DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
         KEY action (action),
+        KEY created_at (created_at)
+    ) $charset_collate;";
+
+    // Audit log table
+    $table_name_audit = $wpdb->prefix . 'hp_gmc_audit_log';
+    $sql .= "CREATE TABLE $table_name_audit (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        action varchar(100) NOT NULL,
+        params longtext,
+        result longtext,
+        success tinyint(1) DEFAULT NULL,
+        user_id bigint(20) DEFAULT 0,
+        user_display varchar(100) DEFAULT '',
+        affected_products longtext,
+        environment varchar(50) DEFAULT 'staging',
+        dry_run tinyint(1) DEFAULT 0,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY action (action),
+        KEY user_id (user_id),
+        KEY environment (environment),
         KEY created_at (created_at)
     ) $charset_collate;";
 

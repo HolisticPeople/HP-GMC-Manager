@@ -1,12 +1,11 @@
 <?php
 /**
- * Test exclusion on DH224
+ * Test batch workflow
  */
 require_once '/www/holisticpeoplecom_349/public/wp-load.php';
 
-$result = HP_GMC\Abilities\ProductAbilities::setExclusion([
-    'sku' => 'DH224',
-    'destinations' => ['Shopping_ads']
+echo "=== Testing batchAnalyze (no filter) ===\n";
+$result = HP_GMC\Abilities\ProductAbilities::batchAnalyze([
+    'limit' => 20
 ]);
-
 echo json_encode($result, JSON_PRETTY_PRINT);

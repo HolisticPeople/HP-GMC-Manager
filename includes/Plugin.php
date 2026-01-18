@@ -481,6 +481,30 @@ class Plugin
                 ],
                 'category' => 'product',
             ],
+            'gmc-get-audit-log' => [
+                'title' => 'Get Audit Log',
+                'description' => 'View audit log of MCP operations with timestamps, users, and results',
+                'callback' => [Abilities\ProductAbilities::class, 'getAuditLog'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'Maximum entries to return',
+                            'default' => 50,
+                        ],
+                        'action' => [
+                            'type' => 'string',
+                            'description' => 'Filter by action type (e.g., set_exclusion, batch_exclude)',
+                        ],
+                        'sku' => [
+                            'type' => 'string',
+                            'description' => 'Filter by affected product SKU',
+                        ],
+                    ],
+                ],
+                'category' => 'overview',
+            ],
         ];
     }
 

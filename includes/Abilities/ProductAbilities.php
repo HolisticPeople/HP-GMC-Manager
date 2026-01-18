@@ -3,6 +3,7 @@ namespace HP_GMC\Abilities;
 
 use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Services\MerchantApiClient;
+use HP_GMC\Services\AuditLog;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -175,7 +176,7 @@ class ProductAbilities
         // Check if dry run mode
         $dryRun = hp_gmc_is_dry_run();
 
-        return [
+        $result = [
             'success' => true,
             'message' => $dryRun 
                 ? 'Exclusion saved to WooCommerce meta (dry run - no GMC sync)'
@@ -193,6 +194,11 @@ class ProductAbilities
                 'Option 3: Manually set exclusions in Google Merchant Center console',
             ],
         ];
+
+        // Log to audit trail
+        AuditLog::log('set_exclusion', $params, $result);
+
+        return $result;
     }
 
     /**
@@ -521,7 +527,7 @@ class ProductAbilities
             }
         }
 
-        return [
+        $result = [
             'success' => true,
             'dry_run' => $dryRun,
             'total' => count($skus),
@@ -533,6 +539,11 @@ class ProductAbilities
                 ? 'Preview complete. Set dry_run=false to execute these changes.'
                 : "Batch exclusion complete. $successCount succeeded, $errorCount failed.",
         ];
+
+        // Log to audit trail
+        AuditLog::log('batch_exclude', $params, $result);
+
+        return $result;
     }
 
     /**
@@ -713,6 +724,31 @@ class ProductAbilities
                 '4. Upload the file and map the columns',
                 '5. The exclusions will be applied on next feed processing',
             ],
+            'dry_run' => hp_gmc_is_dry_run(),
+        ];
+    }
+
+    /**
+     * Get audit log entries.
+     */
+    public static function getAuditLog(array $params): array
+    {
+        $limit = min((int) ($params['limit'] ?? 50), 100);
+        $action = $params['action'] ?? null;
+        $sku = $params['sku'] ?? null;
+
+        if ($sku) {
+            $entries = AuditLog::getForProduct($sku, $limit);
+        } else {
+            $entries = AuditLog::getRecent($limit, $action);
+        }
+
+        $summary = AuditLog::getSummary();
+
+        return [
+            'success' => true,
+            'entries' => $entries,
+            'summary' => $summary,
             'dry_run' => hp_gmc_is_dry_run(),
         ];
     }
