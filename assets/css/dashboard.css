@@ -1,0 +1,258 @@
+/**
+ * HP GMC Manager Dashboard Styles
+ */
+
+/* Version badge */
+.hp-gmc-version {
+    font-size: 12px;
+    font-weight: normal;
+    color: #666;
+    margin-left: 10px;
+}
+
+/* Environment banner */
+.hp-gmc-environment-banner {
+    margin: 15px 0;
+}
+
+.hp-gmc-environment-banner p {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.hp-gmc-env-details {
+    font-weight: normal;
+    font-size: 12px;
+    color: #666;
+}
+
+/* Tab content */
+.hp-gmc-tab-content {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-top: none;
+    padding: 20px;
+}
+
+/* Overview cards */
+.hp-gmc-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.hp-gmc-card {
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 15px;
+    text-align: center;
+}
+
+.hp-gmc-card h3 {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #666;
+}
+
+.hp-gmc-card-value {
+    font-size: 32px;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.hp-gmc-card-total .hp-gmc-card-value {
+    color: #2271b1;
+}
+
+.hp-gmc-card-approved .hp-gmc-card-value {
+    color: #00a32a;
+}
+
+.hp-gmc-card-disapproved .hp-gmc-card-value {
+    color: #d63638;
+}
+
+.hp-gmc-card-pending .hp-gmc-card-value {
+    color: #dba617;
+}
+
+.hp-gmc-card-warning .hp-gmc-card-value {
+    color: #f0b849;
+}
+
+/* Actions bar */
+.hp-gmc-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.hp-gmc-last-sync {
+    color: #666;
+    font-size: 13px;
+}
+
+/* Empty state */
+.hp-gmc-empty-state {
+    text-align: center;
+    padding: 40px;
+    background: #f9f9f9;
+    border-radius: 4px;
+}
+
+/* Status badges */
+.hp-gmc-status {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.hp-gmc-status-approved {
+    background: #d4edda;
+    color: #155724;
+}
+
+.hp-gmc-status-disapproved {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.hp-gmc-status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.hp-gmc-status-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+/* Issue list */
+.hp-gmc-issue-list {
+    margin: 0;
+    padding-left: 15px;
+    font-size: 12px;
+}
+
+.hp-gmc-issue-list li {
+    margin-bottom: 3px;
+}
+
+/* Tools tab */
+.hp-gmc-tools-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+/* Toggle switch */
+.hp-gmc-toggle {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+}
+
+.hp-gmc-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.hp-gmc-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .3s;
+    border-radius: 22px;
+}
+
+.hp-gmc-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+}
+
+.hp-gmc-toggle input:checked + .hp-gmc-toggle-slider {
+    background-color: #2271b1;
+}
+
+.hp-gmc-toggle input:checked + .hp-gmc-toggle-slider:before {
+    transform: translateX(18px);
+}
+
+/* Dry run log */
+.hp-gmc-log-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.hp-gmc-dry-run-log details {
+    cursor: pointer;
+}
+
+.hp-gmc-dry-run-log pre {
+    background: #f5f5f5;
+    padding: 10px;
+    margin: 5px 0 0;
+    font-size: 11px;
+    max-height: 150px;
+    overflow: auto;
+}
+
+/* Shipping info */
+.hp-gmc-shipping-tools ul {
+    list-style: disc;
+    margin-left: 20px;
+}
+
+.hp-gmc-shipping-tools code {
+    background: #f0f0f0;
+    padding: 2px 5px;
+}
+
+/* Exclusions info */
+.hp-gmc-exclusions-info ul {
+    list-style: none;
+    margin: 10px 0;
+    padding: 0;
+}
+
+.hp-gmc-exclusions-info li {
+    margin-bottom: 5px;
+}
+
+.hp-gmc-exclusions-info code {
+    background: #f0f0f0;
+    padding: 2px 5px;
+    margin-right: 5px;
+}
+
+/* Responsive */
+@media (max-width: 782px) {
+    .hp-gmc-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .hp-gmc-card-value {
+        font-size: 24px;
+    }
+}

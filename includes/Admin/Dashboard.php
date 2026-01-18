@@ -1,0 +1,456 @@
+<?php
+namespace HP_GMC\Admin;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * Main dashboard page for HP GMC Manager.
+ */
+class Dashboard
+{
+    /**
+     * Render the dashboard page.
+     */
+    public static function render(): void
+    {
+        $current_tab = sanitize_text_field($_GET['tab'] ?? 'overview');
+        $environment = hp_gmc_get_environment();
+        $mode = get_option('hp_gmc_mode', 'auto');
+        $is_dry_run = hp_gmc_is_dry_run();
+        ?>
+        <div class="wrap hp-gmc-dashboard">
+            <h1>
+                <?php esc_html_e('GMC Manager', 'hp-gmc-manager'); ?>
+                <span class="hp-gmc-version">v<?php echo esc_html(HP_GMC_VERSION); ?></span>
+            </h1>
+
+            <?php self::render_environment_banner($environment, $is_dry_run); ?>
+
+            <nav class="nav-tab-wrapper">
+                <a href="?page=hp-gmc-manager&tab=overview" 
+                   class="nav-tab <?php echo $current_tab === 'overview' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Overview', 'hp-gmc-manager'); ?>
+                </a>
+                <a href="?page=hp-gmc-manager&tab=issues" 
+                   class="nav-tab <?php echo $current_tab === 'issues' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Issues', 'hp-gmc-manager'); ?>
+                </a>
+                <a href="?page=hp-gmc-manager&tab=exclusions" 
+                   class="nav-tab <?php echo $current_tab === 'exclusions' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Exclusions', 'hp-gmc-manager'); ?>
+                </a>
+                <a href="?page=hp-gmc-manager&tab=shipping" 
+                   class="nav-tab <?php echo $current_tab === 'shipping' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Shipping', 'hp-gmc-manager'); ?>
+                </a>
+                <a href="?page=hp-gmc-manager&tab=tools" 
+                   class="nav-tab <?php echo $current_tab === 'tools' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('MCP Tools', 'hp-gmc-manager'); ?>
+                </a>
+                <?php if ($is_dry_run): ?>
+                <a href="?page=hp-gmc-manager&tab=dry-run-log" 
+                   class="nav-tab <?php echo $current_tab === 'dry-run-log' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Dry Run Log', 'hp-gmc-manager'); ?>
+                </a>
+                <?php endif; ?>
+            </nav>
+
+            <div class="hp-gmc-tab-content">
+                <?php
+                switch ($current_tab) {
+                    case 'issues':
+                        self::render_issues_tab();
+                        break;
+                    case 'exclusions':
+                        self::render_exclusions_tab();
+                        break;
+                    case 'shipping':
+                        self::render_shipping_tab();
+                        break;
+                    case 'tools':
+                        self::render_tools_tab();
+                        break;
+                    case 'dry-run-log':
+                        self::render_dry_run_log_tab();
+                        break;
+                    default:
+                        self::render_overview_tab();
+                }
+                ?>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render environment banner.
+     */
+    private static function render_environment_banner(string $environment, bool $is_dry_run): void
+    {
+        $mode = get_option('hp_gmc_mode', 'auto');
+        
+        $class = 'notice ';
+        $message = '';
+
+        if ($environment === 'production' && !$is_dry_run) {
+            $class .= 'notice-success';
+            $message = __('LIVE - Connected to Google Merchant Center', 'hp-gmc-manager');
+        } elseif ($mode === 'passthrough') {
+            $class .= 'notice-error';
+            $message = __('WARNING: Staging connected to Production GMC!', 'hp-gmc-manager');
+        } elseif ($mode === 'mock') {
+            $class .= 'notice-info';
+            $message = __('MOCK DATA - Testing mode with simulated data', 'hp-gmc-manager');
+        } else {
+            $class .= 'notice-warning';
+            $message = __('DRY RUN - Actions are logged but not executed', 'hp-gmc-manager');
+        }
+        ?>
+        <div class="<?php echo esc_attr($class); ?> hp-gmc-environment-banner">
+            <p>
+                <strong><?php echo esc_html($message); ?></strong>
+                <span class="hp-gmc-env-details">
+                    (<?php echo esc_html(ucfirst($environment)); ?> environment, Mode: <?php echo esc_html($mode); ?>)
+                </span>
+            </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the overview tab.
+     */
+    private static function render_overview_tab(): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+        
+        // Get counts from cache table
+        $total = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table");
+        $approved = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'approved'");
+        $disapproved = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'disapproved'");
+        $pending = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'pending'");
+        $warning = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'warning'");
+
+        $last_sync = get_option('hp_gmc_last_sync', null);
+        ?>
+        <div class="hp-gmc-overview">
+            <div class="hp-gmc-cards">
+                <div class="hp-gmc-card hp-gmc-card-total">
+                    <h3><?php esc_html_e('Total Products', 'hp-gmc-manager'); ?></h3>
+                    <div class="hp-gmc-card-value"><?php echo esc_html(number_format($total)); ?></div>
+                </div>
+                <div class="hp-gmc-card hp-gmc-card-approved">
+                    <h3><?php esc_html_e('Approved', 'hp-gmc-manager'); ?></h3>
+                    <div class="hp-gmc-card-value"><?php echo esc_html(number_format($approved)); ?></div>
+                </div>
+                <div class="hp-gmc-card hp-gmc-card-disapproved">
+                    <h3><?php esc_html_e('Disapproved', 'hp-gmc-manager'); ?></h3>
+                    <div class="hp-gmc-card-value"><?php echo esc_html(number_format($disapproved)); ?></div>
+                </div>
+                <div class="hp-gmc-card hp-gmc-card-pending">
+                    <h3><?php esc_html_e('Pending', 'hp-gmc-manager'); ?></h3>
+                    <div class="hp-gmc-card-value"><?php echo esc_html(number_format($pending)); ?></div>
+                </div>
+                <div class="hp-gmc-card hp-gmc-card-warning">
+                    <h3><?php esc_html_e('Warnings', 'hp-gmc-manager'); ?></h3>
+                    <div class="hp-gmc-card-value"><?php echo esc_html(number_format($warning)); ?></div>
+                </div>
+            </div>
+
+            <div class="hp-gmc-actions">
+                <button type="button" class="button button-primary" id="hp-gmc-sync-now">
+                    <?php esc_html_e('Sync Now', 'hp-gmc-manager'); ?>
+                </button>
+                <span class="hp-gmc-last-sync">
+                    <?php if ($last_sync): ?>
+                        <?php printf(
+                            esc_html__('Last sync: %s', 'hp-gmc-manager'),
+                            esc_html(human_time_diff(strtotime($last_sync), time()) . ' ago')
+                        ); ?>
+                    <?php else: ?>
+                        <?php esc_html_e('Never synced', 'hp-gmc-manager'); ?>
+                    <?php endif; ?>
+                </span>
+            </div>
+
+            <?php if ($total === 0): ?>
+            <div class="hp-gmc-empty-state">
+                <p><?php esc_html_e('No product data yet. Click "Sync Now" to fetch product statuses from Google Merchant Center.', 'hp-gmc-manager'); ?></p>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the issues tab.
+     */
+    private static function render_issues_tab(): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+        
+        $issues = $wpdb->get_results("
+            SELECT * FROM $table 
+            WHERE status IN ('disapproved', 'warning') 
+            ORDER BY status DESC, last_updated DESC 
+            LIMIT 100
+        ");
+        ?>
+        <div class="hp-gmc-issues">
+            <h2><?php esc_html_e('Product Issues', 'hp-gmc-manager'); ?></h2>
+            
+            <?php if (empty($issues)): ?>
+            <p><?php esc_html_e('No issues found. All products are approved!', 'hp-gmc-manager'); ?></p>
+            <?php else: ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('GMC ID', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Issues', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Last Updated', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($issues as $issue): 
+                        $product = wc_get_product($issue->product_id);
+                        $issue_data = json_decode($issue->issues, true) ?: [];
+                    ?>
+                    <tr>
+                        <td>
+                            <?php if ($product): ?>
+                                <a href="<?php echo esc_url(get_edit_post_link($issue->product_id)); ?>">
+                                    <?php echo esc_html($product->get_name()); ?>
+                                </a>
+                            <?php else: ?>
+                                <?php echo esc_html__('Product #', 'hp-gmc-manager') . esc_html($issue->product_id); ?>
+                            <?php endif; ?>
+                        </td>
+                        <td><code><?php echo esc_html($issue->gla_id); ?></code></td>
+                        <td>
+                            <span class="hp-gmc-status hp-gmc-status-<?php echo esc_attr($issue->status); ?>">
+                                <?php echo esc_html(ucfirst($issue->status)); ?>
+                            </span>
+                        </td>
+                        <td>
+                            <?php if (!empty($issue_data)): ?>
+                                <ul class="hp-gmc-issue-list">
+                                    <?php foreach ($issue_data as $i): ?>
+                                        <li><?php echo esc_html($i['description'] ?? $i); ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
+                        </td>
+                        <td><?php echo esc_html($issue->last_updated); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the exclusions tab.
+     */
+    private static function render_exclusions_tab(): void
+    {
+        ?>
+        <div class="hp-gmc-exclusions">
+            <h2><?php esc_html_e('Product Exclusions', 'hp-gmc-manager'); ?></h2>
+            <p><?php esc_html_e('Manage which products are excluded from specific Google destinations.', 'hp-gmc-manager'); ?></p>
+            
+            <div class="hp-gmc-exclusions-info">
+                <p><strong><?php esc_html_e('Available Destinations:', 'hp-gmc-manager'); ?></strong></p>
+                <ul>
+                    <li><code>Shopping_ads</code> - Paid Shopping campaigns</li>
+                    <li><code>Display_ads</code> - Display network</li>
+                    <li><code>Local_inventory_ads</code> - Local store inventory</li>
+                    <li><code>Free_listings</code> - Organic Shopping tab</li>
+                    <li><code>Free_local_listings</code> - Free local results</li>
+                    <li><code>YouTube_Shopping</code> - YouTube product listings</li>
+                </ul>
+            </div>
+
+            <p class="description">
+                <?php esc_html_e('Use the MCP tool "gmc-set-exclusion" to manage exclusions via AI, or upload a supplemental feed in Google Merchant Center.', 'hp-gmc-manager'); ?>
+            </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the shipping tab.
+     */
+    private static function render_shipping_tab(): void
+    {
+        ?>
+        <div class="hp-gmc-shipping">
+            <h2><?php esc_html_e('Shipping Settings', 'hp-gmc-manager'); ?></h2>
+            <p><?php esc_html_e('Manage account-level shipping configuration in Google Merchant Center.', 'hp-gmc-manager'); ?></p>
+            
+            <div class="hp-gmc-shipping-status">
+                <button type="button" class="button" id="hp-gmc-refresh-shipping">
+                    <?php esc_html_e('Refresh Shipping Settings', 'hp-gmc-manager'); ?>
+                </button>
+            </div>
+
+            <div id="hp-gmc-shipping-data">
+                <p class="description"><?php esc_html_e('Click "Refresh" to load current shipping settings from GMC.', 'hp-gmc-manager'); ?></p>
+            </div>
+
+            <div class="hp-gmc-shipping-tools">
+                <h3><?php esc_html_e('Quick Actions (via MCP)', 'hp-gmc-manager'); ?></h3>
+                <ul>
+                    <li><code>gmc-get-shipping-settings</code> - View all shipping services</li>
+                    <li><code>gmc-enable-country</code> - Add a country to shipping</li>
+                    <li><code>gmc-disable-country</code> - Remove a country from shipping</li>
+                </ul>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the MCP tools tab.
+     */
+    private static function render_tools_tab(): void
+    {
+        $all_tools = \HP_GMC\Plugin::get_all_tools();
+        $enabled_tools = get_option('hp_gmc_enabled_tools', []);
+
+        // Group tools by category
+        $categories = [
+            'overview' => __('Overview', 'hp-gmc-manager'),
+            'product' => __('Product', 'hp-gmc-manager'),
+            'shipping' => __('Shipping', 'hp-gmc-manager'),
+            'account' => __('Account', 'hp-gmc-manager'),
+            'test' => __('Test', 'hp-gmc-manager'),
+        ];
+        ?>
+        <div class="hp-gmc-tools">
+            <h2><?php esc_html_e('MCP Tools Management', 'hp-gmc-manager'); ?></h2>
+            <p><?php esc_html_e('Enable or disable individual tools to control which abilities are available to Cursor.', 'hp-gmc-manager'); ?></p>
+
+            <div class="hp-gmc-tools-actions">
+                <button type="button" class="button" id="hp-gmc-enable-all">
+                    <?php esc_html_e('Enable All', 'hp-gmc-manager'); ?>
+                </button>
+                <button type="button" class="button" id="hp-gmc-disable-all">
+                    <?php esc_html_e('Disable All', 'hp-gmc-manager'); ?>
+                </button>
+                <select id="hp-gmc-preset">
+                    <option value=""><?php esc_html_e('Load Preset...', 'hp-gmc-manager'); ?></option>
+                    <option value="minimal"><?php esc_html_e('Minimal (Dashboard only)', 'hp-gmc-manager'); ?></option>
+                    <option value="product"><?php esc_html_e('Product Focus', 'hp-gmc-manager'); ?></option>
+                    <option value="full"><?php esc_html_e('Full (All tools)', 'hp-gmc-manager'); ?></option>
+                </select>
+            </div>
+
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Tool Name', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Category', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Description', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($all_tools as $tool_id => $tool): 
+                        $is_enabled = !isset($enabled_tools[$tool_id]) || $enabled_tools[$tool_id];
+                        $category = $tool['category'] ?? 'other';
+                    ?>
+                    <tr data-tool-id="<?php echo esc_attr($tool_id); ?>">
+                        <td>
+                            <label class="hp-gmc-toggle">
+                                <input type="checkbox" 
+                                       class="hp-gmc-tool-toggle" 
+                                       data-tool-id="<?php echo esc_attr($tool_id); ?>"
+                                       <?php checked($is_enabled); ?>>
+                                <span class="hp-gmc-toggle-slider"></span>
+                            </label>
+                        </td>
+                        <td><code><?php echo esc_html($tool_id); ?></code></td>
+                        <td><?php echo esc_html($categories[$category] ?? ucfirst($category)); ?></td>
+                        <td><?php echo esc_html($tool['description']); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+
+            <p class="description">
+                <?php esc_html_e('Note: Changes take effect immediately. Disabled tools will not appear in Cursor.', 'hp-gmc-manager'); ?>
+            </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the dry run log tab.
+     */
+    private static function render_dry_run_log_tab(): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_dry_run_log';
+        
+        $logs = $wpdb->get_results("
+            SELECT * FROM $table 
+            ORDER BY created_at DESC 
+            LIMIT 100
+        ");
+        ?>
+        <div class="hp-gmc-dry-run-log">
+            <h2><?php esc_html_e('Dry Run Log', 'hp-gmc-manager'); ?></h2>
+            <p><?php esc_html_e('Actions that would have been executed in live mode.', 'hp-gmc-manager'); ?></p>
+
+            <div class="hp-gmc-log-actions">
+                <button type="button" class="button" id="hp-gmc-clear-log">
+                    <?php esc_html_e('Clear Log', 'hp-gmc-manager'); ?>
+                </button>
+                <button type="button" class="button" id="hp-gmc-export-log">
+                    <?php esc_html_e('Export as JSON', 'hp-gmc-manager'); ?>
+                </button>
+            </div>
+
+            <?php if (empty($logs)): ?>
+            <p><?php esc_html_e('No dry run actions logged yet.', 'hp-gmc-manager'); ?></p>
+            <?php else: ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Time', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Action', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Endpoint', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($logs as $log): ?>
+                    <tr>
+                        <td><?php echo esc_html($log->created_at); ?></td>
+                        <td><code><?php echo esc_html($log->action); ?></code></td>
+                        <td><code><?php echo esc_html($log->endpoint); ?></code></td>
+                        <td>
+                            <details>
+                                <summary><?php esc_html_e('View', 'hp-gmc-manager'); ?></summary>
+                                <pre><?php echo esc_html($log->params); ?></pre>
+                            </details>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+}

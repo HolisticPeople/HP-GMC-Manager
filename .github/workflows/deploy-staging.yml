@@ -1,0 +1,58 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Composer dependencies
+        run: composer install --no-dev --optimize-autoloader
+        continue-on-error: true
+
+      - name: Deploy to Kinsta Staging
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 35.236.219.140
+          port: 12872
+          username: holisticpeoplecom
+          key: ${{ secrets.KINSTA_SSH_KEY }}
+          script: |
+            cd /www/holisticpeoplecom_349/public/wp-content/plugins
+            
+            # Remove old version if exists
+            rm -rf hp-gmc-manager
+            
+            # Clone fresh from GitHub
+            git clone --branch dev --single-branch https://github.com/${{ github.repository }}.git hp-gmc-manager
+            
+            # Install composer dependencies if composer.json exists
+            if [ -f hp-gmc-manager/composer.json ]; then
+              cd hp-gmc-manager
+              composer install --no-dev --optimize-autoloader 2>/dev/null || echo "Composer install skipped"
+              cd ..
+            fi
+            
+            # Set permissions
+            chown -R www-data:www-data hp-gmc-manager
+            
+            # Clear WordPress cache
+            cd /www/holisticpeoplecom_349/public
+            wp cache flush 2>/dev/null || echo "Cache flush skipped"
+            
+            echo "HP GMC Manager deployed to staging successfully!"
+
+      - name: Deployment notification
+        run: echo "Deployed HP GMC Manager v$(grep "Version:" hp-gmc-manager.php | head -1 | awk '{print $3}') to staging"

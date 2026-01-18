@@ -1,0 +1,192 @@
+<?php
+namespace HP_GMC\Admin;
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * Settings page for HP GMC Manager.
+ */
+class SettingsPage
+{
+    /**
+     * Render the settings page.
+     */
+    public static function render(): void
+    {
+        $merchant_id = get_option('hp_gmc_merchant_id', '');
+        $service_account_path = get_option('hp_gmc_service_account_path', '');
+        $mode = get_option('hp_gmc_mode', 'auto');
+        $sync_frequency = get_option('hp_gmc_sync_frequency', 'hourly');
+        $environment = get_option('hp_gmc_environment', '');
+        $detected_environment = hp_gmc_get_environment();
+        ?>
+        <div class="wrap">
+            <h1>
+                <?php esc_html_e('GMC Manager Settings', 'hp-gmc-manager'); ?>
+                <span class="hp-gmc-version">v<?php echo esc_html(HP_GMC_VERSION); ?></span>
+            </h1>
+
+            <form method="post" action="options.php">
+                <?php settings_fields('hp_gmc_settings'); ?>
+
+                <h2><?php esc_html_e('API Configuration', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_merchant_id"><?php esc_html_e('Merchant ID', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" 
+                                   id="hp_gmc_merchant_id" 
+                                   name="hp_gmc_merchant_id" 
+                                   value="<?php echo esc_attr($merchant_id); ?>" 
+                                   class="regular-text"
+                                   placeholder="5298746911">
+                            <p class="description">
+                                <?php esc_html_e('Your Google Merchant Center account ID.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_service_account_path"><?php esc_html_e('Service Account JSON Path', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text" 
+                                   id="hp_gmc_service_account_path" 
+                                   name="hp_gmc_service_account_path" 
+                                   value="<?php echo esc_attr($service_account_path); ?>" 
+                                   class="large-text"
+                                   placeholder="/path/to/service-account.json">
+                            <p class="description">
+                                <?php esc_html_e('Absolute path to your Google service account JSON key file.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h2><?php esc_html_e('Environment & Mode', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_environment"><?php esc_html_e('Environment', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <select id="hp_gmc_environment" name="hp_gmc_environment">
+                                <option value="" <?php selected($environment, ''); ?>>
+                                    <?php printf(
+                                        esc_html__('Auto-detect (%s)', 'hp-gmc-manager'),
+                                        esc_html($detected_environment)
+                                    ); ?>
+                                </option>
+                                <option value="production" <?php selected($environment, 'production'); ?>>
+                                    <?php esc_html_e('Production', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="staging" <?php selected($environment, 'staging'); ?>>
+                                    <?php esc_html_e('Staging', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="local" <?php selected($environment, 'local'); ?>>
+                                    <?php esc_html_e('Local', 'hp-gmc-manager'); ?>
+                                </option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Override automatic environment detection if needed.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_mode"><?php esc_html_e('Operating Mode', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <select id="hp_gmc_mode" name="hp_gmc_mode">
+                                <option value="auto" <?php selected($mode, 'auto'); ?>>
+                                    <?php esc_html_e('Auto (Live on production, Dry Run on staging/local)', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="live" <?php selected($mode, 'live'); ?>>
+                                    <?php esc_html_e('Live - Real API calls', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="dry_run" <?php selected($mode, 'dry_run'); ?>>
+                                    <?php esc_html_e('Dry Run - Log actions only', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="mock" <?php selected($mode, 'mock'); ?>>
+                                    <?php esc_html_e('Mock - Use simulated data', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="passthrough" <?php selected($mode, 'passthrough'); ?>>
+                                    <?php esc_html_e('Passthrough - Staging to Production GMC (CAUTION!)', 'hp-gmc-manager'); ?>
+                                </option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Controls how the plugin interacts with Google Merchant Center.', 'hp-gmc-manager'); ?>
+                            </p>
+                            <?php if ($mode === 'passthrough'): ?>
+                            <p class="notice notice-error inline">
+                                <strong><?php esc_html_e('Warning:', 'hp-gmc-manager'); ?></strong>
+                                <?php esc_html_e('Passthrough mode will make real changes to your production GMC account from this environment!', 'hp-gmc-manager'); ?>
+                            </p>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                </table>
+
+                <h2><?php esc_html_e('Sync Settings', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_sync_frequency"><?php esc_html_e('Sync Frequency', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <select id="hp_gmc_sync_frequency" name="hp_gmc_sync_frequency">
+                                <option value="hourly" <?php selected($sync_frequency, 'hourly'); ?>>
+                                    <?php esc_html_e('Hourly', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="twicedaily" <?php selected($sync_frequency, 'twicedaily'); ?>>
+                                    <?php esc_html_e('Twice Daily', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="daily" <?php selected($sync_frequency, 'daily'); ?>>
+                                    <?php esc_html_e('Daily', 'hp-gmc-manager'); ?>
+                                </option>
+                                <option value="manual" <?php selected($sync_frequency, 'manual'); ?>>
+                                    <?php esc_html_e('Manual Only', 'hp-gmc-manager'); ?>
+                                </option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('How often to sync product statuses from Google Merchant Center.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h2><?php esc_html_e('Connection Test', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><?php esc_html_e('API Connection', 'hp-gmc-manager'); ?></th>
+                        <td>
+                            <button type="button" class="button" id="hp-gmc-test-connection">
+                                <?php esc_html_e('Test Connection', 'hp-gmc-manager'); ?>
+                            </button>
+                            <span id="hp-gmc-connection-status"></span>
+                        </td>
+                    </tr>
+                </table>
+
+                <?php submit_button(); ?>
+            </form>
+
+            <hr>
+
+            <h2><?php esc_html_e('Setup Instructions', 'hp-gmc-manager'); ?></h2>
+            <ol>
+                <li><?php esc_html_e('Create a Google Cloud project and enable the Merchant API', 'hp-gmc-manager'); ?></li>
+                <li><?php esc_html_e('Create a service account and download the JSON key file', 'hp-gmc-manager'); ?></li>
+                <li><?php esc_html_e('Add the service account email to your Merchant Center as an Admin user', 'hp-gmc-manager'); ?></li>
+                <li><?php esc_html_e('Upload the JSON key file to your server (outside web root for security)', 'hp-gmc-manager'); ?></li>
+                <li><?php esc_html_e('Enter the path and Merchant ID above', 'hp-gmc-manager'); ?></li>
+                <li><?php esc_html_e('Click "Test Connection" to verify', 'hp-gmc-manager'); ?></li>
+            </ol>
+        </div>
+        <?php
+    }
+}
