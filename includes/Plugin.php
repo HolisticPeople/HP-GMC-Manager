@@ -195,7 +195,7 @@ class Plugin
             }
 
             wp_register_ability('hp-abilities/' . $tool_id, [
-                'title' => $tool['title'],
+                'label' => $tool['title'],
                 'description' => $tool['description'],
                 'callback' => $tool['callback'],
                 'input_schema' => $tool['input_schema'] ?? (object)[],
