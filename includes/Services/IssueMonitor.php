@@ -28,7 +28,14 @@ class IssueMonitor
             'pending' => 0,
             'warning' => 0,
             'errors' => [],
+            'debug' => [], // Debug info for troubleshooting
         ];
+        
+        // #region agent log - Check if table exists
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'") === $table;
+        $stats['debug']['table_exists'] = $table_exists;
+        $stats['debug']['table_name'] = $table;
+        // #endregion
 
         try {
             $pageToken = null;
@@ -81,6 +88,25 @@ class IssueMonitor
                         ];
                     }, $destinationStatuses);
 
+                    // #region agent log - Debug first few products
+                    if ($stats['total'] <= 3) {
+                        $stats['debug']['sample_products'][] = [
+                            'raw_offerId' => $product['offerId'] ?? 'NOT_SET',
+                            'raw_name' => $product['name'] ?? 'NOT_SET',
+                            'parsed_glaId' => $glaId,
+                            'status' => $status,
+                            'issues_count' => count($itemLevelIssues),
+                            'destinations_count' => count($destinationStatuses),
+                        ];
+                    }
+                    // #endregion
+                    
+                    // Skip if glaId is empty
+                    if (empty($glaId)) {
+                        $stats['debug']['empty_glaId_count'] = ($stats['debug']['empty_glaId_count'] ?? 0) + 1;
+                        continue;
+                    }
+
                     // Try to find the WooCommerce product ID
                     $productId = self::findWooCommerceProductId($glaId);
 
@@ -105,10 +131,21 @@ class IssueMonitor
                     ];
 
                     if ($existing) {
-                        $wpdb->update($table, $data, ['id' => $existing]);
+                        $result = $wpdb->update($table, $data, ['id' => $existing]);
                     } else {
-                        $wpdb->insert($table, $data);
+                        $result = $wpdb->insert($table, $data);
                     }
+                    
+                    // #region agent log - Track insert/update results
+                    if ($stats['total'] <= 3) {
+                        $stats['debug']['db_operations'][] = [
+                            'glaId' => $glaId,
+                            'operation' => $existing ? 'update' : 'insert',
+                            'result' => $result,
+                            'last_error' => $wpdb->last_error,
+                        ];
+                    }
+                    // #endregion
                 }
 
                 $pageToken = $response['data']['nextPageToken'] ?? null;
