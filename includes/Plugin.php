@@ -27,10 +27,16 @@ class Plugin
         // Enqueue admin assets
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
 
+        // Register GMC category (must happen before abilities)
+        add_action('wp_abilities_api_categories_init', [self::class, 'register_ability_category']);
+        
         // Register MCP abilities (if HP-Abilities is active)
         add_action('wp_abilities_api_init', [self::class, 'register_abilities']);
 
-        // Check if we missed the hook
+        // Check if we missed the hooks
+        if (did_action('wp_abilities_api_categories_init')) {
+            self::register_ability_category();
+        }
         if (did_action('wp_abilities_api_init')) {
             self::register_abilities();
         }
@@ -175,20 +181,27 @@ class Plugin
     }
 
     /**
+     * Register the GMC ability category.
+     */
+    public static function register_ability_category(): void
+    {
+        if (!function_exists('wp_register_ability_category')) {
+            return;
+        }
+
+        wp_register_ability_category('hp-gmc', [
+            'label' => __('Google Merchant Center', 'hp-gmc-manager'),
+            'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
+        ]);
+    }
+
+    /**
      * Register MCP abilities for AI-powered operations.
      */
     public static function register_abilities(): void
     {
         if (!function_exists('wp_register_ability')) {
             return;
-        }
-
-        // Register the GMC category first
-        if (function_exists('wp_register_ability_category')) {
-            wp_register_ability_category('hp-gmc', [
-                'label' => __('Google Merchant Center', 'hp-gmc-manager'),
-                'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
-            ]);
         }
 
         $enabled_tools = get_option('hp_gmc_enabled_tools', []);
