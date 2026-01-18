@@ -324,11 +324,380 @@
                 }
                 $btn.prop('disabled', false).text(originalText);
             }, 500);
+        },
+
+        // ========================================
+        // FEED MANAGEMENT
+        // ========================================
+
+        initFeedEvents: function() {
+            // Create feed modal
+            $('#hp-gmc-create-feed').on('click', () => {
+                $('#hp-gmc-create-feed-modal').show();
+            });
+            
+            $('.hp-gmc-modal-close').on('click', function() {
+                $(this).closest('.hp-gmc-modal').hide();
+            });
+            
+            // Close modal on backdrop click
+            $('.hp-gmc-modal').on('click', function(e) {
+                if (e.target === this) {
+                    $(this).hide();
+                }
+            });
+            
+            // Create feed submit
+            $('#hp-gmc-create-feed-submit').on('click', this.createFeed.bind(this));
+            
+            // Feed actions
+            $(document).on('click', '.hp-gmc-feed-generate', this.generateFeed.bind(this));
+            $(document).on('click', '.hp-gmc-feed-upload', this.uploadFeed.bind(this));
+            $(document).on('click', '.hp-gmc-feed-check-status', this.checkFeedStatus.bind(this));
+            $(document).on('click', '.hp-gmc-feed-delete', this.deleteFeed.bind(this));
+            $(document).on('click', '.hp-gmc-remove-product', this.removeProductFromFeed.bind(this));
+            
+            // Add product
+            $('#hp-gmc-add-product-btn').on('click', this.addProductToFeed.bind(this));
+            
+            // Product search autocomplete
+            this.initProductSearch();
+        },
+        
+        initProductSearch: function() {
+            const $search = $('#hp-gmc-product-search');
+            if (!$search.length) return;
+            
+            let searchTimeout;
+            const self = this;
+            
+            $search.on('input', function() {
+                clearTimeout(searchTimeout);
+                const term = $(this).val();
+                
+                if (term.length < 2) {
+                    $('#hp-gmc-search-results').remove();
+                    return;
+                }
+                
+                searchTimeout = setTimeout(() => {
+                    self.searchProducts(term);
+                }, 300);
+            });
+            
+            // Hide results on click outside
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.hp-gmc-add-product-fields').length) {
+                    $('#hp-gmc-search-results').remove();
+                }
+            });
+        },
+        
+        searchProducts: function(term) {
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_search_products',
+                    nonce: hpGmcData.nonce,
+                    term: term
+                },
+                success: function(response) {
+                    if (response.success && response.data.products.length) {
+                        let html = '<div id="hp-gmc-search-results" class="hp-gmc-search-dropdown">';
+                        response.data.products.forEach(p => {
+                            html += '<div class="hp-gmc-search-item" data-id="' + p.id + '" data-sku="' + p.sku + '">' +
+                                    '<strong>' + p.sku + '</strong> - ' + p.name +
+                                    '</div>';
+                        });
+                        html += '</div>';
+                        
+                        $('#hp-gmc-search-results').remove();
+                        $('#hp-gmc-product-search').after(html);
+                        
+                        // Click handler for results
+                        $('.hp-gmc-search-item').on('click', function() {
+                            $('#hp-gmc-product-search').val($(this).data('sku'));
+                            $('#hp-gmc-product-search').data('product-id', $(this).data('id'));
+                            $('#hp-gmc-search-results').remove();
+                        });
+                    }
+                }
+            });
+        },
+        
+        createFeed: function() {
+            const name = $('#hp-gmc-new-feed-name').val().trim();
+            const type = $('#hp-gmc-new-feed-type').val();
+            const category = $('#hp-gmc-new-feed-category').val().trim();
+            
+            if (!name) {
+                alert('Please enter a feed name');
+                return;
+            }
+            
+            const $btn = $('#hp-gmc-create-feed-submit');
+            $btn.prop('disabled', true).text('Creating...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_create_feed',
+                    nonce: hpGmcData.nonce,
+                    name: name,
+                    type: type,
+                    category: category
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Redirect to the new feed
+                        window.location.href = window.location.pathname + 
+                            window.location.search + 
+                            '&feed_id=' + response.data.feed_id + 
+                            '#feeds';
+                    } else {
+                        alert(response.data?.message || 'Failed to create feed');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Create Feed');
+                }
+            });
+        },
+        
+        generateFeed: function(e) {
+            const feedId = $(e.target).data('feed-id');
+            const $btn = $(e.target);
+            const originalText = $btn.text();
+            
+            $btn.prop('disabled', true).text('Generating...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_generate_feed',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId,
+                    format: 'tsv'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Feed file generated successfully!\nProducts: ' + response.data.product_count);
+                        location.reload();
+                    } else {
+                        alert(response.data?.error || 'Failed to generate feed');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        uploadFeed: function(e) {
+            const feedId = $(e.target).data('feed-id');
+            const $btn = $(e.target);
+            const originalText = $btn.text();
+            
+            $btn.prop('disabled', true).text('Uploading...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_upload_feed',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Feed uploaded to GMC!\n\n' + (response.data?.note || response.data?.message || 'Success'));
+                        location.reload();
+                    } else {
+                        alert(response.data?.error || 'Failed to upload feed');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        checkFeedStatus: function(e) {
+            const feedId = $(e.target).data('feed-id');
+            const $btn = $(e.target);
+            const originalText = $btn.text();
+            
+            $btn.prop('disabled', true).text('Checking...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_check_feed_status',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('GMC Status: ' + JSON.stringify(response.data.data, null, 2));
+                        location.reload();
+                    } else {
+                        alert(response.data?.error || 'Failed to check status');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        deleteFeed: function(e) {
+            const feedId = $(e.target).data('feed-id');
+            
+            if (!confirm('Are you sure you want to delete this feed?')) {
+                return;
+            }
+            
+            const $btn = $(e.target);
+            $btn.prop('disabled', true).text('Deleting...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_delete_feed',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Remove feed_id from URL and reload
+                        const url = new URL(window.location);
+                        url.searchParams.delete('feed_id');
+                        url.hash = 'feeds';
+                        window.location.href = url.toString();
+                    } else {
+                        alert(response.data?.message || 'Failed to delete feed');
+                        $btn.prop('disabled', false).text('Delete');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                    $btn.prop('disabled', false).text('Delete');
+                }
+            });
+        },
+        
+        addProductToFeed: function() {
+            const feedId = $('#hp-gmc-add-product-btn').data('feed-id');
+            const productId = $('#hp-gmc-product-search').data('product-id');
+            const sku = $('#hp-gmc-product-search').val().trim();
+            const value = $('#hp-gmc-product-value').val().trim();
+            const reason = $('#hp-gmc-product-reason').val().trim();
+            
+            if (!productId && !sku) {
+                alert('Please search and select a product');
+                return;
+            }
+            
+            if (!value) {
+                alert('Please enter a value');
+                return;
+            }
+            
+            // If we have SKU but not productId, we need to look it up
+            let finalProductId = productId;
+            
+            if (!finalProductId) {
+                // Try to use SKU directly - backend will handle lookup
+                alert('Please select a product from the search results');
+                return;
+            }
+            
+            const $btn = $('#hp-gmc-add-product-btn');
+            $btn.prop('disabled', true).text('Adding...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_add_product_to_feed',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId,
+                    product_id: finalProductId,
+                    value: value,
+                    reason: reason
+                },
+                success: function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert(response.data?.message || 'Failed to add product');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text('Add');
+                }
+            });
+        },
+        
+        removeProductFromFeed: function(e) {
+            const $btn = $(e.target);
+            const feedId = $btn.data('feed-id');
+            const productId = $btn.data('product-id');
+            
+            if (!confirm('Remove this product from the feed?')) {
+                return;
+            }
+            
+            $btn.prop('disabled', true).text('...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_remove_product_from_feed',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId,
+                    product_id: productId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $btn.closest('tr').fadeOut(() => $(this).remove());
+                    } else {
+                        alert(response.data?.message || 'Failed to remove product');
+                        $btn.prop('disabled', false).text('Remove');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                    $btn.prop('disabled', false).text('Remove');
+                }
+            });
         }
     };
 
     $(document).ready(function() {
         GMCDashboard.init();
+        GMCDashboard.initFeedEvents();
     });
 
 })(jQuery);

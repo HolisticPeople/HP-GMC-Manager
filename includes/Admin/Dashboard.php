@@ -34,6 +34,9 @@ class Dashboard
                 <a href="#issues" class="nav-tab" data-tab="issues">
                     <?php esc_html_e('Issues', 'hp-gmc-manager'); ?>
                 </a>
+                <a href="#feeds" class="nav-tab" data-tab="feeds">
+                    <?php esc_html_e('Feeds', 'hp-gmc-manager'); ?>
+                </a>
                 <a href="#exclusions" class="nav-tab" data-tab="exclusions">
                     <?php esc_html_e('Exclusions', 'hp-gmc-manager'); ?>
                 </a>
@@ -56,6 +59,9 @@ class Dashboard
                 </div>
                 <div id="tab-issues" class="hp-gmc-tab-panel">
                     <?php self::render_issues_tab(); ?>
+                </div>
+                <div id="tab-feeds" class="hp-gmc-tab-panel">
+                    <?php self::render_feeds_tab(); ?>
                 </div>
                 <div id="tab-exclusions" class="hp-gmc-tab-panel">
                     <?php self::render_exclusions_tab(); ?>
@@ -435,6 +441,298 @@ class Dashboard
         }
         
         return '';
+    }
+
+    /**
+     * Render the feeds tab.
+     */
+    private static function render_feeds_tab(): void
+    {
+        $feeds = \HP_GMC\Services\FeedManager::getAll();
+        $summary = \HP_GMC\Services\FeedManager::getSummary();
+        
+        // Get selected feed for detail view
+        $selectedFeedId = isset($_GET['feed_id']) ? (int) $_GET['feed_id'] : 0;
+        $selectedFeed = $selectedFeedId ? \HP_GMC\Services\FeedManager::get($selectedFeedId) : null;
+        $feedProducts = $selectedFeed ? \HP_GMC\Services\FeedManager::getProducts($selectedFeedId) : [];
+        ?>
+        <div class="hp-gmc-feeds">
+            <div class="hp-gmc-section-header">
+                <h2><?php esc_html_e('Supplemental Feeds', 'hp-gmc-manager'); ?></h2>
+                <button type="button" class="button button-primary" id="hp-gmc-create-feed">
+                    <?php esc_html_e('+ New Feed', 'hp-gmc-manager'); ?>
+                </button>
+            </div>
+            
+            <p><?php esc_html_e('Manage supplemental feeds for GMC. Use exclusion feeds to fix policy violations, redirect feeds to send ad traffic to funnels.', 'hp-gmc-manager'); ?></p>
+            
+            <!-- Feed Summary -->
+            <div class="hp-gmc-feeds-summary">
+                <div class="hp-gmc-feed-type-card hp-gmc-feed-type-exclusion">
+                    <div class="hp-gmc-feed-type-header">
+                        <span class="hp-gmc-feed-type-icon">🚫</span>
+                        <strong><?php esc_html_e('Exclusion Feeds', 'hp-gmc-manager'); ?></strong>
+                    </div>
+                    <div class="hp-gmc-feed-type-stats">
+                        <span class="hp-gmc-feed-count"><?php echo esc_html($summary['exclusion']['total']); ?> <?php esc_html_e('feeds', 'hp-gmc-manager'); ?></span>
+                        <span class="hp-gmc-product-count"><?php echo esc_html($summary['exclusion']['products']); ?> <?php esc_html_e('products', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <p class="hp-gmc-feed-type-desc"><?php esc_html_e('Exclude products from specific ad destinations', 'hp-gmc-manager'); ?></p>
+                </div>
+                
+                <div class="hp-gmc-feed-type-card hp-gmc-feed-type-redirect">
+                    <div class="hp-gmc-feed-type-header">
+                        <span class="hp-gmc-feed-type-icon">🔗</span>
+                        <strong><?php esc_html_e('Redirect Feeds', 'hp-gmc-manager'); ?></strong>
+                    </div>
+                    <div class="hp-gmc-feed-type-stats">
+                        <span class="hp-gmc-feed-count"><?php echo esc_html($summary['redirect']['total']); ?> <?php esc_html_e('feeds', 'hp-gmc-manager'); ?></span>
+                        <span class="hp-gmc-product-count"><?php echo esc_html($summary['redirect']['products']); ?> <?php esc_html_e('products', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <p class="hp-gmc-feed-type-desc"><?php esc_html_e('Redirect ad clicks to funnel pages', 'hp-gmc-manager'); ?></p>
+                </div>
+            </div>
+            
+            <?php if ($selectedFeed): ?>
+            <!-- Feed Detail View -->
+            <div class="hp-gmc-feed-detail">
+                <div class="hp-gmc-feed-detail-header">
+                    <a href="<?php echo esc_url(remove_query_arg('feed_id')); ?>" class="button">&larr; <?php esc_html_e('Back to List', 'hp-gmc-manager'); ?></a>
+                    <h3><?php echo esc_html($selectedFeed['name']); ?></h3>
+                    <span class="hp-gmc-feed-type-badge hp-gmc-feed-type-<?php echo esc_attr($selectedFeed['feed_type']); ?>">
+                        <?php echo esc_html(ucfirst($selectedFeed['feed_type'])); ?>
+                    </span>
+                    <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo esc_attr($selectedFeed['status']); ?>">
+                        <?php echo esc_html(ucfirst($selectedFeed['status'])); ?>
+                    </span>
+                </div>
+                
+                <div class="hp-gmc-feed-actions">
+                    <button type="button" class="button hp-gmc-feed-generate" data-feed-id="<?php echo esc_attr($selectedFeedId); ?>">
+                        <?php esc_html_e('Generate File', 'hp-gmc-manager'); ?>
+                    </button>
+                    <?php if ($selectedFeed['file_url']): ?>
+                    <a href="<?php echo esc_url($selectedFeed['file_url']); ?>" class="button" download>
+                        <?php esc_html_e('Download', 'hp-gmc-manager'); ?>
+                    </a>
+                    <?php endif; ?>
+                    <button type="button" class="button button-primary hp-gmc-feed-upload" data-feed-id="<?php echo esc_attr($selectedFeedId); ?>">
+                        <?php esc_html_e('Upload to GMC', 'hp-gmc-manager'); ?>
+                    </button>
+                    <?php if ($selectedFeed['gmc_feed_id']): ?>
+                    <button type="button" class="button hp-gmc-feed-check-status" data-feed-id="<?php echo esc_attr($selectedFeedId); ?>">
+                        <?php esc_html_e('Check Status', 'hp-gmc-manager'); ?>
+                    </button>
+                    <?php endif; ?>
+                    <button type="button" class="button hp-gmc-feed-delete" data-feed-id="<?php echo esc_attr($selectedFeedId); ?>" style="color:#dc3232;">
+                        <?php esc_html_e('Delete', 'hp-gmc-manager'); ?>
+                    </button>
+                </div>
+                
+                <div class="hp-gmc-feed-info">
+                    <p>
+                        <strong><?php esc_html_e('Products:', 'hp-gmc-manager'); ?></strong> <?php echo esc_html($selectedFeed['product_count']); ?>
+                        <?php if ($selectedFeed['last_uploaded']): ?>
+                        &nbsp;|&nbsp;
+                        <strong><?php esc_html_e('Last Upload:', 'hp-gmc-manager'); ?></strong> <?php echo esc_html($selectedFeed['last_uploaded']); ?>
+                        <?php endif; ?>
+                        <?php if ($selectedFeed['gmc_feed_id']): ?>
+                        &nbsp;|&nbsp;
+                        <strong><?php esc_html_e('GMC ID:', 'hp-gmc-manager'); ?></strong> <code><?php echo esc_html($selectedFeed['gmc_feed_id']); ?></code>
+                        <?php endif; ?>
+                        <?php if ($selectedFeed['gmc_status']): ?>
+                        &nbsp;|&nbsp;
+                        <strong><?php esc_html_e('GMC Status:', 'hp-gmc-manager'); ?></strong> <?php echo esc_html($selectedFeed['gmc_status']); ?>
+                        <?php endif; ?>
+                    </p>
+                </div>
+                
+                <!-- Products in Feed -->
+                <h4><?php esc_html_e('Products in Feed', 'hp-gmc-manager'); ?></h4>
+                
+                <?php if (empty($feedProducts)): ?>
+                <p><?php esc_html_e('No products in this feed yet. Add products using the MCP tools or the form below.', 'hp-gmc-manager'); ?></p>
+                <?php else: ?>
+                <table class="wp-list-table widefat fixed striped hp-gmc-feed-products-table">
+                    <thead>
+                        <tr>
+                            <th style="width:5%"><input type="checkbox" id="hp-gmc-select-all-products"></th>
+                            <th style="width:12%"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
+                            <th style="width:25%"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                            <th style="width:30%"><?php esc_html_e('Value', 'hp-gmc-manager'); ?></th>
+                            <th style="width:18%"><?php esc_html_e('Reason', 'hp-gmc-manager'); ?></th>
+                            <th style="width:10%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($feedProducts as $fp): ?>
+                        <tr data-product-id="<?php echo esc_attr($fp['product_id']); ?>">
+                            <td><input type="checkbox" class="hp-gmc-product-checkbox" value="<?php echo esc_attr($fp['product_id']); ?>"></td>
+                            <td><code><?php echo esc_html($fp['sku']); ?></code></td>
+                            <td>
+                                <?php if ($fp['product_url']): ?>
+                                <a href="<?php echo esc_url($fp['product_url']); ?>"><?php echo esc_html($fp['product_name']); ?></a>
+                                <?php else: ?>
+                                <?php echo esc_html($fp['product_name']); ?>
+                                <?php endif; ?>
+                            </td>
+                            <td><code><?php echo esc_html($fp['attribute_value']); ?></code></td>
+                            <td><?php echo esc_html($fp['reason'] ?: '-'); ?></td>
+                            <td>
+                                <button type="button" class="button button-small hp-gmc-remove-product" 
+                                        data-feed-id="<?php echo esc_attr($selectedFeedId); ?>"
+                                        data-product-id="<?php echo esc_attr($fp['product_id']); ?>">
+                                    <?php esc_html_e('Remove', 'hp-gmc-manager'); ?>
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+                
+                <!-- Add Product Form -->
+                <div class="hp-gmc-add-product-form">
+                    <h4><?php esc_html_e('Add Product', 'hp-gmc-manager'); ?></h4>
+                    <div class="hp-gmc-add-product-fields">
+                        <input type="text" id="hp-gmc-product-search" placeholder="<?php esc_attr_e('Search by SKU or name...', 'hp-gmc-manager'); ?>">
+                        <input type="text" id="hp-gmc-product-value" 
+                               placeholder="<?php echo esc_attr($selectedFeed['feed_type'] === 'redirect' ? __('Redirect URL', 'hp-gmc-manager') : __('Destinations (comma-separated)', 'hp-gmc-manager')); ?>">
+                        <input type="text" id="hp-gmc-product-reason" placeholder="<?php esc_attr_e('Reason (optional)', 'hp-gmc-manager'); ?>">
+                        <button type="button" class="button button-primary" id="hp-gmc-add-product-btn" data-feed-id="<?php echo esc_attr($selectedFeedId); ?>">
+                            <?php esc_html_e('Add', 'hp-gmc-manager'); ?>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <?php else: ?>
+            <!-- Feed List View -->
+            <?php if (empty($feeds)): ?>
+            <div class="hp-gmc-empty-state">
+                <p><?php esc_html_e('No feeds created yet. Click "New Feed" to create your first supplemental feed.', 'hp-gmc-manager'); ?></p>
+            </div>
+            <?php else: ?>
+            
+            <h3><?php esc_html_e('All Feeds', 'hp-gmc-manager'); ?></h3>
+            <table class="wp-list-table widefat fixed striped hp-gmc-feeds-table">
+                <thead>
+                    <tr>
+                        <th style="width:25%"><?php esc_html_e('Feed Name', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Type', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
+                        <th style="width:15%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('GMC Status', 'hp-gmc-manager'); ?></th>
+                        <th style="width:20%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($feeds as $feed): ?>
+                    <tr data-feed-id="<?php echo esc_attr($feed['id']); ?>">
+                        <td>
+                            <strong>
+                                <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>">
+                                    <?php echo esc_html($feed['name']); ?>
+                                </a>
+                            </strong>
+                            <?php if ($feed['category']): ?>
+                            <br><small><?php echo esc_html($feed['category']); ?></small>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <span class="hp-gmc-feed-type-badge hp-gmc-feed-type-<?php echo esc_attr($feed['feed_type']); ?>">
+                                <?php echo esc_html(ucfirst($feed['feed_type'])); ?>
+                            </span>
+                        </td>
+                        <td>
+                            <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo esc_attr($feed['status']); ?>">
+                                <?php echo esc_html(ucfirst($feed['status'])); ?>
+                            </span>
+                        </td>
+                        <td><?php echo esc_html($feed['product_count']); ?></td>
+                        <td>
+                            <?php 
+                            if ($feed['last_uploaded']) {
+                                echo esc_html(human_time_diff(strtotime($feed['last_uploaded']), time()) . ' ago');
+                            } else {
+                                echo '-';
+                            }
+                            ?>
+                        </td>
+                        <td><?php echo esc_html($feed['gmc_status'] ?: '-'); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>" class="button button-small">
+                                <?php esc_html_e('View', 'hp-gmc-manager'); ?>
+                            </a>
+                            <?php if ($feed['file_url']): ?>
+                            <a href="<?php echo esc_url($feed['file_url']); ?>" class="button button-small" download>
+                                <?php esc_html_e('Download', 'hp-gmc-manager'); ?>
+                            </a>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+            <?php endif; ?>
+            
+            <!-- MCP Tools Reference -->
+            <div class="hp-gmc-feeds-tools">
+                <h3><?php esc_html_e('Feed Management via MCP', 'hp-gmc-manager'); ?></h3>
+                <div class="hp-gmc-mcp-commands">
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-feed-create</code>
+                        <span><?php esc_html_e('Create a new feed (name, type, category)', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-feed-add-products</code>
+                        <span><?php esc_html_e('Add products to a feed', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-feed-generate</code>
+                        <span><?php esc_html_e('Generate TSV/CSV file for a feed', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-feed-upload</code>
+                        <span><?php esc_html_e('Upload feed to Google Merchant Center', 'hp-gmc-manager'); ?></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Create Feed Modal -->
+        <div id="hp-gmc-create-feed-modal" class="hp-gmc-modal" style="display:none;">
+            <div class="hp-gmc-modal-content">
+                <div class="hp-gmc-modal-header">
+                    <h3><?php esc_html_e('Create New Feed', 'hp-gmc-manager'); ?></h3>
+                    <button type="button" class="hp-gmc-modal-close">&times;</button>
+                </div>
+                <div class="hp-gmc-modal-body">
+                    <p>
+                        <label for="hp-gmc-new-feed-name"><?php esc_html_e('Feed Name:', 'hp-gmc-manager'); ?></label>
+                        <input type="text" id="hp-gmc-new-feed-name" class="regular-text" placeholder="hp-exclusions-personalization">
+                    </p>
+                    <p>
+                        <label for="hp-gmc-new-feed-type"><?php esc_html_e('Feed Type:', 'hp-gmc-manager'); ?></label>
+                        <select id="hp-gmc-new-feed-type">
+                            <option value="exclusion"><?php esc_html_e('Exclusion (excluded_destination)', 'hp-gmc-manager'); ?></option>
+                            <option value="redirect"><?php esc_html_e('Redirect (ads_redirect)', 'hp-gmc-manager'); ?></option>
+                            <option value="custom"><?php esc_html_e('Custom', 'hp-gmc-manager'); ?></option>
+                        </select>
+                    </p>
+                    <p>
+                        <label for="hp-gmc-new-feed-category"><?php esc_html_e('Category (optional):', 'hp-gmc-manager'); ?></label>
+                        <input type="text" id="hp-gmc-new-feed-category" class="regular-text" placeholder="personalization">
+                    </p>
+                </div>
+                <div class="hp-gmc-modal-footer">
+                    <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Cancel', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-primary" id="hp-gmc-create-feed-submit"><?php esc_html_e('Create Feed', 'hp-gmc-manager'); ?></button>
+                </div>
+            </div>
+        </div>
+        <?php
     }
 
     /**
@@ -832,6 +1130,7 @@ class Dashboard
         $categories = [
             'overview' => __('Overview', 'hp-gmc-manager'),
             'product' => __('Product', 'hp-gmc-manager'),
+            'feed' => __('Feeds', 'hp-gmc-manager'),
             'shipping' => __('Shipping', 'hp-gmc-manager'),
             'account' => __('Account', 'hp-gmc-manager'),
             'test' => __('Test', 'hp-gmc-manager'),

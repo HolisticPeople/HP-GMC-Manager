@@ -49,6 +49,16 @@ class Plugin
         add_action('wp_ajax_hp_gmc_test_connection', [self::class, 'ajax_test_connection']);
         add_action('wp_ajax_hp_gmc_sync_now', [self::class, 'ajax_sync_now']);
         add_action('wp_ajax_hp_gmc_clear_dry_run_log', [self::class, 'ajax_clear_dry_run_log']);
+        
+        // Feed AJAX handlers
+        add_action('wp_ajax_hp_gmc_create_feed', [self::class, 'ajax_create_feed']);
+        add_action('wp_ajax_hp_gmc_delete_feed', [self::class, 'ajax_delete_feed']);
+        add_action('wp_ajax_hp_gmc_generate_feed', [self::class, 'ajax_generate_feed']);
+        add_action('wp_ajax_hp_gmc_upload_feed', [self::class, 'ajax_upload_feed']);
+        add_action('wp_ajax_hp_gmc_check_feed_status', [self::class, 'ajax_check_feed_status']);
+        add_action('wp_ajax_hp_gmc_add_product_to_feed', [self::class, 'ajax_add_product_to_feed']);
+        add_action('wp_ajax_hp_gmc_remove_product_from_feed', [self::class, 'ajax_remove_product_from_feed']);
+        add_action('wp_ajax_hp_gmc_search_products', [self::class, 'ajax_search_products']);
 
         // Plugin action links
         add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
@@ -505,6 +515,230 @@ class Plugin
                 ],
                 'category' => 'overview',
             ],
+            
+            // Feed management tools
+            'gmc-feed-create' => [
+                'title' => 'Create Feed',
+                'description' => 'Create a new supplemental feed (exclusion, redirect, or custom)',
+                'callback' => [Abilities\FeedAbilities::class, 'createFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                            'description' => 'Feed name (e.g., hp-exclusions-personalization)',
+                        ],
+                        'type' => [
+                            'type' => 'string',
+                            'description' => 'Feed type: exclusion, redirect, or custom',
+                            'enum' => ['exclusion', 'redirect', 'custom'],
+                        ],
+                        'category' => [
+                            'type' => 'string',
+                            'description' => 'Optional category/reason for grouping',
+                        ],
+                    ],
+                    'required' => ['name', 'type'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-list' => [
+                'title' => 'List Feeds',
+                'description' => 'List all supplemental feeds with status',
+                'callback' => [Abilities\FeedAbilities::class, 'listFeeds'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'type' => [
+                            'type' => 'string',
+                            'description' => 'Filter by feed type (exclusion, redirect, custom)',
+                        ],
+                    ],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-get' => [
+                'title' => 'Get Feed Details',
+                'description' => 'Get feed details including all products',
+                'callback' => [Abilities\FeedAbilities::class, 'getFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-add-products' => [
+                'title' => 'Add Products to Feed',
+                'description' => 'Add one or more products to a feed',
+                'callback' => [Abilities\FeedAbilities::class, 'addProducts'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                        'skus' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'List of product SKUs to add',
+                        ],
+                        'value' => [
+                            'type' => 'string',
+                            'description' => 'Attribute value (destinations for exclusion, URL for redirect)',
+                        ],
+                        'reason' => [
+                            'type' => 'string',
+                            'description' => 'Optional reason for the exclusion/redirect',
+                        ],
+                    ],
+                    'required' => ['feed_id', 'skus', 'value'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-remove-product' => [
+                'title' => 'Remove Product from Feed',
+                'description' => 'Remove a product from a feed',
+                'callback' => [Abilities\FeedAbilities::class, 'removeProduct'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                        'sku' => [
+                            'type' => 'string',
+                            'description' => 'Product SKU to remove',
+                        ],
+                    ],
+                    'required' => ['feed_id', 'sku'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-generate' => [
+                'title' => 'Generate Feed File',
+                'description' => 'Generate TSV/CSV file for a feed',
+                'callback' => [Abilities\FeedAbilities::class, 'generateFile'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                        'format' => [
+                            'type' => 'string',
+                            'description' => 'Output format: tsv or csv',
+                            'enum' => ['tsv', 'csv'],
+                            'default' => 'tsv',
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-upload' => [
+                'title' => 'Upload Feed to GMC',
+                'description' => 'Upload a feed to Google Merchant Center',
+                'callback' => [Abilities\FeedAbilities::class, 'uploadToGMC'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-status' => [
+                'title' => 'Check Feed Status',
+                'description' => 'Check GMC processing status for a feed',
+                'callback' => [Abilities\FeedAbilities::class, 'checkStatus'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-delete' => [
+                'title' => 'Delete Feed',
+                'description' => 'Delete a feed (optionally from GMC too)',
+                'callback' => [Abilities\FeedAbilities::class, 'deleteFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                        'delete_from_gmc' => [
+                            'type' => 'boolean',
+                            'description' => 'Also delete from GMC if uploaded',
+                            'default' => false,
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-virtual-product-create' => [
+                'title' => 'Create Virtual Product',
+                'description' => 'Create a GMC-only product for complex funnels (hidden from store)',
+                'callback' => [Abilities\FeedAbilities::class, 'createVirtualProduct'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                            'description' => 'Product name',
+                        ],
+                        'sku' => [
+                            'type' => 'string',
+                            'description' => 'Product SKU',
+                        ],
+                        'price' => [
+                            'type' => 'number',
+                            'description' => 'Product price',
+                        ],
+                        'funnel_url' => [
+                            'type' => 'string',
+                            'description' => 'Funnel URL for ads_redirect',
+                        ],
+                        'description' => [
+                            'type' => 'string',
+                            'description' => 'Product description',
+                        ],
+                    ],
+                    'required' => ['name', 'sku', 'price', 'funnel_url'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-virtual-product-list' => [
+                'title' => 'List Virtual Products',
+                'description' => 'List all virtual products created for GMC/funnels',
+                'callback' => [Abilities\FeedAbilities::class, 'listVirtualProducts'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                ],
+                'category' => 'feed',
+            ],
         ];
     }
 
@@ -591,5 +825,269 @@ class Plugin
         $wpdb->query("TRUNCATE TABLE $table");
 
         wp_send_json_success(['message' => 'Log cleared']);
+    }
+
+    /**
+     * AJAX: Create a new feed.
+     */
+    public static function ajax_create_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $name = sanitize_text_field($_POST['name'] ?? '');
+        $type = sanitize_text_field($_POST['type'] ?? 'exclusion');
+        $category = sanitize_text_field($_POST['category'] ?? '');
+
+        if (empty($name)) {
+            wp_send_json_error(['message' => 'Feed name is required']);
+        }
+
+        $feedId = Services\FeedManager::create($name, $type, $category ?: null);
+
+        if ($feedId) {
+            wp_send_json_success([
+                'feed_id' => $feedId,
+                'message' => 'Feed created successfully',
+            ]);
+        } else {
+            wp_send_json_error(['message' => 'Failed to create feed']);
+        }
+    }
+
+    /**
+     * AJAX: Delete a feed.
+     */
+    public static function ajax_delete_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::delete($feedId);
+
+        if ($result) {
+            wp_send_json_success(['message' => 'Feed deleted successfully']);
+        } else {
+            wp_send_json_error(['message' => 'Failed to delete feed']);
+        }
+    }
+
+    /**
+     * AJAX: Generate feed file.
+     */
+    public static function ajax_generate_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+        $format = sanitize_text_field($_POST['format'] ?? 'tsv');
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::generateFile($feedId, $format);
+        
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX: Upload feed to GMC.
+     */
+    public static function ajax_upload_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::uploadToGMC($feedId);
+        
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX: Check feed status in GMC.
+     */
+    public static function ajax_check_feed_status(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::checkGMCStatus($feedId);
+        
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX: Add product to feed.
+     */
+    public static function ajax_add_product_to_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+        $productId = (int) ($_POST['product_id'] ?? 0);
+        $value = sanitize_text_field($_POST['value'] ?? '');
+        $reason = sanitize_text_field($_POST['reason'] ?? '');
+
+        if (!$feedId || !$productId) {
+            wp_send_json_error(['message' => 'Feed ID and Product ID are required']);
+        }
+
+        // Get feed to determine attribute name
+        $feed = Services\FeedManager::get($feedId);
+        if (!$feed) {
+            wp_send_json_error(['message' => 'Feed not found']);
+        }
+
+        $attribute = $feed['feed_type'] === 'redirect' ? 'ads_redirect' : 'excluded_destination';
+
+        $result = Services\FeedManager::addProduct($feedId, $productId, $attribute, $value, $reason ?: null);
+
+        if ($result) {
+            wp_send_json_success(['message' => 'Product added successfully']);
+        } else {
+            wp_send_json_error(['message' => 'Failed to add product']);
+        }
+    }
+
+    /**
+     * AJAX: Remove product from feed.
+     */
+    public static function ajax_remove_product_from_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+        $productId = (int) ($_POST['product_id'] ?? 0);
+
+        if (!$feedId || !$productId) {
+            wp_send_json_error(['message' => 'Feed ID and Product ID are required']);
+        }
+
+        $result = Services\FeedManager::removeProduct($feedId, $productId);
+
+        if ($result) {
+            wp_send_json_success(['message' => 'Product removed successfully']);
+        } else {
+            wp_send_json_error(['message' => 'Failed to remove product']);
+        }
+    }
+
+    /**
+     * AJAX: Search products for autocomplete.
+     */
+    public static function ajax_search_products(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $term = sanitize_text_field($_POST['term'] ?? '');
+
+        if (strlen($term) < 2) {
+            wp_send_json_success(['products' => []]);
+        }
+
+        $args = [
+            'status' => 'publish',
+            'limit' => 20,
+            's' => $term,
+        ];
+
+        $products = wc_get_products($args);
+        $results = [];
+
+        foreach ($products as $product) {
+            $results[] = [
+                'id' => $product->get_id(),
+                'sku' => $product->get_sku(),
+                'name' => $product->get_name(),
+                'label' => $product->get_sku() . ' - ' . $product->get_name(),
+            ];
+        }
+
+        // Also search by SKU
+        $skuArgs = [
+            'status' => 'publish',
+            'limit' => 10,
+            'sku' => $term,
+        ];
+        $skuProducts = wc_get_products($skuArgs);
+        
+        foreach ($skuProducts as $product) {
+            $exists = false;
+            foreach ($results as $r) {
+                if ($r['id'] === $product->get_id()) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (!$exists) {
+                $results[] = [
+                    'id' => $product->get_id(),
+                    'sku' => $product->get_sku(),
+                    'name' => $product->get_name(),
+                    'label' => $product->get_sku() . ' - ' . $product->get_name(),
+                ];
+            }
+        }
+
+        wp_send_json_success(['products' => $results]);
     }
 }
