@@ -50,6 +50,11 @@ jobs:
             -e "ssh -p ${KINSTAPROD_PORT:-22}" \
             ./ "${KINSTAPROD_USER}@${KINSTAPROD_HOST}:${REMOTE_PATH}/"
 
+      - name: Install Composer dependencies
+        run: |
+          ssh -p "${KINSTAPROD_PORT:-22}" "${KINSTAPROD_USER}@${KINSTAPROD_HOST}" \
+            "cd ${REMOTE_PATH} && composer install --no-dev --optimize-autoloader --no-interaction"
+
       - name: Clear WordPress cache
         run: |
           ssh -p "${KINSTAPROD_PORT:-22}" "${KINSTAPROD_USER}@${KINSTAPROD_HOST}" \
