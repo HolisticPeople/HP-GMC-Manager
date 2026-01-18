@@ -405,6 +405,65 @@ class Plugin
                 ],
                 'category' => 'product',
             ],
+            
+            // Batch operation tools
+            'gmc-batch-analyze' => [
+                'title' => 'Batch Analyze Issues',
+                'description' => 'Analyze multiple products with issues and generate a fix plan. Returns proposed fixes without executing.',
+                'callback' => [Abilities\ProductAbilities::class, 'batchAnalyze'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'issue_type' => [
+                            'type' => 'string',
+                            'description' => 'Filter by issue type (e.g., "shipping", "health_claims")',
+                        ],
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'Maximum products to analyze',
+                            'default' => 20,
+                        ],
+                    ],
+                ],
+                'category' => 'product',
+            ],
+            'gmc-batch-exclude' => [
+                'title' => 'Batch Exclude Products',
+                'description' => 'Exclude multiple products from specified destinations. Use dry_run=true to preview.',
+                'callback' => [Abilities\ProductAbilities::class, 'batchExclude'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'skus' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'List of SKUs to exclude',
+                        ],
+                        'destinations' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Destinations to exclude from (Shopping_ads, Display_ads, etc.)',
+                        ],
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'If true, only show what would happen without executing',
+                            'default' => true,
+                        ],
+                    ],
+                    'required' => ['skus', 'destinations'],
+                ],
+                'category' => 'product',
+            ],
+            'gmc-get-fix-summary' => [
+                'title' => 'Get Fix Summary',
+                'description' => 'Get a summary of all issues and recommended fixes, grouped by issue type',
+                'callback' => [Abilities\ProductAbilities::class, 'getFixSummary'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                ],
+                'category' => 'overview',
+            ],
         ];
     }
 

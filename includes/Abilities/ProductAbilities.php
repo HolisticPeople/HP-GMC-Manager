@@ -330,4 +330,252 @@ class ProductAbilities
             'dry_run' => hp_gmc_is_dry_run(),
         ];
     }
+
+    /**
+     * Batch analyze products with issues and generate a fix plan.
+     */
+    public static function batchAnalyze(array $params): array
+    {
+        $issueTypeFilter = $params['issue_type'] ?? null;
+        $limit = min((int) ($params['limit'] ?? 20), 100);
+
+        // Get all issues
+        $allIssues = IssueMonitor::getIssues(null, $limit);
+
+        // Group by issue type
+        $issueGroups = [];
+        foreach ($allIssues as $product) {
+            $productIssues = $product['issues'] ?? [];
+            foreach ($productIssues as $issue) {
+                $desc = $issue['description'] ?? '';
+                if (empty($desc)) continue;
+                
+                // Filter by issue type if specified
+                if ($issueTypeFilter) {
+                    if (stripos($desc, $issueTypeFilter) === false) continue;
+                }
+                
+                if (!isset($issueGroups[$desc])) {
+                    $issueGroups[$desc] = [
+                        'issue_type' => $desc,
+                        'count' => 0,
+                        'products' => [],
+                        'recommended_action' => self::getRecommendedAction($desc),
+                    ];
+                }
+                
+                // Avoid duplicates
+                $sku = $product['sku'] ?? '';
+                if (!in_array($sku, array_column($issueGroups[$desc]['products'], 'sku'))) {
+                    $issueGroups[$desc]['count']++;
+                    $issueGroups[$desc]['products'][] = [
+                        'sku' => $sku,
+                        'name' => $product['product_name'] ?? '',
+                        'status' => $product['status'] ?? 'unknown',
+                    ];
+                }
+            }
+        }
+
+        // Sort by count descending
+        uasort($issueGroups, fn($a, $b) => $b['count'] - $a['count']);
+
+        return [
+            'success' => true,
+            'total_products_analyzed' => count($allIssues),
+            'issue_groups' => array_values($issueGroups),
+            'dry_run' => hp_gmc_is_dry_run(),
+            'note' => 'This is a preview. Use gmc-batch-exclude or other tools to apply fixes.',
+        ];
+    }
+
+    /**
+     * Batch exclude products from destinations.
+     */
+    public static function batchExclude(array $params): array
+    {
+        $skus = $params['skus'] ?? [];
+        $destinations = $params['destinations'] ?? [];
+        $dryRun = $params['dry_run'] ?? true;
+
+        if (empty($skus)) {
+            return [
+                'success' => false,
+                'error' => 'At least one SKU is required',
+            ];
+        }
+
+        if (empty($destinations)) {
+            return [
+                'success' => false,
+                'error' => 'At least one destination is required',
+            ];
+        }
+
+        // Validate destinations
+        $validDestinations = [
+            'Shopping_ads',
+            'Display_ads',
+            'Local_inventory_ads',
+            'Free_listings',
+            'Free_local_listings',
+            'YouTube_Shopping',
+        ];
+
+        foreach ($destinations as $dest) {
+            if (!in_array($dest, $validDestinations)) {
+                return [
+                    'success' => false,
+                    'error' => "Invalid destination: $dest",
+                    'valid_destinations' => $validDestinations,
+                ];
+            }
+        }
+
+        $results = [];
+        $successCount = 0;
+        $errorCount = 0;
+
+        foreach ($skus as $sku) {
+            $productId = wc_get_product_id_by_sku($sku);
+            if (!$productId) {
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'error' => 'Product not found',
+                ];
+                $errorCount++;
+                continue;
+            }
+
+            if ($dryRun) {
+                // Preview mode - just report what would happen
+                $results[] = [
+                    'sku' => $sku,
+                    'product_id' => $productId,
+                    'would_exclude_from' => $destinations,
+                    'dry_run' => true,
+                ];
+                $successCount++;
+            } else {
+                // Execute mode
+                $result = self::setExclusion([
+                    'sku' => $sku,
+                    'destinations' => $destinations,
+                ]);
+                $results[] = array_merge(['sku' => $sku], $result);
+                if ($result['success'] ?? false) {
+                    $successCount++;
+                } else {
+                    $errorCount++;
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'dry_run' => $dryRun,
+            'total' => count($skus),
+            'success_count' => $successCount,
+            'error_count' => $errorCount,
+            'destinations' => $destinations,
+            'results' => $results,
+            'message' => $dryRun 
+                ? 'Preview complete. Set dry_run=false to execute these changes.'
+                : "Batch exclusion complete. $successCount succeeded, $errorCount failed.",
+        ];
+    }
+
+    /**
+     * Get a summary of all issues and recommended fixes.
+     */
+    public static function getFixSummary(array $params): array
+    {
+        // Get summary from IssueMonitor
+        $summary = IssueMonitor::getSummary();
+
+        // Get issue breakdown
+        $allIssues = IssueMonitor::getIssues(null, 500);
+        
+        $issueTypeCounts = [];
+        foreach ($allIssues as $product) {
+            foreach ($product['issues'] ?? [] as $issue) {
+                $desc = $issue['description'] ?? '';
+                if (empty($desc)) continue;
+                
+                if (!isset($issueTypeCounts[$desc])) {
+                    $issueTypeCounts[$desc] = [
+                        'count' => 0,
+                        'recommended_action' => self::getRecommendedAction($desc),
+                        'can_auto_fix' => self::canAutoFix($desc),
+                    ];
+                }
+                $issueTypeCounts[$desc]['count']++;
+            }
+        }
+
+        // Sort by count
+        uasort($issueTypeCounts, fn($a, $b) => $b['count'] - $a['count']);
+
+        return [
+            'success' => true,
+            'summary' => $summary,
+            'issue_breakdown' => $issueTypeCounts,
+            'next_steps' => [
+                'Use gmc-batch-analyze to get detailed product lists for each issue type',
+                'Use gmc-batch-exclude to exclude products from specific destinations',
+                'Use gmc-diagnose-product to investigate individual products',
+            ],
+            'dry_run' => hp_gmc_is_dry_run(),
+        ];
+    }
+
+    /**
+     * Get recommended action for an issue type.
+     */
+    private static function getRecommendedAction(string $issueType): string
+    {
+        $actions = [
+            'Missing shipping in some countries' => 'Configure shipping for target countries or exclude product from those countries',
+            'False or misleading health claims' => 'Review and modify product title/description, or exclude from Shopping_ads',
+            'Prohibited pharmaceuticals and supplements' => 'Exclude from Shopping_ads and Display_ads destinations',
+            'Personal Hardships in personalized advertising' => 'Exclude from Display_ads and Video_ads destinations',
+            'Over-the-counter medication' => 'Ensure proper certification or exclude from Shopping_ads',
+            'Prescription and behind-the-counter drugs' => 'Exclude from all advertising destinations',
+            'Dangerous products' => 'Exclude from all destinations or remove product from GMC',
+            'Missing shipping_weight' => 'Add weight to product in WooCommerce',
+            'Missing potentially required value' => 'Add the missing attribute to product data',
+            'Invalid attribute value' => 'Correct the attribute value in WooCommerce',
+        ];
+
+        foreach ($actions as $pattern => $action) {
+            if (stripos($issueType, $pattern) !== false) {
+                return $action;
+            }
+        }
+
+        return 'Review product data and GMC policies for this issue type';
+    }
+
+    /**
+     * Check if an issue can be auto-fixed.
+     */
+    private static function canAutoFix(string $issueType): bool
+    {
+        // Issues that can potentially be fixed via exclusions
+        $autoFixable = [
+            'Personal Hardships',
+            'Prohibited pharmaceuticals',
+            'Over-the-counter medication',
+            'Prescription drugs',
+        ];
+
+        foreach ($autoFixable as $pattern) {
+            if (stripos($issueType, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
