@@ -43,6 +43,25 @@ class Plugin
         add_action('wp_ajax_hp_gmc_test_connection', [self::class, 'ajax_test_connection']);
         add_action('wp_ajax_hp_gmc_sync_now', [self::class, 'ajax_sync_now']);
         add_action('wp_ajax_hp_gmc_clear_dry_run_log', [self::class, 'ajax_clear_dry_run_log']);
+
+        // Plugin action links
+        add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
+    }
+
+    /**
+     * Add action links to plugin row.
+     */
+    public static function add_action_links(array $links): array
+    {
+        $settings_link = sprintf(
+            '<a href="%s">%s</a>',
+            admin_url('admin.php?page=hp-gmc-settings'),
+            __('Settings', 'hp-gmc-manager')
+        );
+
+        array_unshift($links, $settings_link);
+
+        return $links;
     }
 
     /**
