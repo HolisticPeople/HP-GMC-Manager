@@ -220,7 +220,10 @@ class Plugin
                 'description' => $tool['description'],
                 'execute_callback' => $tool['callback'],
                 'permission_callback' => '__return_true',
-                'input_schema' => $tool['input_schema'] ?? (object)[],
+                'input_schema' => $tool['input_schema'] ?? [
+                    'type' => 'object',
+                    'properties' => (object)[],
+                ],
                 'category' => 'hp-gmc',
             ]);
         }
