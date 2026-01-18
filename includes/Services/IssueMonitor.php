@@ -19,7 +19,7 @@ class IssueMonitor
         $table = $wpdb->prefix . 'hp_gmc_product_status';
 
         // #region agent log - Entry point
-        $logPath = 'c:\\DEV\\.cursor\\debug.log';
+        $logPath = WP_CONTENT_DIR . '/hp-gmc-debug.log';
         file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'Entry point','data'=>['table'=>$table],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'A'])."\n", FILE_APPEND);
         // #endregion
 
