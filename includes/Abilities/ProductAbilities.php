@@ -162,4 +162,25 @@ class ProductAbilities
             'dry_run' => hp_gmc_is_dry_run(),
         ];
     }
+
+    /**
+     * Debug: Get raw API response for products endpoint.
+     */
+    public static function debugProductsApi(array $params): array
+    {
+        $client = new MerchantApiClient();
+        $pageSize = (int) ($params['page_size'] ?? 5);
+        
+        // Call the products API directly
+        $response = $client->getProductStatuses($pageSize);
+        
+        return [
+            'success' => true,
+            'debug' => true,
+            'raw_response' => $response,
+            'response_keys' => is_array($response['data'] ?? null) ? array_keys($response['data']) : 'not_array',
+            'has_products_key' => isset($response['data']['products']),
+            'sample_data' => isset($response['data']) ? array_slice((array)$response['data'], 0, 2, true) : null,
+        ];
+    }
 }
