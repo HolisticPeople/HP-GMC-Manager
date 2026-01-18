@@ -193,16 +193,62 @@ class Dashboard
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_product_status';
         
+        // Get all issues
         $issues = $wpdb->get_results("
             SELECT * FROM $table 
             WHERE status IN ('disapproved', 'warning') 
             ORDER BY status DESC, last_updated DESC 
-            LIMIT 100
+            LIMIT 500
         ");
+        
+        $last_sync = get_option('hp_gmc_last_sync', null);
+        
+        // Collect unique brands and issue types for filters
+        $all_brands = [];
+        $all_issue_types = [];
+        $statuses = ['disapproved' => 0, 'warning' => 0];
+        
+        foreach ($issues as $issue) {
+            $product = wc_get_product($issue->product_id);
+            if ($product) {
+                // Get brand from product attributes or taxonomy
+                $brand = self::get_product_brand($product);
+                if ($brand && !in_array($brand, $all_brands)) {
+                    $all_brands[] = $brand;
+                }
+            }
+            
+            // Count statuses
+            if (isset($statuses[$issue->status])) {
+                $statuses[$issue->status]++;
+            }
+            
+            // Collect issue types
+            $issue_data = json_decode($issue->issues, true) ?: [];
+            foreach ($issue_data as $i) {
+                $desc = $i['description'] ?? (is_string($i) ? $i : '');
+                if ($desc && !in_array($desc, $all_issue_types)) {
+                    $all_issue_types[] = $desc;
+                }
+            }
+        }
+        
+        sort($all_brands);
+        sort($all_issue_types);
         ?>
         <div class="hp-gmc-issues">
             <div class="hp-gmc-section-header">
-                <h2><?php esc_html_e('Product Issues', 'hp-gmc-manager'); ?></h2>
+                <h2>
+                    <?php esc_html_e('Product Issues', 'hp-gmc-manager'); ?>
+                    <?php if ($last_sync): ?>
+                        <span class="hp-gmc-last-sync-inline">
+                            (<?php printf(
+                                esc_html__('Last sync: %s', 'hp-gmc-manager'),
+                                esc_html(human_time_diff(strtotime($last_sync), time()) . ' ago')
+                            ); ?>)
+                        </span>
+                    <?php endif; ?>
+                </h2>
                 <button type="button" class="button" id="hp-gmc-refresh-issues">
                     <?php esc_html_e('Refresh', 'hp-gmc-manager'); ?>
                 </button>
@@ -211,23 +257,72 @@ class Dashboard
             <?php if (empty($issues)): ?>
             <p><?php esc_html_e('No issues found. All products are approved!', 'hp-gmc-manager'); ?></p>
             <?php else: ?>
-            <table class="wp-list-table widefat fixed striped">
+            
+            <!-- Filters -->
+            <div class="hp-gmc-filters">
+                <select id="hp-gmc-filter-status" class="hp-gmc-filter">
+                    <option value=""><?php esc_html_e('All Statuses', 'hp-gmc-manager'); ?></option>
+                    <option value="disapproved"><?php printf(esc_html__('Disapproved (%d)', 'hp-gmc-manager'), $statuses['disapproved']); ?></option>
+                    <option value="warning"><?php printf(esc_html__('Warning (%d)', 'hp-gmc-manager'), $statuses['warning']); ?></option>
+                </select>
+                
+                <select id="hp-gmc-filter-brand" class="hp-gmc-filter">
+                    <option value=""><?php esc_html_e('All Brands', 'hp-gmc-manager'); ?></option>
+                    <?php foreach ($all_brands as $brand): ?>
+                        <option value="<?php echo esc_attr($brand); ?>"><?php echo esc_html($brand); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                
+                <select id="hp-gmc-filter-issue" class="hp-gmc-filter">
+                    <option value=""><?php esc_html_e('All Issue Types', 'hp-gmc-manager'); ?></option>
+                    <?php foreach ($all_issue_types as $issue_type): ?>
+                        <option value="<?php echo esc_attr($issue_type); ?>"><?php echo esc_html($issue_type); ?></option>
+                    <?php endforeach; ?>
+                </select>
+                
+                <button type="button" class="button" id="hp-gmc-clear-filters">
+                    <?php esc_html_e('Clear Filters', 'hp-gmc-manager'); ?>
+                </button>
+                
+                <span class="hp-gmc-filter-count">
+                    <?php printf(esc_html__('Showing %d products', 'hp-gmc-manager'), count($issues)); ?>
+                </span>
+            </div>
+            
+            <table class="wp-list-table widefat fixed striped hp-gmc-issues-table" id="hp-gmc-issues-table">
                 <thead>
                     <tr>
-                        <th><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
-                        <th><?php esc_html_e('GMC ID', 'hp-gmc-manager'); ?></th>
-                        <th><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
-                        <th><?php esc_html_e('Issues', 'hp-gmc-manager'); ?></th>
-                        <th><?php esc_html_e('Last Updated', 'hp-gmc-manager'); ?></th>
+                        <th class="column-product"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                        <th class="column-sku"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
+                        <th class="column-brand"><?php esc_html_e('Brand', 'hp-gmc-manager'); ?></th>
+                        <th class="column-gmc-id"><?php esc_html_e('GMC ID', 'hp-gmc-manager'); ?></th>
+                        <th class="column-status"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                        <th class="column-issues"><?php esc_html_e('Issues', 'hp-gmc-manager'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($issues as $issue): 
                         $product = wc_get_product($issue->product_id);
                         $issue_data = json_decode($issue->issues, true) ?: [];
+                        $sku = $product ? $product->get_sku() : '';
+                        $brand = $product ? self::get_product_brand($product) : '';
+                        
+                        // Deduplicate issues and count occurrences
+                        $issue_counts = [];
+                        foreach ($issue_data as $i) {
+                            $desc = $i['description'] ?? (is_string($i) ? $i : '');
+                            if ($desc) {
+                                if (!isset($issue_counts[$desc])) {
+                                    $issue_counts[$desc] = 0;
+                                }
+                                $issue_counts[$desc]++;
+                            }
+                        }
                     ?>
-                    <tr>
-                        <td>
+                    <tr data-status="<?php echo esc_attr($issue->status); ?>" 
+                        data-brand="<?php echo esc_attr($brand); ?>"
+                        data-issues="<?php echo esc_attr(implode('|', array_keys($issue_counts))); ?>">
+                        <td class="column-product">
                             <?php if ($product): ?>
                                 <a href="<?php echo esc_url(get_edit_post_link($issue->product_id)); ?>">
                                     <?php echo esc_html($product->get_name()); ?>
@@ -236,24 +331,30 @@ class Dashboard
                                 <?php echo esc_html__('Product #', 'hp-gmc-manager') . esc_html($issue->product_id); ?>
                             <?php endif; ?>
                         </td>
-                        <td><code><?php echo esc_html($issue->gla_id); ?></code></td>
-                        <td>
+                        <td class="column-sku"><code><?php echo esc_html($sku ?: '-'); ?></code></td>
+                        <td class="column-brand"><?php echo esc_html($brand ?: '-'); ?></td>
+                        <td class="column-gmc-id"><code><?php echo esc_html($issue->gla_id); ?></code></td>
+                        <td class="column-status">
                             <span class="hp-gmc-status hp-gmc-status-<?php echo esc_attr($issue->status); ?>">
                                 <?php echo esc_html(ucfirst($issue->status)); ?>
                             </span>
                         </td>
-                        <td>
-                            <?php if (!empty($issue_data)): ?>
+                        <td class="column-issues">
+                            <?php if (!empty($issue_counts)): ?>
                                 <ul class="hp-gmc-issue-list">
-                                    <?php foreach ($issue_data as $i): ?>
-                                        <li><?php echo esc_html($i['description'] ?? $i); ?></li>
+                                    <?php foreach ($issue_counts as $desc => $count): ?>
+                                        <li>
+                                            <?php echo esc_html($desc); ?>
+                                            <?php if ($count > 1): ?>
+                                                <span class="hp-gmc-issue-count">(×<?php echo esc_html($count); ?>)</span>
+                                            <?php endif; ?>
+                                        </li>
                                     <?php endforeach; ?>
                                 </ul>
                             <?php else: ?>
                                 -
                             <?php endif; ?>
                         </td>
-                        <td><?php echo esc_html($issue->last_updated); ?></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -261,6 +362,51 @@ class Dashboard
             <?php endif; ?>
         </div>
         <?php
+    }
+    
+    /**
+     * Get brand from product (checks various sources).
+     */
+    private static function get_product_brand($product): string
+    {
+        if (!$product) {
+            return '';
+        }
+        
+        // Try product attribute 'brand'
+        $brand = $product->get_attribute('brand');
+        if ($brand) {
+            return $brand;
+        }
+        
+        // Try product attribute 'pa_brand'
+        $brand = $product->get_attribute('pa_brand');
+        if ($brand) {
+            return $brand;
+        }
+        
+        // Try taxonomy 'product_brand' (some plugins use this)
+        $terms = get_the_terms($product->get_id(), 'product_brand');
+        if ($terms && !is_wp_error($terms)) {
+            return $terms[0]->name;
+        }
+        
+        // Try meta field '_brand'
+        $brand = get_post_meta($product->get_id(), '_brand', true);
+        if ($brand) {
+            return $brand;
+        }
+        
+        // Try YITH brand plugin meta
+        $brand_id = get_post_meta($product->get_id(), 'yith_product_brand', true);
+        if ($brand_id) {
+            $term = get_term($brand_id);
+            if ($term && !is_wp_error($term)) {
+                return $term->name;
+            }
+        }
+        
+        return '';
     }
 
     /**

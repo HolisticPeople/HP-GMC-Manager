@@ -69,6 +69,60 @@
             $('#hp-gmc-refresh-shipping').on('click', this.refreshShipping.bind(this));
             $('#hp-gmc-refresh-issues').on('click', () => location.reload());
             $('#hp-gmc-refresh-log').on('click', () => location.reload());
+            
+            // Issues filters
+            $('#hp-gmc-filter-status, #hp-gmc-filter-brand, #hp-gmc-filter-issue').on('change', this.filterIssues.bind(this));
+            $('#hp-gmc-clear-filters').on('click', this.clearFilters.bind(this));
+        },
+        
+        filterIssues: function() {
+            const statusFilter = $('#hp-gmc-filter-status').val();
+            const brandFilter = $('#hp-gmc-filter-brand').val();
+            const issueFilter = $('#hp-gmc-filter-issue').val();
+            
+            let visibleCount = 0;
+            
+            $('#hp-gmc-issues-table tbody tr').each(function() {
+                const $row = $(this);
+                const rowStatus = $row.data('status');
+                const rowBrand = $row.data('brand');
+                const rowIssues = ($row.data('issues') || '').toString();
+                
+                let show = true;
+                
+                // Filter by status
+                if (statusFilter && rowStatus !== statusFilter) {
+                    show = false;
+                }
+                
+                // Filter by brand
+                if (brandFilter && rowBrand !== brandFilter) {
+                    show = false;
+                }
+                
+                // Filter by issue type
+                if (issueFilter && rowIssues.indexOf(issueFilter) === -1) {
+                    show = false;
+                }
+                
+                if (show) {
+                    $row.removeClass('hp-gmc-hidden');
+                    visibleCount++;
+                } else {
+                    $row.addClass('hp-gmc-hidden');
+                }
+            });
+            
+            // Update count
+            $('.hp-gmc-filter-count').text('Showing ' + visibleCount + ' products');
+        },
+        
+        clearFilters: function() {
+            $('#hp-gmc-filter-status, #hp-gmc-filter-brand, #hp-gmc-filter-issue').val('');
+            $('#hp-gmc-issues-table tbody tr').removeClass('hp-gmc-hidden');
+            
+            const totalCount = $('#hp-gmc-issues-table tbody tr').length;
+            $('.hp-gmc-filter-count').text('Showing ' + totalCount + ' products');
         },
 
         showEnvironmentWarning: function() {

@@ -210,6 +210,78 @@
     margin-bottom: 3px;
 }
 
+.hp-gmc-issue-count {
+    color: #666;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+/* Issues table - column widths */
+.hp-gmc-issues-table .column-product {
+    width: 20%;
+}
+
+.hp-gmc-issues-table .column-sku {
+    width: 10%;
+}
+
+.hp-gmc-issues-table .column-brand {
+    width: 10%;
+}
+
+.hp-gmc-issues-table .column-gmc-id {
+    width: 10%;
+}
+
+.hp-gmc-issues-table .column-status {
+    width: 8%;
+}
+
+.hp-gmc-issues-table .column-issues {
+    width: 42%;
+}
+
+.hp-gmc-issues-table .column-gmc-id code,
+.hp-gmc-issues-table .column-sku code {
+    font-size: 11px;
+    word-break: break-all;
+}
+
+/* Filters bar */
+.hp-gmc-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding: 12px 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.hp-gmc-filter {
+    min-width: 150px;
+}
+
+.hp-gmc-filter-count {
+    margin-left: auto;
+    color: #666;
+    font-size: 13px;
+}
+
+/* Last sync inline with title */
+.hp-gmc-last-sync-inline {
+    font-size: 13px;
+    font-weight: normal;
+    color: #666;
+}
+
+/* Hidden rows (filtered out) */
+.hp-gmc-issues-table tr.hp-gmc-hidden {
+    display: none;
+}
+
 /* Tools tab */
 .hp-gmc-tools-actions {
     display: flex;
