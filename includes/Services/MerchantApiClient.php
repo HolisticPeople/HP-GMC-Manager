@@ -218,8 +218,12 @@ class MerchantApiClient
                 throw new \Exception('Failed to obtain access token');
             }
 
-            // Build the API URL
-            $baseUrl = 'https://merchantapi.googleapis.com/v1beta/';
+            // Build the API URL - determine base URL based on endpoint type
+            if (strpos($endpoint, 'products') !== false || strpos($endpoint, 'productStatuses') !== false) {
+                $baseUrl = 'https://merchantapi.googleapis.com/products/v1beta/';
+            } else {
+                $baseUrl = 'https://merchantapi.googleapis.com/accounts/v1beta/';
+            }
             $url = $baseUrl . $endpoint;
 
             if ($method === 'GET' && !empty($data)) {
@@ -358,7 +362,7 @@ class MerchantApiClient
      */
     public function getShippingSettings(): array
     {
-        $endpoint = "accounts/{$this->merchantId}/shippingsettings";
+        $endpoint = "accounts/{$this->merchantId}/shippingSettings";
         return $this->call('GET', $endpoint);
     }
 
@@ -367,17 +371,18 @@ class MerchantApiClient
      */
     public function updateShippingSettings(array $settings, string $etag): array
     {
-        $endpoint = "accounts/{$this->merchantId}/shippingsettings";
+        $endpoint = "accounts/{$this->merchantId}/shippingSettings:insert";
         $settings['etag'] = $etag;
-        return $this->call('PATCH', $endpoint, $settings);
+        return $this->call('POST', $endpoint, $settings);
     }
 
     /**
-     * Get product statuses from GMC.
+     * Get product statuses from GMC (list products with status info).
      */
     public function getProductStatuses(int $pageSize = 100, ?string $pageToken = null): array
     {
-        $endpoint = "accounts/{$this->merchantId}/productStatuses";
+        // Use products endpoint with productStatuses view
+        $endpoint = "accounts/{$this->merchantId}/products";
         $params = ['pageSize' => $pageSize];
         if ($pageToken) {
             $params['pageToken'] = $pageToken;
@@ -386,11 +391,20 @@ class MerchantApiClient
     }
 
     /**
-     * Get account status from GMC.
+     * Get account info from GMC.
      */
     public function getAccountStatus(): array
     {
         $endpoint = "accounts/{$this->merchantId}";
+        return $this->call('GET', $endpoint);
+    }
+    
+    /**
+     * Get business info from GMC.
+     */
+    public function getBusinessInfo(): array
+    {
+        $endpoint = "accounts/{$this->merchantId}/businessInfo";
         return $this->call('GET', $endpoint);
     }
 }
