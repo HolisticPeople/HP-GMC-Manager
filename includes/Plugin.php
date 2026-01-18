@@ -464,6 +464,23 @@ class Plugin
                 ],
                 'category' => 'overview',
             ],
+            'gmc-generate-exclusion-feed' => [
+                'title' => 'Generate Exclusion Feed',
+                'description' => 'Generate a supplemental feed file with all product exclusions for upload to GMC',
+                'callback' => [Abilities\ProductAbilities::class, 'generateExclusionFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'format' => [
+                            'type' => 'string',
+                            'description' => 'Output format: tsv or csv',
+                            'default' => 'tsv',
+                            'enum' => ['tsv', 'csv'],
+                        ],
+                    ],
+                ],
+                'category' => 'product',
+            ],
         ];
     }
 

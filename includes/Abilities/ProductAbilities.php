@@ -77,11 +77,18 @@ class ProductAbilities
 
     /**
      * Set exclusion destinations for a product.
+     * 
+     * This stores the exclusion in WooCommerce meta for reference.
+     * Actual GMC exclusions are applied via:
+     * 1. Google Listings & Ads plugin sync (if configured)
+     * 2. Supplemental feed upload to GMC
+     * 3. Manual GMC console configuration
      */
     public static function setExclusion(array $params): array
     {
         $sku = $params['sku'] ?? '';
         $destinations = $params['destinations'] ?? [];
+        $action = $params['action'] ?? 'exclude'; // 'exclude' or 'include'
 
         if (empty($sku)) {
             return [
@@ -116,8 +123,6 @@ class ProductAbilities
             }
         }
 
-        $client = new MerchantApiClient();
-        
         // Find product
         $productId = wc_get_product_id_by_sku($sku);
         if (!$productId) {
@@ -132,18 +137,62 @@ class ProductAbilities
             $glaId = 'gla_' . $productId;
         }
 
-        // In live mode, this would update via API
-        // For now, we use supplemental feed approach
-        $result = $client->call('POST', "products/{$glaId}/exclusions", [
-            'excluded_destination' => $destinations,
-        ]);
+        // Get current exclusions
+        $currentExclusions = get_post_meta($productId, '_hp_gmc_excluded_destinations', true);
+        if (!is_array($currentExclusions)) {
+            $currentExclusions = [];
+        }
 
-        $result['product_id'] = $productId;
-        $result['gla_id'] = $glaId;
-        $result['sku'] = $sku;
-        $result['destinations'] = $destinations;
+        // Update exclusions based on action
+        if ($action === 'exclude') {
+            $newExclusions = array_unique(array_merge($currentExclusions, $destinations));
+        } else {
+            // Remove from exclusions (include)
+            $newExclusions = array_diff($currentExclusions, $destinations);
+        }
 
-        return $result;
+        // Save to product meta
+        update_post_meta($productId, '_hp_gmc_excluded_destinations', array_values($newExclusions));
+        
+        // Log the exclusion change
+        $logEntry = [
+            'timestamp' => current_time('c'),
+            'action' => $action,
+            'destinations' => $destinations,
+            'previous' => $currentExclusions,
+            'new' => $newExclusions,
+        ];
+        
+        $exclusionLog = get_post_meta($productId, '_hp_gmc_exclusion_log', true);
+        if (!is_array($exclusionLog)) {
+            $exclusionLog = [];
+        }
+        $exclusionLog[] = $logEntry;
+        // Keep only last 10 entries
+        $exclusionLog = array_slice($exclusionLog, -10);
+        update_post_meta($productId, '_hp_gmc_exclusion_log', $exclusionLog);
+
+        // Check if dry run mode
+        $dryRun = hp_gmc_is_dry_run();
+
+        return [
+            'success' => true,
+            'message' => $dryRun 
+                ? 'Exclusion saved to WooCommerce meta (dry run - no GMC sync)'
+                : 'Exclusion saved to WooCommerce meta. Upload supplemental feed to apply in GMC.',
+            'product_id' => $productId,
+            'gla_id' => $glaId,
+            'sku' => $sku,
+            'action' => $action,
+            'destinations' => $destinations,
+            'current_exclusions' => $newExclusions,
+            'dry_run' => $dryRun,
+            'next_steps' => [
+                'Option 1: Configure Google Listings & Ads to respect _hp_gmc_excluded_destinations meta',
+                'Option 2: Generate and upload a supplemental feed with excluded_destination attribute',
+                'Option 3: Manually set exclusions in Google Merchant Center console',
+            ],
+        ];
     }
 
     /**
@@ -577,5 +626,94 @@ class ProductAbilities
         }
 
         return false;
+    }
+
+    /**
+     * Generate a supplemental feed file with exclusions.
+     * This file can be uploaded to GMC to apply exclusions.
+     */
+    public static function generateExclusionFeed(array $params): array
+    {
+        $format = $params['format'] ?? 'tsv'; // 'tsv' or 'csv'
+        
+        // Find all products with exclusions set
+        global $wpdb;
+        
+        $productIds = $wpdb->get_col("
+            SELECT post_id FROM {$wpdb->postmeta} 
+            WHERE meta_key = '_hp_gmc_excluded_destinations' 
+            AND meta_value != '' 
+            AND meta_value != 'a:0:{}'
+        ");
+        
+        if (empty($productIds)) {
+            return [
+                'success' => true,
+                'message' => 'No products have exclusions set',
+                'count' => 0,
+                'file' => null,
+            ];
+        }
+        
+        $separator = $format === 'csv' ? ',' : "\t";
+        $lines = [];
+        
+        // Header row
+        $lines[] = implode($separator, ['id', 'excluded_destination']);
+        
+        foreach ($productIds as $productId) {
+            $product = wc_get_product($productId);
+            if (!$product) continue;
+            
+            $exclusions = get_post_meta($productId, '_hp_gmc_excluded_destinations', true);
+            if (!is_array($exclusions) || empty($exclusions)) continue;
+            
+            // Get the GMC product ID (offer ID)
+            $glaId = get_post_meta($productId, '_wc_gla_mc_offer_id', true);
+            if (empty($glaId)) {
+                // Use standard format: online:en:US:{sku}
+                $sku = $product->get_sku();
+                $glaId = "online:en:US:{$sku}";
+            }
+            
+            // Google expects excluded_destination as comma-separated in feed
+            $excludedList = implode(',', $exclusions);
+            
+            $lines[] = implode($separator, [
+                $glaId,
+                $excludedList,
+            ]);
+        }
+        
+        $content = implode("\n", $lines);
+        
+        // Save to uploads directory
+        $uploadDir = wp_upload_dir();
+        $filename = 'gmc-exclusion-feed-' . date('Y-m-d-His') . '.' . $format;
+        $filepath = $uploadDir['basedir'] . '/hp-gmc/' . $filename;
+        $fileurl = $uploadDir['baseurl'] . '/hp-gmc/' . $filename;
+        
+        // Ensure directory exists
+        wp_mkdir_p(dirname($filepath));
+        
+        // Write file
+        file_put_contents($filepath, $content);
+        
+        return [
+            'success' => true,
+            'message' => 'Supplemental feed generated',
+            'count' => count($productIds),
+            'format' => $format,
+            'file' => $filepath,
+            'url' => $fileurl,
+            'instructions' => [
+                '1. Download the feed file from the URL above',
+                '2. Go to Google Merchant Center > Products > Feeds',
+                '3. Create a new supplemental feed',
+                '4. Upload the file and map the columns',
+                '5. The exclusions will be applied on next feed processing',
+            ],
+            'dry_run' => hp_gmc_is_dry_run(),
+        ];
     }
 }
