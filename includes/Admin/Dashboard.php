@@ -99,6 +99,11 @@ class Dashboard
             $class .= 'hp-gmc-env-mock';
             $icon = '🟣';
             $message = __('MOCK DATA - Testing mode with simulated data', 'hp-gmc-manager');
+        } elseif ($environment === 'staging' && $mode === 'live') {
+            // Staging with live mode - connected to production GMC from staging
+            $class .= 'hp-gmc-env-staging';
+            $icon = '🟠';
+            $message = __('STAGING - Live connection to Production GMC (read-only recommended)', 'hp-gmc-manager');
         } elseif ($environment === 'staging') {
             $class .= 'hp-gmc-env-staging';
             $icon = '🟠';
@@ -193,17 +198,22 @@ class Dashboard
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_product_status';
         
-        // Get ALL products from cache table for status counts
-        $all_products = $wpdb->get_results("SELECT * FROM $table ORDER BY status DESC, last_updated DESC");
+        // Get products with issues only (disapproved/warning)
+        $issues = $wpdb->get_results("
+            SELECT * FROM $table 
+            WHERE status IN ('disapproved', 'warning') 
+            ORDER BY status DESC, last_updated DESC
+        ");
         
-        // Fresh read of last sync time (bypass any caching)
-        $last_sync = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'hp_gmc_last_sync' LIMIT 1");
+        // Fresh read of last sync time (bypass WP caching entirely)
+        $last_sync = $wpdb->get_var($wpdb->prepare(
+            "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+            'hp_gmc_last_sync'
+        ));
         
-        // Count statuses across ALL products
+        // Count statuses from the issues we're displaying (only disapproved/warning)
         $statuses = [
-            'approved' => 0,
             'disapproved' => 0,
-            'pending' => 0,
             'warning' => 0,
         ];
         
@@ -211,54 +221,61 @@ class Dashboard
         $all_brands = [];
         $issue_type_counts = [];
         
-        // Products to display (with issues)
-        $issues = [];
-        
-        foreach ($all_products as $product_row) {
-            // Count all statuses
+        foreach ($issues as $product_row) {
+            // Count statuses
             if (isset($statuses[$product_row->status])) {
                 $statuses[$product_row->status]++;
             }
             
-            // Only process products with issues for display and brand/issue collection
-            if (in_array($product_row->status, ['disapproved', 'warning'])) {
-                $issues[] = $product_row;
-                
-                $product = wc_get_product($product_row->product_id);
-                if ($product) {
-                    $brand = self::get_product_brand($product);
-                    if ($brand && !in_array($brand, $all_brands)) {
-                        $all_brands[] = $brand;
-                    }
+            $product = wc_get_product($product_row->product_id);
+            if ($product) {
+                $brand = self::get_product_brand($product);
+                if ($brand && !in_array($brand, $all_brands)) {
+                    $all_brands[] = $brand;
                 }
-                
-                // Collect issue types with counts
-                $issue_data = json_decode($product_row->issues, true) ?: [];
-                foreach ($issue_data as $i) {
-                    $desc = $i['description'] ?? (is_string($i) ? $i : '');
-                    if ($desc) {
-                        if (!isset($issue_type_counts[$desc])) {
-                            $issue_type_counts[$desc] = 0;
-                        }
-                        $issue_type_counts[$desc]++;
+            }
+            
+            // Collect issue types with counts
+            $issue_data = json_decode($product_row->issues, true) ?: [];
+            foreach ($issue_data as $i) {
+                $desc = $i['description'] ?? (is_string($i) ? $i : '');
+                if ($desc) {
+                    if (!isset($issue_type_counts[$desc])) {
+                        $issue_type_counts[$desc] = 0;
                     }
+                    $issue_type_counts[$desc]++;
                 }
             }
         }
         
         sort($all_brands);
         ksort($issue_type_counts);
+        
+        // Get fresh current time for comparison
+        $now = time();
         ?>
         <div class="hp-gmc-issues">
             <div class="hp-gmc-section-header">
                 <h2>
                     <?php esc_html_e('Product Issues', 'hp-gmc-manager'); ?>
-                    <?php if ($last_sync): ?>
+                    <?php if ($last_sync): 
+                        $sync_timestamp = strtotime($last_sync);
+                        $diff = $now - $sync_timestamp;
+                        if ($diff < 60) {
+                            $time_ago = __('just now', 'hp-gmc-manager');
+                        } elseif ($diff < 3600) {
+                            $mins = round($diff / 60);
+                            $time_ago = sprintf(_n('%d minute ago', '%d minutes ago', $mins, 'hp-gmc-manager'), $mins);
+                        } elseif ($diff < 86400) {
+                            $hours = round($diff / 3600);
+                            $time_ago = sprintf(_n('%d hour ago', '%d hours ago', $hours, 'hp-gmc-manager'), $hours);
+                        } else {
+                            $days = round($diff / 86400);
+                            $time_ago = sprintf(_n('%d day ago', '%d days ago', $days, 'hp-gmc-manager'), $days);
+                        }
+                    ?>
                         <span class="hp-gmc-last-sync-inline">
-                            (<?php printf(
-                                esc_html__('Last sync: %s', 'hp-gmc-manager'),
-                                esc_html(human_time_diff(strtotime($last_sync), time()) . ' ago')
-                            ); ?>)
+                            (<?php printf(esc_html__('Last sync: %s', 'hp-gmc-manager'), esc_html($time_ago)); ?>)
                         </span>
                     <?php endif; ?>
                 </h2>
