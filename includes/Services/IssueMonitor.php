@@ -41,17 +41,45 @@ class IssueMonitor
                     break;
                 }
 
-                // Handle mock/dry run data
+                // Handle Merchant API v1beta response format
                 $products = $response['data']['products'] ?? [];
                 
                 foreach ($products as $product) {
                     $stats['total']++;
                     
-                    // Parse the product status
-                    $glaId = $product['productId'] ?? '';
-                    $status = self::normalizeStatus($product['status'] ?? 'pending');
-                    $issues = $product['issues'] ?? [];
-                    $destinations = $product['destinations'] ?? [];
+                    // Parse product ID from Merchant API v1beta format
+                    // offerId is the product identifier, or extract from name
+                    $glaId = $product['offerId'] ?? '';
+                    if (empty($glaId) && !empty($product['name'])) {
+                        // Name format: accounts/{account}/products/{channel}~{language}~{feedLabel}~{offerId}
+                        $parts = explode('~', $product['name']);
+                        $glaId = end($parts) ?: '';
+                    }
+                    
+                    // Parse productStatus from Merchant API v1beta
+                    $productStatus = $product['productStatus'] ?? [];
+                    $itemLevelIssues = $productStatus['itemLevelIssues'] ?? [];
+                    $destinationStatuses = $productStatus['destinationStatuses'] ?? [];
+                    
+                    // Derive status from itemLevelIssues severity
+                    $status = self::deriveStatusFromIssues($itemLevelIssues, $destinationStatuses);
+                    
+                    // Format issues for storage
+                    $issues = array_map(function($issue) {
+                        return [
+                            'severity' => $issue['severity'] ?? 'unknown',
+                            'description' => $issue['description'] ?? '',
+                            'resolution' => $issue['resolution'] ?? '',
+                        ];
+                    }, $itemLevelIssues);
+                    
+                    // Format destinations for storage
+                    $destinations = array_map(function($dest) {
+                        return [
+                            'context' => $dest['reportingContext'] ?? '',
+                            'approved_countries' => $dest['approvedCountries'] ?? [],
+                        ];
+                    }, $destinationStatuses);
 
                     // Try to find the WooCommerce product ID
                     $productId = self::findWooCommerceProductId($glaId);
@@ -98,7 +126,58 @@ class IssueMonitor
     }
 
     /**
-     * Normalize status string to our standard values.
+     * Derive product status from Merchant API v1beta itemLevelIssues and destinationStatuses.
+     * 
+     * Severity values: DISAPPROVED, DEMOTED, NOT_IMPACTED, PENDING
+     * - If any issue has DISAPPROVED severity → disapproved
+     * - If any issue has DEMOTED severity → warning
+     * - If no destination has approved countries → pending
+     * - Otherwise → approved
+     */
+    private static function deriveStatusFromIssues(array $itemLevelIssues, array $destinationStatuses): string
+    {
+        // Check for disapproved issues
+        foreach ($itemLevelIssues as $issue) {
+            $severity = strtoupper($issue['severity'] ?? '');
+            if ($severity === 'DISAPPROVED' || $severity === 'ERROR') {
+                return 'disapproved';
+            }
+        }
+        
+        // Check for warning-level issues (demoted)
+        foreach ($itemLevelIssues as $issue) {
+            $severity = strtoupper($issue['severity'] ?? '');
+            if ($severity === 'DEMOTED' || $severity === 'WARNING') {
+                return 'warning';
+            }
+        }
+        
+        // Check destination statuses for approval
+        $hasApprovedCountries = false;
+        foreach ($destinationStatuses as $dest) {
+            $approvedCountries = $dest['approvedCountries'] ?? [];
+            if (!empty($approvedCountries)) {
+                $hasApprovedCountries = true;
+                break;
+            }
+        }
+        
+        // If we have approved countries and no issues, it's approved
+        if ($hasApprovedCountries) {
+            return 'approved';
+        }
+        
+        // If no destinations yet, it's pending
+        if (empty($destinationStatuses)) {
+            return 'pending';
+        }
+        
+        // Default to pending if no approved countries
+        return 'pending';
+    }
+
+    /**
+     * Normalize status string to our standard values (legacy, kept for compatibility).
      */
     private static function normalizeStatus(string $status): string
     {
