@@ -373,6 +373,22 @@ class Plugin
                 ],
                 'category' => 'test',
             ],
+            'gmc-debug-products-api' => [
+                'title' => 'Debug Products API',
+                'description' => 'Debug: Get raw API response for products endpoint to diagnose issues',
+                'callback' => [Abilities\ProductAbilities::class, 'debugProductsApi'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'page_size' => [
+                            'type' => 'integer',
+                            'description' => 'Number of products to fetch',
+                            'default' => 5,
+                        ],
+                    ],
+                ],
+                'category' => 'test',
+            ],
         ];
     }
 
