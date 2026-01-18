@@ -7,15 +7,47 @@
     const GMCDashboard = {
         init: function() {
             this.bindEvents();
+            this.initTabs();
             this.showEnvironmentWarning();
         },
 
+        initTabs: function() {
+            // Handle browser back/forward
+            $(window).on('hashchange', this.handleHashChange.bind(this));
+            
+            // Check initial hash
+            const hash = window.location.hash.replace('#', '') || 'overview';
+            this.switchTab(hash);
+        },
+
+        handleHashChange: function() {
+            const hash = window.location.hash.replace('#', '') || 'overview';
+            this.switchTab(hash);
+        },
+
+        switchTab: function(tabId) {
+            // Update nav tabs
+            $('.hp-gmc-tabs .nav-tab').removeClass('nav-tab-active');
+            $('.hp-gmc-tabs .nav-tab[data-tab="' + tabId + '"]').addClass('nav-tab-active');
+            
+            // Update panels
+            $('.hp-gmc-tab-panel').removeClass('active');
+            $('#tab-' + tabId).addClass('active');
+        },
+
         bindEvents: function() {
+            // Tab clicks
+            $('.hp-gmc-tabs .nav-tab').on('click', function(e) {
+                e.preventDefault();
+                const tabId = $(this).data('tab');
+                window.location.hash = tabId;
+            });
+
             // Sync now button
             $('#hp-gmc-sync-now').on('click', this.syncNow.bind(this));
 
             // Tool toggles
-            $('.hp-gmc-tool-toggle').on('change', this.toggleTool.bind(this));
+            $(document).on('change', '.hp-gmc-tool-toggle', this.toggleTool.bind(this));
 
             // Enable/Disable all
             $('#hp-gmc-enable-all').on('click', () => this.setAllTools(true));
@@ -33,8 +65,10 @@
             // Test connection
             $('#hp-gmc-test-connection').on('click', this.testConnection.bind(this));
 
-            // Refresh shipping
+            // Refresh buttons
             $('#hp-gmc-refresh-shipping').on('click', this.refreshShipping.bind(this));
+            $('#hp-gmc-refresh-issues').on('click', () => location.reload());
+            $('#hp-gmc-refresh-log').on('click', () => location.reload());
         },
 
         showEnvironmentWarning: function() {
@@ -168,7 +202,7 @@
         exportLog: function() {
             // Collect log data from table
             const logs = [];
-            $('table tbody tr').each(function() {
+            $('.hp-gmc-dry-run-log table tbody tr').each(function() {
                 const $row = $(this);
                 logs.push({
                     time: $row.find('td:eq(0)').text(),

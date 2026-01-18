@@ -1,6 +1,10 @@
 <?php
 namespace HP_GMC\Services;
 
+use Google\Auth\Credentials\ServiceAccountCredentials;
+use Google\Shopping\Merchant\Accounts\V1beta\Client\AccountsServiceClient;
+use Google\Shopping\Merchant\Products\V1beta\Client\ProductsServiceClient;
+
 if (!defined('ABSPATH')) {
     exit;
 }
@@ -11,9 +15,11 @@ if (!defined('ABSPATH')) {
  */
 class MerchantApiClient
 {
-    private ?object $client = null;
+    private ?object $accountsClient = null;
+    private ?object $productsClient = null;
     private string $merchantId;
     private string $mode;
+    private ?array $credentials = null;
 
     public function __construct()
     {
@@ -44,12 +50,12 @@ class MerchantApiClient
     }
 
     /**
-     * Initialize the Google API client.
+     * Load credentials from service account JSON.
      */
-    private function initClient(): void
+    private function loadCredentials(): array
     {
-        if ($this->client !== null) {
-            return;
+        if ($this->credentials !== null) {
+            return $this->credentials;
         }
 
         $serviceAccountPath = get_option('hp_gmc_service_account_path', '');
@@ -58,9 +64,14 @@ class MerchantApiClient
             throw new \Exception('Service account JSON file not found: ' . $serviceAccountPath);
         }
 
-        // This will use Google's PHP client library when Composer is set up
-        // For now, we'll create a placeholder that can be replaced
-        $this->client = new \stdClass();
+        $json = file_get_contents($serviceAccountPath);
+        $this->credentials = json_decode($json, true);
+
+        if (!$this->credentials || empty($this->credentials['client_email'])) {
+            throw new \Exception('Invalid service account JSON file');
+        }
+
+        return $this->credentials;
     }
 
     /**
@@ -78,14 +89,37 @@ class MerchantApiClient
         }
 
         try {
-            $this->initClient();
+            $creds = $this->loadCredentials();
             
-            // TODO: Implement actual API call when Composer dependencies are set up
-            // For now, return a placeholder response
+            // Check if Google API classes are available
+            if (!class_exists(ServiceAccountCredentials::class)) {
+                return [
+                    'success' => false,
+                    'message' => 'Google API client not installed. Run: composer install',
+                ];
+            }
+
+            // Create credentials and verify they work
+            $credentials = new ServiceAccountCredentials(
+                ['https://www.googleapis.com/auth/content'],
+                $creds
+            );
+
+            // Try to get an access token (this validates the credentials)
+            $authToken = $credentials->fetchAuthToken();
+
+            if (empty($authToken['access_token'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to obtain access token from Google',
+                ];
+            }
+
             return [
                 'success' => true,
-                'message' => 'Connection test placeholder - Composer setup required',
+                'message' => 'Successfully connected to Google Merchant API',
                 'merchant_id' => $this->merchantId,
+                'service_account' => $creds['client_email'] ?? 'unknown',
             ];
         } catch (\Exception $e) {
             return [
@@ -168,12 +202,62 @@ class MerchantApiClient
     private function executeReal(string $method, string $endpoint, array $data): array
     {
         try {
-            $this->initClient();
+            $creds = $this->loadCredentials();
 
-            // TODO: Implement actual API calls when Composer dependencies are set up
-            // This is a placeholder that should be replaced with actual Google API client calls
-            
-            throw new \Exception('Real API calls require Composer setup. Run: composer install');
+            // For now, implement a basic HTTP call using the auth token
+            // The full Google API client usage can be expanded later
+            $credentials = new ServiceAccountCredentials(
+                ['https://www.googleapis.com/auth/content'],
+                $creds
+            );
+
+            $authToken = $credentials->fetchAuthToken();
+            $accessToken = $authToken['access_token'] ?? null;
+
+            if (!$accessToken) {
+                throw new \Exception('Failed to obtain access token');
+            }
+
+            // Build the API URL - determine base URL based on endpoint type
+            if (strpos($endpoint, 'products') !== false || strpos($endpoint, 'productStatuses') !== false) {
+                $baseUrl = 'https://merchantapi.googleapis.com/products/v1beta/';
+            } else {
+                $baseUrl = 'https://merchantapi.googleapis.com/accounts/v1beta/';
+            }
+            $url = $baseUrl . $endpoint;
+
+            if ($method === 'GET' && !empty($data)) {
+                $url .= '?' . http_build_query($data);
+            }
+
+            // Make the HTTP request
+            $response = wp_remote_request($url, [
+                'method' => $method,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'body' => $method !== 'GET' ? wp_json_encode($data) : null,
+                'timeout' => 30,
+            ]);
+
+            if (is_wp_error($response)) {
+                throw new \Exception($response->get_error_message());
+            }
+
+            $statusCode = wp_remote_retrieve_response_code($response);
+            $body = wp_remote_retrieve_body($response);
+            $responseData = json_decode($body, true);
+
+            if ($statusCode >= 400) {
+                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                throw new \Exception($errorMessage);
+            }
+
+            return [
+                'success' => true,
+                'data' => $responseData,
+            ];
         } catch (\Exception $e) {
             return [
                 'success' => false,
@@ -293,11 +377,12 @@ class MerchantApiClient
     }
 
     /**
-     * Get product statuses from GMC.
+     * Get product statuses from GMC (list products with status info).
      */
     public function getProductStatuses(int $pageSize = 100, ?string $pageToken = null): array
     {
-        $endpoint = "accounts/{$this->merchantId}/productstatuses";
+        // Use products endpoint with productStatuses view
+        $endpoint = "accounts/{$this->merchantId}/products";
         $params = ['pageSize' => $pageSize];
         if ($pageToken) {
             $params['pageToken'] = $pageToken;
@@ -306,11 +391,20 @@ class MerchantApiClient
     }
 
     /**
-     * Get account status from GMC.
+     * Get account info from GMC.
      */
     public function getAccountStatus(): array
     {
         $endpoint = "accounts/{$this->merchantId}";
+        return $this->call('GET', $endpoint);
+    }
+    
+    /**
+     * Get business info from GMC.
+     */
+    public function getBusinessInfo(): array
+    {
+        $endpoint = "accounts/{$this->merchantId}/businessInfo";
         return $this->call('GET', $endpoint);
     }
 }

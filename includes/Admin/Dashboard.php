@@ -15,7 +15,6 @@ class Dashboard
      */
     public static function render(): void
     {
-        $current_tab = sanitize_text_field($_GET['tab'] ?? 'overview');
         $environment = hp_gmc_get_environment();
         $mode = get_option('hp_gmc_mode', 'auto');
         $is_dry_run = hp_gmc_is_dry_run();
@@ -28,57 +27,50 @@ class Dashboard
 
             <?php self::render_environment_banner($environment, $is_dry_run); ?>
 
-            <nav class="nav-tab-wrapper">
-                <a href="?page=hp-gmc-manager&tab=overview" 
-                   class="nav-tab <?php echo $current_tab === 'overview' ? 'nav-tab-active' : ''; ?>">
+            <nav class="nav-tab-wrapper hp-gmc-tabs">
+                <a href="#overview" class="nav-tab nav-tab-active" data-tab="overview">
                     <?php esc_html_e('Overview', 'hp-gmc-manager'); ?>
                 </a>
-                <a href="?page=hp-gmc-manager&tab=issues" 
-                   class="nav-tab <?php echo $current_tab === 'issues' ? 'nav-tab-active' : ''; ?>">
+                <a href="#issues" class="nav-tab" data-tab="issues">
                     <?php esc_html_e('Issues', 'hp-gmc-manager'); ?>
                 </a>
-                <a href="?page=hp-gmc-manager&tab=exclusions" 
-                   class="nav-tab <?php echo $current_tab === 'exclusions' ? 'nav-tab-active' : ''; ?>">
+                <a href="#exclusions" class="nav-tab" data-tab="exclusions">
                     <?php esc_html_e('Exclusions', 'hp-gmc-manager'); ?>
                 </a>
-                <a href="?page=hp-gmc-manager&tab=shipping" 
-                   class="nav-tab <?php echo $current_tab === 'shipping' ? 'nav-tab-active' : ''; ?>">
+                <a href="#shipping" class="nav-tab" data-tab="shipping">
                     <?php esc_html_e('Shipping', 'hp-gmc-manager'); ?>
                 </a>
-                <a href="?page=hp-gmc-manager&tab=tools" 
-                   class="nav-tab <?php echo $current_tab === 'tools' ? 'nav-tab-active' : ''; ?>">
+                <a href="#tools" class="nav-tab" data-tab="tools">
                     <?php esc_html_e('MCP Tools', 'hp-gmc-manager'); ?>
                 </a>
                 <?php if ($is_dry_run): ?>
-                <a href="?page=hp-gmc-manager&tab=dry-run-log" 
-                   class="nav-tab <?php echo $current_tab === 'dry-run-log' ? 'nav-tab-active' : ''; ?>">
+                <a href="#dry-run-log" class="nav-tab" data-tab="dry-run-log">
                     <?php esc_html_e('Dry Run Log', 'hp-gmc-manager'); ?>
                 </a>
                 <?php endif; ?>
             </nav>
 
             <div class="hp-gmc-tab-content">
-                <?php
-                switch ($current_tab) {
-                    case 'issues':
-                        self::render_issues_tab();
-                        break;
-                    case 'exclusions':
-                        self::render_exclusions_tab();
-                        break;
-                    case 'shipping':
-                        self::render_shipping_tab();
-                        break;
-                    case 'tools':
-                        self::render_tools_tab();
-                        break;
-                    case 'dry-run-log':
-                        self::render_dry_run_log_tab();
-                        break;
-                    default:
-                        self::render_overview_tab();
-                }
-                ?>
+                <div id="tab-overview" class="hp-gmc-tab-panel active">
+                    <?php self::render_overview_tab(); ?>
+                </div>
+                <div id="tab-issues" class="hp-gmc-tab-panel">
+                    <?php self::render_issues_tab(); ?>
+                </div>
+                <div id="tab-exclusions" class="hp-gmc-tab-panel">
+                    <?php self::render_exclusions_tab(); ?>
+                </div>
+                <div id="tab-shipping" class="hp-gmc-tab-panel">
+                    <?php self::render_shipping_tab(); ?>
+                </div>
+                <div id="tab-tools" class="hp-gmc-tab-panel">
+                    <?php self::render_tools_tab(); ?>
+                </div>
+                <?php if ($is_dry_run): ?>
+                <div id="tab-dry-run-log" class="hp-gmc-tab-panel">
+                    <?php self::render_dry_run_log_tab(); ?>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
         <?php
@@ -91,30 +83,38 @@ class Dashboard
     {
         $mode = get_option('hp_gmc_mode', 'auto');
         
-        $class = 'notice ';
+        $class = 'hp-gmc-env-banner ';
+        $icon = '';
         $message = '';
 
         if ($environment === 'production' && !$is_dry_run) {
-            $class .= 'notice-success';
-            $message = __('LIVE - Connected to Google Merchant Center', 'hp-gmc-manager');
+            $class .= 'hp-gmc-env-production';
+            $icon = '🟢';
+            $message = __('PRODUCTION - Live connection to Google Merchant Center', 'hp-gmc-manager');
         } elseif ($mode === 'passthrough') {
-            $class .= 'notice-error';
-            $message = __('WARNING: Staging connected to Production GMC!', 'hp-gmc-manager');
+            $class .= 'hp-gmc-env-danger';
+            $icon = '🔴';
+            $message = __('DANGER: Staging connected to Production GMC!', 'hp-gmc-manager');
         } elseif ($mode === 'mock') {
-            $class .= 'notice-info';
+            $class .= 'hp-gmc-env-mock';
+            $icon = '🟣';
             $message = __('MOCK DATA - Testing mode with simulated data', 'hp-gmc-manager');
+        } elseif ($environment === 'staging') {
+            $class .= 'hp-gmc-env-staging';
+            $icon = '🟠';
+            $message = __('STAGING - Dry run mode, actions are logged but not executed', 'hp-gmc-manager');
         } else {
-            $class .= 'notice-warning';
+            $class .= 'hp-gmc-env-dryrun';
+            $icon = '🟡';
             $message = __('DRY RUN - Actions are logged but not executed', 'hp-gmc-manager');
         }
         ?>
-        <div class="<?php echo esc_attr($class); ?> hp-gmc-environment-banner">
-            <p>
-                <strong><?php echo esc_html($message); ?></strong>
-                <span class="hp-gmc-env-details">
-                    (<?php echo esc_html(ucfirst($environment)); ?> environment, Mode: <?php echo esc_html($mode); ?>)
-                </span>
-            </p>
+        <div class="<?php echo esc_attr($class); ?>">
+            <span class="hp-gmc-env-icon"><?php echo $icon; ?></span>
+            <span class="hp-gmc-env-message"><?php echo esc_html($message); ?></span>
+            <span class="hp-gmc-env-details">
+                (<?php echo esc_html(ucfirst($environment)); ?> / Mode: <?php echo esc_html($mode); ?>)
+            </span>
         </div>
         <?php
     }
@@ -201,7 +201,12 @@ class Dashboard
         ");
         ?>
         <div class="hp-gmc-issues">
-            <h2><?php esc_html_e('Product Issues', 'hp-gmc-manager'); ?></h2>
+            <div class="hp-gmc-section-header">
+                <h2><?php esc_html_e('Product Issues', 'hp-gmc-manager'); ?></h2>
+                <button type="button" class="button" id="hp-gmc-refresh-issues">
+                    <?php esc_html_e('Refresh', 'hp-gmc-manager'); ?>
+                </button>
+            </div>
             
             <?php if (empty($issues)): ?>
             <p><?php esc_html_e('No issues found. All products are approved!', 'hp-gmc-manager'); ?></p>
@@ -294,14 +299,13 @@ class Dashboard
     {
         ?>
         <div class="hp-gmc-shipping">
-            <h2><?php esc_html_e('Shipping Settings', 'hp-gmc-manager'); ?></h2>
-            <p><?php esc_html_e('Manage account-level shipping configuration in Google Merchant Center.', 'hp-gmc-manager'); ?></p>
-            
-            <div class="hp-gmc-shipping-status">
+            <div class="hp-gmc-section-header">
+                <h2><?php esc_html_e('Shipping Settings', 'hp-gmc-manager'); ?></h2>
                 <button type="button" class="button" id="hp-gmc-refresh-shipping">
-                    <?php esc_html_e('Refresh Shipping Settings', 'hp-gmc-manager'); ?>
+                    <?php esc_html_e('Refresh', 'hp-gmc-manager'); ?>
                 </button>
             </div>
+            <p><?php esc_html_e('Manage account-level shipping configuration in Google Merchant Center.', 'hp-gmc-manager'); ?></p>
 
             <div id="hp-gmc-shipping-data">
                 <p class="description"><?php esc_html_e('Click "Refresh" to load current shipping settings from GMC.', 'hp-gmc-manager'); ?></p>
@@ -409,17 +413,21 @@ class Dashboard
         ");
         ?>
         <div class="hp-gmc-dry-run-log">
-            <h2><?php esc_html_e('Dry Run Log', 'hp-gmc-manager'); ?></h2>
-            <p><?php esc_html_e('Actions that would have been executed in live mode.', 'hp-gmc-manager'); ?></p>
-
-            <div class="hp-gmc-log-actions">
-                <button type="button" class="button" id="hp-gmc-clear-log">
-                    <?php esc_html_e('Clear Log', 'hp-gmc-manager'); ?>
-                </button>
-                <button type="button" class="button" id="hp-gmc-export-log">
-                    <?php esc_html_e('Export as JSON', 'hp-gmc-manager'); ?>
-                </button>
+            <div class="hp-gmc-section-header">
+                <h2><?php esc_html_e('Dry Run Log', 'hp-gmc-manager'); ?></h2>
+                <div class="hp-gmc-log-actions">
+                    <button type="button" class="button" id="hp-gmc-refresh-log">
+                        <?php esc_html_e('Refresh', 'hp-gmc-manager'); ?>
+                    </button>
+                    <button type="button" class="button" id="hp-gmc-clear-log">
+                        <?php esc_html_e('Clear Log', 'hp-gmc-manager'); ?>
+                    </button>
+                    <button type="button" class="button" id="hp-gmc-export-log">
+                        <?php esc_html_e('Export JSON', 'hp-gmc-manager'); ?>
+                    </button>
+                </div>
             </div>
+            <p><?php esc_html_e('Actions that would have been executed in live mode.', 'hp-gmc-manager'); ?></p>
 
             <?php if (empty($logs)): ?>
             <p><?php esc_html_e('No dry run actions logged yet.', 'hp-gmc-manager'); ?></p>

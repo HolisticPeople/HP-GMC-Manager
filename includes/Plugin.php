@@ -27,10 +27,16 @@ class Plugin
         // Enqueue admin assets
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
 
+        // Register GMC category (must happen before abilities)
+        add_action('wp_abilities_api_categories_init', [self::class, 'register_ability_category']);
+        
         // Register MCP abilities (if HP-Abilities is active)
         add_action('wp_abilities_api_init', [self::class, 'register_abilities']);
 
-        // Check if we missed the hook
+        // Check if we missed the hooks
+        if (did_action('wp_abilities_api_categories_init')) {
+            self::register_ability_category();
+        }
         if (did_action('wp_abilities_api_init')) {
             self::register_abilities();
         }
@@ -43,6 +49,25 @@ class Plugin
         add_action('wp_ajax_hp_gmc_test_connection', [self::class, 'ajax_test_connection']);
         add_action('wp_ajax_hp_gmc_sync_now', [self::class, 'ajax_sync_now']);
         add_action('wp_ajax_hp_gmc_clear_dry_run_log', [self::class, 'ajax_clear_dry_run_log']);
+
+        // Plugin action links
+        add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
+    }
+
+    /**
+     * Add action links to plugin row.
+     */
+    public static function add_action_links(array $links): array
+    {
+        $settings_link = sprintf(
+            '<a href="%s">%s</a>',
+            admin_url('admin.php?page=hp-gmc-settings'),
+            __('Settings', 'hp-gmc-manager')
+        );
+
+        array_unshift($links, $settings_link);
+
+        return $links;
     }
 
     /**
@@ -156,6 +181,21 @@ class Plugin
     }
 
     /**
+     * Register the GMC ability category.
+     */
+    public static function register_ability_category(): void
+    {
+        if (!function_exists('wp_register_ability_category')) {
+            return;
+        }
+
+        wp_register_ability_category('hp-gmc', [
+            'label' => __('Google Merchant Center', 'hp-gmc-manager'),
+            'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
+        ]);
+    }
+
+    /**
      * Register MCP abilities for AI-powered operations.
      */
     public static function register_abilities(): void
@@ -176,11 +216,15 @@ class Plugin
             }
 
             wp_register_ability('hp-abilities/' . $tool_id, [
-                'title' => $tool['title'],
+                'label' => $tool['title'],
                 'description' => $tool['description'],
-                'callback' => $tool['callback'],
-                'input_schema' => $tool['input_schema'] ?? (object)[],
-                'scope' => 'hp-gmc',
+                'execute_callback' => $tool['callback'],
+                'permission_callback' => '__return_true',
+                'input_schema' => $tool['input_schema'] ?? [
+                    'type' => 'object',
+                    'properties' => (object)[],
+                ],
+                'category' => 'hp-gmc',
             ]);
         }
     }
