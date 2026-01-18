@@ -18,7 +18,16 @@ class IssueMonitor
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_product_status';
 
+        // #region agent log - Entry point
+        $logPath = 'c:\\DEV\\.cursor\\debug.log';
+        file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'Entry point','data'=>['table'=>$table],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'A'])."\n", FILE_APPEND);
+        // #endregion
+
         $client = new MerchantApiClient();
+        
+        // #region agent log - Check API mode
+        file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'API client mode','data'=>['isDryRun'=>$client->isDryRun(),'mode'=>get_option('hp_gmc_mode','auto'),'env'=>hp_gmc_get_environment()],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'B'])."\n", FILE_APPEND);
+        // #endregion
         
         // Track stats
         $stats = [
@@ -43,7 +52,14 @@ class IssueMonitor
             do {
                 $response = $client->getProductStatuses(100, $pageToken);
                 
+                // #region agent log - Raw API response
+                file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'API response received','data'=>['success'=>$response['success']??null,'hasData'=>isset($response['data']),'dataKeys'=>isset($response['data'])?array_keys($response['data']):[],'hasProducts'=>isset($response['data']['products']),'productsCount'=>isset($response['data']['products'])?count($response['data']['products']):0,'rawResponse'=>array_slice($response,0,3)],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'C'])."\n", FILE_APPEND);
+                // #endregion
+                
                 if (!$response['success']) {
+                    // #region agent log - API failure
+                    file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'API FAILED','data'=>['error'=>$response['error']??'Unknown error'],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'C'])."\n", FILE_APPEND);
+                    // #endregion
                     $stats['errors'][] = $response['error'] ?? 'Unknown error';
                     break;
                 }
@@ -104,6 +120,11 @@ class IssueMonitor
                     // Skip if glaId is empty
                     if (empty($glaId)) {
                         $stats['debug']['empty_glaId_count'] = ($stats['debug']['empty_glaId_count'] ?? 0) + 1;
+                        // #region agent log - Empty glaId skip
+                        if (($stats['debug']['empty_glaId_count'] ?? 0) <= 3) {
+                            file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'SKIPPED: empty glaId','data'=>['productRaw'=>array_slice($product,0,5),'offerId'=>$product['offerId']??'MISSING','name'=>$product['name']??'MISSING'],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'D'])."\n", FILE_APPEND);
+                        }
+                        // #endregion
                         continue;
                     }
 
@@ -144,6 +165,8 @@ class IssueMonitor
                             'result' => $result,
                             'last_error' => $wpdb->last_error,
                         ];
+                        // Log to debug file
+                        file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'DB operation','data'=>['glaId'=>$glaId,'op'=>$existing?'update':'insert','result'=>$result,'error'=>$wpdb->last_error,'tableExists'=>$table_exists],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'E'])."\n", FILE_APPEND);
                     }
                     // #endregion
                 }
@@ -157,7 +180,14 @@ class IssueMonitor
 
         } catch (\Exception $e) {
             $stats['errors'][] = $e->getMessage();
+            // #region agent log - Exception
+            file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'EXCEPTION','data'=>['error'=>$e->getMessage(),'trace'=>$e->getTraceAsString()],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'ALL'])."\n", FILE_APPEND);
+            // #endregion
         }
+
+        // #region agent log - Final stats
+        file_put_contents($logPath, json_encode(['location'=>'IssueMonitor.php:sync_product_statuses','message'=>'SYNC COMPLETE','data'=>['total'=>$stats['total'],'approved'=>$stats['approved'],'disapproved'=>$stats['disapproved'],'pending'=>$stats['pending'],'errors'=>$stats['errors'],'emptyGlaIdCount'=>$stats['debug']['empty_glaId_count']??0],'timestamp'=>round(microtime(true)*1000),'hypothesisId'=>'ALL'])."\n", FILE_APPEND);
+        // #endregion
 
         return $stats;
     }
