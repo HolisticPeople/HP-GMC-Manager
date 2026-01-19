@@ -476,7 +476,7 @@ class Plugin
                 'callback' => [Abilities\ProductAbilities::class, 'getFixSummary'],
                 'input_schema' => [
                     'type' => 'object',
-                    'properties' => [],
+                    'properties' => (object) [],
                 ],
                 'category' => 'overview',
             ],
@@ -741,7 +741,7 @@ class Plugin
                 'callback' => [Abilities\FeedAbilities::class, 'listVirtualProducts'],
                 'input_schema' => [
                     'type' => 'object',
-                    'properties' => [],
+                    'properties' => (object) [],
                 ],
                 'category' => 'feed',
             ],
@@ -774,7 +774,7 @@ class Plugin
                 'callback' => [Abilities\IssueAbilities::class, 'getIssueSummary'],
                 'input_schema' => [
                     'type' => 'object',
-                    'properties' => [],
+                    'properties' => (object) [],
                 ],
                 'category' => 'overview',
             ],
