@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.1.0
+ * Version: 1.8.3
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.1.0');
+define('HP_GMC_VERSION', '1.8.3');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -149,6 +149,66 @@ function hp_gmc_activate() {
         PRIMARY KEY (id),
         KEY action (action),
         KEY created_at (created_at)
+    ) $charset_collate;";
+
+    // Audit log table
+    $table_name_audit = $wpdb->prefix . 'hp_gmc_audit_log';
+    $sql .= "CREATE TABLE $table_name_audit (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        action varchar(100) NOT NULL,
+        params longtext,
+        result longtext,
+        success tinyint(1) DEFAULT NULL,
+        user_id bigint(20) DEFAULT 0,
+        user_display varchar(100) DEFAULT '',
+        affected_products longtext,
+        environment varchar(50) DEFAULT 'staging',
+        dry_run tinyint(1) DEFAULT 0,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY action (action),
+        KEY user_id (user_id),
+        KEY environment (environment),
+        KEY created_at (created_at)
+    ) $charset_collate;";
+
+    // Feeds table - stores supplemental feed metadata
+    $table_name_feeds = $wpdb->prefix . 'hp_gmc_feeds';
+    $sql .= "CREATE TABLE $table_name_feeds (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        name varchar(100) NOT NULL,
+        feed_type varchar(20) NOT NULL,
+        category varchar(50) DEFAULT NULL,
+        gmc_feed_id varchar(100) DEFAULT NULL,
+        status varchar(20) DEFAULT 'draft',
+        product_count int DEFAULT 0,
+        file_path varchar(255) DEFAULT NULL,
+        file_url varchar(255) DEFAULT NULL,
+        last_uploaded datetime DEFAULT NULL,
+        gmc_status varchar(50) DEFAULT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        updated_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY feed_type (feed_type),
+        KEY status (status)
+    ) $charset_collate;";
+
+    // Feed products table - stores products in each feed
+    $table_name_feed_products = $wpdb->prefix . 'hp_gmc_feed_products';
+    $sql .= "CREATE TABLE $table_name_feed_products (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        feed_id bigint(20) NOT NULL,
+        product_id bigint(20) NOT NULL,
+        sku varchar(100) NOT NULL,
+        gmc_id varchar(100) DEFAULT NULL,
+        attribute_name varchar(50) NOT NULL,
+        attribute_value text NOT NULL,
+        reason varchar(100) DEFAULT NULL,
+        added_at datetime DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY feed_id (feed_id),
+        KEY product_id (product_id),
+        UNIQUE KEY feed_product (feed_id, product_id)
     ) $charset_collate;";
 
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';

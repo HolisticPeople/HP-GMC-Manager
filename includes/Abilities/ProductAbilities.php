@@ -3,6 +3,7 @@ namespace HP_GMC\Abilities;
 
 use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Services\MerchantApiClient;
+use HP_GMC\Services\AuditLog;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -77,11 +78,18 @@ class ProductAbilities
 
     /**
      * Set exclusion destinations for a product.
+     * 
+     * This stores the exclusion in WooCommerce meta for reference.
+     * Actual GMC exclusions are applied via:
+     * 1. Google Listings & Ads plugin sync (if configured)
+     * 2. Supplemental feed upload to GMC
+     * 3. Manual GMC console configuration
      */
     public static function setExclusion(array $params): array
     {
         $sku = $params['sku'] ?? '';
         $destinations = $params['destinations'] ?? [];
+        $action = $params['action'] ?? 'exclude'; // 'exclude' or 'include'
 
         if (empty($sku)) {
             return [
@@ -116,8 +124,6 @@ class ProductAbilities
             }
         }
 
-        $client = new MerchantApiClient();
-        
         // Find product
         $productId = wc_get_product_id_by_sku($sku);
         if (!$productId) {
@@ -132,16 +138,65 @@ class ProductAbilities
             $glaId = 'gla_' . $productId;
         }
 
-        // In live mode, this would update via API
-        // For now, we use supplemental feed approach
-        $result = $client->call('POST', "products/{$glaId}/exclusions", [
-            'excluded_destination' => $destinations,
-        ]);
+        // Get current exclusions
+        $currentExclusions = get_post_meta($productId, '_hp_gmc_excluded_destinations', true);
+        if (!is_array($currentExclusions)) {
+            $currentExclusions = [];
+        }
 
-        $result['product_id'] = $productId;
-        $result['gla_id'] = $glaId;
-        $result['sku'] = $sku;
-        $result['destinations'] = $destinations;
+        // Update exclusions based on action
+        if ($action === 'exclude') {
+            $newExclusions = array_unique(array_merge($currentExclusions, $destinations));
+        } else {
+            // Remove from exclusions (include)
+            $newExclusions = array_diff($currentExclusions, $destinations);
+        }
+
+        // Save to product meta
+        update_post_meta($productId, '_hp_gmc_excluded_destinations', array_values($newExclusions));
+        
+        // Log the exclusion change
+        $logEntry = [
+            'timestamp' => current_time('c'),
+            'action' => $action,
+            'destinations' => $destinations,
+            'previous' => $currentExclusions,
+            'new' => $newExclusions,
+        ];
+        
+        $exclusionLog = get_post_meta($productId, '_hp_gmc_exclusion_log', true);
+        if (!is_array($exclusionLog)) {
+            $exclusionLog = [];
+        }
+        $exclusionLog[] = $logEntry;
+        // Keep only last 10 entries
+        $exclusionLog = array_slice($exclusionLog, -10);
+        update_post_meta($productId, '_hp_gmc_exclusion_log', $exclusionLog);
+
+        // Check if dry run mode
+        $dryRun = hp_gmc_is_dry_run();
+
+        $result = [
+            'success' => true,
+            'message' => $dryRun 
+                ? 'Exclusion saved to WooCommerce meta (dry run - no GMC sync)'
+                : 'Exclusion saved to WooCommerce meta. Upload supplemental feed to apply in GMC.',
+            'product_id' => $productId,
+            'gla_id' => $glaId,
+            'sku' => $sku,
+            'action' => $action,
+            'destinations' => $destinations,
+            'current_exclusions' => $newExclusions,
+            'dry_run' => $dryRun,
+            'next_steps' => [
+                'Option 1: Configure Google Listings & Ads to respect _hp_gmc_excluded_destinations meta',
+                'Option 2: Generate and upload a supplemental feed with excluded_destination attribute',
+                'Option 3: Manually set exclusions in Google Merchant Center console',
+            ],
+        ];
+
+        // Log to audit trail
+        AuditLog::log('set_exclusion', $params, $result);
 
         return $result;
     }
@@ -181,6 +236,520 @@ class ProductAbilities
             'response_keys' => is_array($response['data'] ?? null) ? array_keys($response['data']) : 'not_array',
             'has_products_key' => isset($response['data']['products']),
             'sample_data' => isset($response['data']) ? array_slice((array)$response['data'], 0, 2, true) : null,
+        ];
+    }
+
+    /**
+     * Diagnose a product by comparing WooCommerce data with GMC cached status.
+     * Helps identify root causes of issues.
+     */
+    public static function diagnoseProduct(array $params): array
+    {
+        $sku = $params['sku'] ?? '';
+
+        if (empty($sku)) {
+            return [
+                'success' => false,
+                'error' => 'SKU is required',
+            ];
+        }
+
+        // Get WooCommerce product
+        $productId = wc_get_product_id_by_sku($sku);
+        if (!$productId) {
+            return [
+                'success' => false,
+                'error' => 'Product not found with SKU: ' . $sku,
+            ];
+        }
+
+        $product = wc_get_product($productId);
+        if (!$product) {
+            return [
+                'success' => false,
+                'error' => 'Could not load product: ' . $productId,
+            ];
+        }
+
+        // Gather WooCommerce data
+        $wcData = [
+            'id' => $productId,
+            'sku' => $product->get_sku(),
+            'name' => $product->get_name(),
+            'status' => $product->get_status(),
+            'price' => $product->get_price(),
+            'regular_price' => $product->get_regular_price(),
+            'weight' => $product->get_weight(),
+            'weight_unit' => get_option('woocommerce_weight_unit', 'kg'),
+            'length' => $product->get_length(),
+            'width' => $product->get_width(),
+            'height' => $product->get_height(),
+            'dimension_unit' => get_option('woocommerce_dimension_unit', 'cm'),
+            'stock_status' => $product->get_stock_status(),
+            'stock_quantity' => $product->get_stock_quantity(),
+            'image_id' => $product->get_image_id(),
+            'has_image' => !empty($product->get_image_id()),
+        ];
+
+        // Gather GLA (Google Listings & Ads) meta data
+        $glaMeta = [
+            'sync_status' => get_post_meta($productId, '_wc_gla_sync_status', true) ?: 'not set',
+            'mc_offer_id' => get_post_meta($productId, '_wc_gla_mc_offer_id', true) ?: 'not set',
+            'visibility' => get_post_meta($productId, '_wc_gla_visibility', true) ?: 'not set',
+            'errors' => get_post_meta($productId, '_wc_gla_errors', true) ?: [],
+            'google_product_category' => get_post_meta($productId, '_wc_gla_google_product_category', true) ?: 'not set',
+        ];
+
+        // Get cached GMC status from our database
+        $gmcStatus = IssueMonitor::getProductStatus($sku);
+
+        // Get shipping settings for context
+        $client = new MerchantApiClient();
+        $shippingSettings = $client->getShippingSettings();
+        $configuredCountries = [];
+        if ($shippingSettings['success'] && isset($shippingSettings['data']['services'])) {
+            foreach ($shippingSettings['data']['services'] as $service) {
+                $configuredCountries = array_merge($configuredCountries, $service['deliveryCountries'] ?? []);
+            }
+            $configuredCountries = array_unique($configuredCountries);
+        }
+
+        // Analyze and identify issues
+        $identifiedIssues = [];
+        $recommendations = [];
+
+        // Check weight
+        if (empty($wcData['weight'])) {
+            $identifiedIssues[] = 'Missing weight in WooCommerce';
+            $recommendations[] = 'Set product weight in WooCommerce to fix shipping calculations';
+        }
+
+        // Check dimensions
+        if (empty($wcData['length']) || empty($wcData['width']) || empty($wcData['height'])) {
+            $identifiedIssues[] = 'Missing dimensions in WooCommerce';
+            $recommendations[] = 'Consider setting product dimensions for accurate shipping';
+        }
+
+        // Check image
+        if (!$wcData['has_image']) {
+            $identifiedIssues[] = 'Missing product image';
+            $recommendations[] = 'Add a product image to improve visibility';
+        }
+
+        // Check GLA sync status
+        if ($glaMeta['sync_status'] === 'not set' || $glaMeta['sync_status'] === 'not-synced') {
+            $identifiedIssues[] = 'Product not synced via Google Listings & Ads';
+            $recommendations[] = 'Ensure product is visible and synced in GLA settings';
+        }
+
+        // Analyze GMC issues
+        if ($gmcStatus && !empty($gmcStatus['issues'])) {
+            $issueTypes = [];
+            foreach ($gmcStatus['issues'] as $issue) {
+                $desc = $issue['description'] ?? '';
+                if (!in_array($desc, $issueTypes)) {
+                    $issueTypes[] = $desc;
+                }
+            }
+            
+            foreach ($issueTypes as $issueType) {
+                if (strpos($issueType, 'Missing shipping in some countries') !== false) {
+                    $identifiedIssues[] = 'Missing shipping configuration for some target countries';
+                    $recommendations[] = 'Either add shipping for more countries or exclude product from unsupported countries';
+                    $recommendations[] = 'Currently configured shipping countries: ' . implode(', ', $configuredCountries);
+                }
+                if (strpos($issueType, 'shipping_weight') !== false || strpos($issueType, 'shipping weight') !== false) {
+                    $identifiedIssues[] = 'Shipping weight issue reported by GMC';
+                    $recommendations[] = 'Check weight format - GMC expects numeric value with proper unit';
+                }
+                if (strpos($issueType, 'health claims') !== false) {
+                    $identifiedIssues[] = 'Health claims policy violation';
+                    $recommendations[] = 'Review product title and description for prohibited health claims';
+                }
+                if (strpos($issueType, 'Prohibited pharmaceuticals') !== false) {
+                    $identifiedIssues[] = 'Prohibited pharmaceuticals policy violation';
+                    $recommendations[] = 'This product may need to be excluded from Shopping ads';
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'sku' => $sku,
+            'woocommerce_data' => $wcData,
+            'gla_meta' => $glaMeta,
+            'gmc_cached_status' => $gmcStatus,
+            'shipping_countries_configured' => $configuredCountries,
+            'identified_issues' => $identifiedIssues,
+            'recommendations' => $recommendations,
+            'dry_run' => hp_gmc_is_dry_run(),
+        ];
+    }
+
+    /**
+     * Batch analyze products with issues and generate a fix plan.
+     */
+    public static function batchAnalyze(array $params): array
+    {
+        $issueTypeFilter = $params['issue_type'] ?? null;
+        $limit = min((int) ($params['limit'] ?? 20), 100);
+
+        // Get all issues
+        $allIssues = IssueMonitor::getIssues(null, $limit);
+
+        // Group by issue type
+        $issueGroups = [];
+        foreach ($allIssues as $product) {
+            $productIssues = $product['issues'] ?? [];
+            foreach ($productIssues as $issue) {
+                $desc = $issue['description'] ?? '';
+                if (empty($desc)) continue;
+                
+                // Filter by issue type if specified
+                if ($issueTypeFilter) {
+                    if (stripos($desc, $issueTypeFilter) === false) continue;
+                }
+                
+                if (!isset($issueGroups[$desc])) {
+                    $issueGroups[$desc] = [
+                        'issue_type' => $desc,
+                        'count' => 0,
+                        'products' => [],
+                        'recommended_action' => self::getRecommendedAction($desc),
+                    ];
+                }
+                
+                // Avoid duplicates
+                $sku = $product['sku'] ?? '';
+                if (!in_array($sku, array_column($issueGroups[$desc]['products'], 'sku'))) {
+                    $issueGroups[$desc]['count']++;
+                    $issueGroups[$desc]['products'][] = [
+                        'sku' => $sku,
+                        'name' => $product['product_name'] ?? '',
+                        'status' => $product['status'] ?? 'unknown',
+                    ];
+                }
+            }
+        }
+
+        // Sort by count descending
+        uasort($issueGroups, fn($a, $b) => $b['count'] - $a['count']);
+
+        return [
+            'success' => true,
+            'total_products_analyzed' => count($allIssues),
+            'issue_groups' => array_values($issueGroups),
+            'dry_run' => hp_gmc_is_dry_run(),
+            'note' => 'This is a preview. Use gmc-batch-exclude or other tools to apply fixes.',
+        ];
+    }
+
+    /**
+     * Batch exclude products from destinations.
+     */
+    public static function batchExclude(array $params): array
+    {
+        $skus = $params['skus'] ?? [];
+        $destinations = $params['destinations'] ?? [];
+        $dryRun = $params['dry_run'] ?? true;
+
+        if (empty($skus)) {
+            return [
+                'success' => false,
+                'error' => 'At least one SKU is required',
+            ];
+        }
+
+        if (empty($destinations)) {
+            return [
+                'success' => false,
+                'error' => 'At least one destination is required',
+            ];
+        }
+
+        // Validate destinations
+        $validDestinations = [
+            'Shopping_ads',
+            'Display_ads',
+            'Local_inventory_ads',
+            'Free_listings',
+            'Free_local_listings',
+            'YouTube_Shopping',
+        ];
+
+        foreach ($destinations as $dest) {
+            if (!in_array($dest, $validDestinations)) {
+                return [
+                    'success' => false,
+                    'error' => "Invalid destination: $dest",
+                    'valid_destinations' => $validDestinations,
+                ];
+            }
+        }
+
+        $results = [];
+        $successCount = 0;
+        $errorCount = 0;
+
+        foreach ($skus as $sku) {
+            $productId = wc_get_product_id_by_sku($sku);
+            if (!$productId) {
+                $results[] = [
+                    'sku' => $sku,
+                    'success' => false,
+                    'error' => 'Product not found',
+                ];
+                $errorCount++;
+                continue;
+            }
+
+            if ($dryRun) {
+                // Preview mode - just report what would happen
+                $results[] = [
+                    'sku' => $sku,
+                    'product_id' => $productId,
+                    'would_exclude_from' => $destinations,
+                    'dry_run' => true,
+                ];
+                $successCount++;
+            } else {
+                // Execute mode
+                $result = self::setExclusion([
+                    'sku' => $sku,
+                    'destinations' => $destinations,
+                ]);
+                $results[] = array_merge(['sku' => $sku], $result);
+                if ($result['success'] ?? false) {
+                    $successCount++;
+                } else {
+                    $errorCount++;
+                }
+            }
+        }
+
+        $result = [
+            'success' => true,
+            'dry_run' => $dryRun,
+            'total' => count($skus),
+            'success_count' => $successCount,
+            'error_count' => $errorCount,
+            'destinations' => $destinations,
+            'results' => $results,
+            'message' => $dryRun 
+                ? 'Preview complete. Set dry_run=false to execute these changes.'
+                : "Batch exclusion complete. $successCount succeeded, $errorCount failed.",
+        ];
+
+        // Log to audit trail
+        AuditLog::log('batch_exclude', $params, $result);
+
+        return $result;
+    }
+
+    /**
+     * Get a summary of all issues and recommended fixes.
+     */
+    public static function getFixSummary(array $params): array
+    {
+        // Get summary from IssueMonitor
+        $summary = IssueMonitor::getSummary();
+
+        // Get issue breakdown
+        $allIssues = IssueMonitor::getIssues(null, 500);
+        
+        $issueTypeCounts = [];
+        foreach ($allIssues as $product) {
+            foreach ($product['issues'] ?? [] as $issue) {
+                $desc = $issue['description'] ?? '';
+                if (empty($desc)) continue;
+                
+                if (!isset($issueTypeCounts[$desc])) {
+                    $issueTypeCounts[$desc] = [
+                        'count' => 0,
+                        'recommended_action' => self::getRecommendedAction($desc),
+                        'can_auto_fix' => self::canAutoFix($desc),
+                    ];
+                }
+                $issueTypeCounts[$desc]['count']++;
+            }
+        }
+
+        // Sort by count
+        uasort($issueTypeCounts, fn($a, $b) => $b['count'] - $a['count']);
+
+        return [
+            'success' => true,
+            'summary' => $summary,
+            'issue_breakdown' => $issueTypeCounts,
+            'next_steps' => [
+                'Use gmc-batch-analyze to get detailed product lists for each issue type',
+                'Use gmc-batch-exclude to exclude products from specific destinations',
+                'Use gmc-diagnose-product to investigate individual products',
+            ],
+            'dry_run' => hp_gmc_is_dry_run(),
+        ];
+    }
+
+    /**
+     * Get recommended action for an issue type.
+     */
+    private static function getRecommendedAction(string $issueType): string
+    {
+        $actions = [
+            'Missing shipping in some countries' => 'Configure shipping for target countries or exclude product from those countries',
+            'False or misleading health claims' => 'Review and modify product title/description, or exclude from Shopping_ads',
+            'Prohibited pharmaceuticals and supplements' => 'Exclude from Shopping_ads and Display_ads destinations',
+            'Personal Hardships in personalized advertising' => 'Exclude from Display_ads and Video_ads destinations',
+            'Over-the-counter medication' => 'Ensure proper certification or exclude from Shopping_ads',
+            'Prescription and behind-the-counter drugs' => 'Exclude from all advertising destinations',
+            'Dangerous products' => 'Exclude from all destinations or remove product from GMC',
+            'Missing shipping_weight' => 'Add weight to product in WooCommerce',
+            'Missing potentially required value' => 'Add the missing attribute to product data',
+            'Invalid attribute value' => 'Correct the attribute value in WooCommerce',
+        ];
+
+        foreach ($actions as $pattern => $action) {
+            if (stripos($issueType, $pattern) !== false) {
+                return $action;
+            }
+        }
+
+        return 'Review product data and GMC policies for this issue type';
+    }
+
+    /**
+     * Check if an issue can be auto-fixed.
+     */
+    private static function canAutoFix(string $issueType): bool
+    {
+        // Issues that can potentially be fixed via exclusions
+        $autoFixable = [
+            'Personal Hardships',
+            'Prohibited pharmaceuticals',
+            'Over-the-counter medication',
+            'Prescription drugs',
+        ];
+
+        foreach ($autoFixable as $pattern) {
+            if (stripos($issueType, $pattern) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Generate a supplemental feed file with exclusions.
+     * This file can be uploaded to GMC to apply exclusions.
+     */
+    public static function generateExclusionFeed(array $params): array
+    {
+        $format = $params['format'] ?? 'tsv'; // 'tsv' or 'csv'
+        
+        // Find all products with exclusions set
+        global $wpdb;
+        
+        $productIds = $wpdb->get_col("
+            SELECT post_id FROM {$wpdb->postmeta} 
+            WHERE meta_key = '_hp_gmc_excluded_destinations' 
+            AND meta_value != '' 
+            AND meta_value != 'a:0:{}'
+        ");
+        
+        if (empty($productIds)) {
+            return [
+                'success' => true,
+                'message' => 'No products have exclusions set',
+                'count' => 0,
+                'file' => null,
+            ];
+        }
+        
+        $separator = $format === 'csv' ? ',' : "\t";
+        $lines = [];
+        
+        // Header row
+        $lines[] = implode($separator, ['id', 'excluded_destination']);
+        
+        foreach ($productIds as $productId) {
+            $product = wc_get_product($productId);
+            if (!$product) continue;
+            
+            $exclusions = get_post_meta($productId, '_hp_gmc_excluded_destinations', true);
+            if (!is_array($exclusions) || empty($exclusions)) continue;
+            
+            // Get the GMC product ID (offer ID)
+            $glaId = get_post_meta($productId, '_wc_gla_mc_offer_id', true);
+            if (empty($glaId)) {
+                // Use standard format: online:en:US:{sku}
+                $sku = $product->get_sku();
+                $glaId = "online:en:US:{$sku}";
+            }
+            
+            // Google expects excluded_destination as comma-separated in feed
+            $excludedList = implode(',', $exclusions);
+            
+            $lines[] = implode($separator, [
+                $glaId,
+                $excludedList,
+            ]);
+        }
+        
+        $content = implode("\n", $lines);
+        
+        // Save to uploads directory
+        $uploadDir = wp_upload_dir();
+        $filename = 'gmc-exclusion-feed-' . date('Y-m-d-His') . '.' . $format;
+        $filepath = $uploadDir['basedir'] . '/hp-gmc/' . $filename;
+        $fileurl = $uploadDir['baseurl'] . '/hp-gmc/' . $filename;
+        
+        // Ensure directory exists
+        wp_mkdir_p(dirname($filepath));
+        
+        // Write file
+        file_put_contents($filepath, $content);
+        
+        return [
+            'success' => true,
+            'message' => 'Supplemental feed generated',
+            'count' => count($productIds),
+            'format' => $format,
+            'file' => $filepath,
+            'url' => $fileurl,
+            'instructions' => [
+                '1. Download the feed file from the URL above',
+                '2. Go to Google Merchant Center > Products > Feeds',
+                '3. Create a new supplemental feed',
+                '4. Upload the file and map the columns',
+                '5. The exclusions will be applied on next feed processing',
+            ],
+            'dry_run' => hp_gmc_is_dry_run(),
+        ];
+    }
+
+    /**
+     * Get audit log entries.
+     */
+    public static function getAuditLog(array $params): array
+    {
+        $limit = min((int) ($params['limit'] ?? 50), 100);
+        $action = $params['action'] ?? null;
+        $sku = $params['sku'] ?? null;
+
+        if ($sku) {
+            $entries = AuditLog::getForProduct($sku, $limit);
+        } else {
+            $entries = AuditLog::getRecent($limit, $action);
+        }
+
+        $summary = AuditLog::getSummary();
+
+        return [
+            'success' => true,
+            'entries' => $entries,
+            'summary' => $summary,
+            'dry_run' => hp_gmc_is_dry_run(),
         ];
     }
 }
