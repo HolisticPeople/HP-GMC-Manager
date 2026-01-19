@@ -64,6 +64,7 @@ class Plugin
         // Issue classifier / review workflow AJAX handlers
         add_action('wp_ajax_hp_gmc_analyze_triggers', [self::class, 'ajax_analyze_triggers']);
         add_action('wp_ajax_hp_gmc_mark_as_restriction', [self::class, 'ajax_mark_as_restriction']);
+        add_action('wp_ajax_hp_gmc_get_issues_subtab', [self::class, 'ajax_get_issues_subtab']);
 
         // Plugin action links
         add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
@@ -1326,5 +1327,46 @@ class Plugin
         } else {
             wp_send_json_error($result);
         }
+    }
+
+    /**
+     * AJAX handler to get issues sub-tab content.
+     * This allows client-side tab switching without full page reload.
+     */
+    public static function ajax_get_issues_subtab(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $subtab = sanitize_key($_POST['subtab'] ?? 'fixable');
+        
+        if (!in_array($subtab, ['fixable', 'misclassified', 'restriction'])) {
+            $subtab = 'fixable';
+        }
+
+        // Get products grouped by tier
+        $productsByTier = Services\IssueClassifier::getProductsByTier();
+        
+        // Start output buffering to capture the HTML
+        ob_start();
+        
+        switch ($subtab) {
+            case 'fixable':
+                Admin\Dashboard::render_fixable_issues_subtab_public($productsByTier[Services\IssueClassifier::TIER_FIXABLE]);
+                break;
+            case 'misclassified':
+                Admin\Dashboard::render_misclassified_issues_subtab_public($productsByTier[Services\IssueClassifier::TIER_MISCLASSIFIED]);
+                break;
+            case 'restriction':
+                Admin\Dashboard::render_restriction_issues_subtab_public($productsByTier[Services\IssueClassifier::TIER_RESTRICTION]);
+                break;
+        }
+        
+        $html = ob_get_clean();
+        
+        wp_send_json_success(['html' => $html, 'subtab' => $subtab]);
     }
 }

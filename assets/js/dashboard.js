@@ -9,6 +9,7 @@
             this.bindEvents();
             this.initTabs();
             this.showEnvironmentWarning();
+            this.initSubTabsClientSide(); // Initialize client-side sub-tab handling
         },
 
         initTabs: function() {
@@ -22,6 +23,9 @@
 
         handleHashChange: function() {
             const hash = window.location.hash.replace('#', '') || 'overview';
+            // #region agent log
+            fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard.js:handleHashChange',message:'Hash changed',data:{hash:hash,fullUrl:window.location.href},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             this.switchTab(hash);
         },
 
@@ -129,6 +133,99 @@
             if (hpGmcData.isDryRun) {
                 console.log('HP GMC Manager: Running in DRY RUN mode. Actions will be logged but not executed.');
             }
+        },
+        
+        // Client-side sub-tab handling to prevent page refresh
+        initSubTabsClientSide: function() {
+            const self = this;
+            
+            // Cache for sub-tab content to avoid redundant AJAX calls
+            this.subtabCache = {};
+            
+            // Handle sub-tab clicks with JavaScript instead of page navigation
+            $(document).on('click', '.hp-gmc-subtab', function(e) {
+                e.preventDefault();
+                
+                const $tab = $(this);
+                const subtab = $tab.data('subtab') || 'fixable';
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard.js:initSubTabsClientSide',message:'Sub-tab clicked',data:{subtab:subtab,currentHash:window.location.hash,hasCache:!!self.subtabCache[subtab]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
+                // #endregion
+                
+                // Update sub-tab UI immediately (no waiting for AJAX)
+                $('.hp-gmc-subtab').removeClass('active');
+                $tab.addClass('active');
+                
+                // Ensure we're on the issues tab
+                if (window.location.hash !== '#issues') {
+                    window.location.hash = 'issues';
+                }
+                
+                // Check cache first
+                if (self.subtabCache[subtab]) {
+                    $('.hp-gmc-issues-content').html(self.subtabCache[subtab]);
+                    GMCDashboard.initIssuesEvents();
+                    return;
+                }
+                
+                // Load sub-tab content via AJAX
+                self.loadSubTabContent(subtab);
+            });
+            
+            // Cache current sub-tab content on initial load
+            const currentSubtab = $('.hp-gmc-subtab.active').data('subtab');
+            if (currentSubtab) {
+                this.subtabCache[currentSubtab] = $('.hp-gmc-issues-content').html();
+            }
+        },
+        
+        // Load sub-tab content via AJAX to avoid page refresh
+        loadSubTabContent: function(subtab) {
+            const self = this;
+            const $content = $('.hp-gmc-issues-content');
+            
+            // Show loading state
+            $content.css('opacity', '0.5');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_get_issues_subtab',
+                    nonce: hpGmcData.nonce,
+                    subtab: subtab
+                },
+                success: function(response) {
+                    if (response.success && response.data.html) {
+                        $content.html(response.data.html);
+                        // Cache the content for fast switching
+                        self.subtabCache = self.subtabCache || {};
+                        self.subtabCache[subtab] = response.data.html;
+                        // Re-initialize any event handlers for the new content
+                        GMCDashboard.initIssuesEvents();
+                    } else {
+                        // Fallback: reload the page with the subtab parameter (with hash preserved)
+                        // #region agent log
+                        fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard.js:loadSubTabContent',message:'AJAX failed, falling back to page reload',data:{subtab:subtab,response:response},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+                        // #endregion
+                        const url = new URL(window.location.href);
+                        url.searchParams.set('issues_tab', subtab);
+                        url.hash = 'issues';
+                        window.location.href = url.toString();
+                    }
+                },
+                error: function() {
+                    // Fallback: reload with proper hash preserved
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('issues_tab', subtab);
+                    url.hash = 'issues';
+                    window.location.href = url.toString();
+                },
+                complete: function() {
+                    $content.css('opacity', '1');
+                }
+            });
         },
 
         syncNow: function(e) {

@@ -264,20 +264,23 @@ class Dashboard
             
             <!-- Sub-tab Navigation -->
             <div class="hp-gmc-issues-subtabs">
-                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'fixable')); ?>" 
-                   class="hp-gmc-subtab <?php echo $activeSubTab === 'fixable' ? 'active' : ''; ?>">
+                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'fixable') . '#issues'); ?>" 
+                   class="hp-gmc-subtab <?php echo $activeSubTab === 'fixable' ? 'active' : ''; ?>"
+                   data-subtab="fixable">
                     <span class="hp-gmc-subtab-icon">🔧</span>
                     <span class="hp-gmc-subtab-label"><?php esc_html_e('Fixable Issues', 'hp-gmc-manager'); ?></span>
                     <span class="hp-gmc-subtab-count"><?php echo esc_html($tierCounts['fixable']); ?></span>
                 </a>
-                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'misclassified')); ?>" 
-                   class="hp-gmc-subtab hp-gmc-subtab-warning <?php echo $activeSubTab === 'misclassified' ? 'active' : ''; ?>">
+                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'misclassified') . '#issues'); ?>" 
+                   class="hp-gmc-subtab hp-gmc-subtab-warning <?php echo $activeSubTab === 'misclassified' ? 'active' : ''; ?>"
+                   data-subtab="misclassified">
                     <span class="hp-gmc-subtab-icon">⚠️</span>
                     <span class="hp-gmc-subtab-label"><?php esc_html_e('Review Needed', 'hp-gmc-manager'); ?></span>
                     <span class="hp-gmc-subtab-count"><?php echo esc_html($tierCounts['misclassified']); ?></span>
                 </a>
-                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'restriction')); ?>" 
-                   class="hp-gmc-subtab <?php echo $activeSubTab === 'restriction' ? 'active' : ''; ?>">
+                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'restriction') . '#issues'); ?>" 
+                   class="hp-gmc-subtab <?php echo $activeSubTab === 'restriction' ? 'active' : ''; ?>"
+                   data-subtab="restriction">
                     <span class="hp-gmc-subtab-icon">🚫</span>
                     <span class="hp-gmc-subtab-label"><?php esc_html_e('True Restrictions', 'hp-gmc-manager'); ?></span>
                     <span class="hp-gmc-subtab-count"><?php echo esc_html($tierCounts['restriction']); ?></span>
@@ -306,6 +309,30 @@ class Dashboard
         <?php
     }
     
+    /**
+     * Public wrapper for AJAX access to render_fixable_issues_subtab.
+     */
+    public static function render_fixable_issues_subtab_public(array $products): void
+    {
+        self::render_fixable_issues_subtab($products);
+    }
+
+    /**
+     * Public wrapper for AJAX access to render_misclassified_issues_subtab.
+     */
+    public static function render_misclassified_issues_subtab_public(array $products): void
+    {
+        self::render_misclassified_issues_subtab($products);
+    }
+
+    /**
+     * Public wrapper for AJAX access to render_restriction_issues_subtab.
+     */
+    public static function render_restriction_issues_subtab_public(array $products): void
+    {
+        self::render_restriction_issues_subtab($products);
+    }
+
     /**
      * Render the Fixable Issues sub-tab (Tier 1).
      */

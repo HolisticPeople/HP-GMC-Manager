@@ -323,9 +323,23 @@ class IssueClassifier
             
             // Get product details
             $product = wc_get_product($row['product_id']);
+            
+            // #region agent log
+            $logData = ['location'=>'IssueClassifier.php:326','message'=>'wc_get_product lookup','data'=>['product_id'=>$row['product_id'],'gmc_product_id'=>$row['gmc_product_id']??null,'product_found'=>$product?true:false,'product_type'=>$product?get_class($product):null],'timestamp'=>time()*1000,'sessionId'=>'debug-session','hypothesisId'=>'D,E,F'];
+            @file_put_contents('c:/DEV/.cursor/debug.log', json_encode($logData)."\n", FILE_APPEND);
+            // #endregion
+            
             $row['product_name'] = $product ? $product->get_name() : 'Unknown Product';
             $row['sku'] = $product ? $product->get_sku() : '';
             $row['edit_url'] = $product ? get_edit_post_link($row['product_id'], 'raw') : '';
+            
+            // #region agent log
+            if (!$product) {
+                $postExists = get_post($row['product_id']);
+                $logData2 = ['location'=>'IssueClassifier.php:334','message'=>'Unknown product investigation','data'=>['product_id'=>$row['product_id'],'post_exists'=>$postExists?true:false,'post_type'=>$postExists?$postExists->post_type:null,'post_status'=>$postExists?$postExists->post_status:null,'gmc_product_id'=>$row['gmc_product_id']??null,'raw_row'=>array_keys($row)],'timestamp'=>time()*1000,'sessionId'=>'debug-session','hypothesisId'=>'D,E'];
+                @file_put_contents('c:/DEV/.cursor/debug.log', json_encode($logData2)."\n", FILE_APPEND);
+            }
+            // #endregion
             
             $grouped[$classification['primary_tier']][] = $row;
         }
