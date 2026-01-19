@@ -201,6 +201,7 @@
                 success: function(response) {
                     if (response.success && response.data.html) {
                         $content.html(response.data.html);
+                        $content.css('opacity', '1'); // Reset opacity immediately after loading
                         // Cache the content for fast switching
                         self.subtabCache = self.subtabCache || {};
                         self.subtabCache[subtab] = response.data.html;
