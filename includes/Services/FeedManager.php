@@ -153,19 +153,19 @@ class FeedManager
         $sku = $product->get_sku();
         $gmcId = get_post_meta($productId, '_wc_gla_mc_id', true) ?: '';
 
-        // Check if product already exists in this feed
+        // Check if product+attribute already exists in this feed
         $existing = $wpdb->get_var($wpdb->prepare(
-            "SELECT id FROM $table WHERE feed_id = %d AND product_id = %d",
+            "SELECT id FROM $table WHERE feed_id = %d AND product_id = %d AND attribute_name = %s",
             $feedId,
-            $productId
+            $productId,
+            $attribute
         ));
 
         if ($existing) {
-            // Update existing
+            // Update existing attribute value
             $result = $wpdb->update(
                 $table,
                 [
-                    'attribute_name' => sanitize_text_field($attribute),
                     'attribute_value' => sanitize_text_field($value),
                     'reason' => $reason ? sanitize_text_field($reason) : null,
                     'gmc_id' => $gmcId,
@@ -251,8 +251,9 @@ class FeedManager
         $feedsTable = $wpdb->prefix . 'hp_gmc_feeds';
         $productsTable = $wpdb->prefix . 'hp_gmc_feed_products';
 
+        // Count unique products (not attribute rows)
         $count = (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $productsTable WHERE feed_id = %d",
+            "SELECT COUNT(DISTINCT product_id) FROM $productsTable WHERE feed_id = %d",
             $feedId
         ));
 
@@ -278,20 +279,37 @@ class FeedManager
         $delimiter = $format === 'csv' ? ',' : "\t";
         $extension = $format === 'csv' ? 'csv' : 'tsv';
 
-        // Build file content
+        // Build file content with pivoted attributes
         $lines = [];
 
-        // Header row - use attribute name from first product
-        $attributeName = $products[0]['attribute_name'] ?? 'excluded_destination';
-        $lines[] = implode($delimiter, ['id', $attributeName]);
+        // Collect all unique attribute names
+        $attributeNames = array_unique(array_column($products, 'attribute_name'));
+        sort($attributeNames); // Consistent column order
 
-        // Data rows
+        // Group products by GMC ID, collecting all their attributes
+        $productData = [];
         foreach ($products as $product) {
             $gmcId = $product['gmc_id'] ?: self::buildGmcId($product['sku']);
-            $lines[] = implode($delimiter, [$gmcId, $product['attribute_value']]);
+            if (!isset($productData[$gmcId])) {
+                $productData[$gmcId] = [];
+            }
+            $productData[$gmcId][$product['attribute_name']] = $product['attribute_value'];
+        }
+
+        // Build header with all attribute columns
+        $lines[] = implode($delimiter, array_merge(['id'], $attributeNames));
+
+        // Build data rows with all columns
+        foreach ($productData as $gmcId => $attrs) {
+            $row = [$gmcId];
+            foreach ($attributeNames as $attrName) {
+                $row[] = $attrs[$attrName] ?? '';
+            }
+            $lines[] = implode($delimiter, $row);
         }
 
         $content = implode("\n", $lines);
+        $uniqueProductCount = count($productData);
 
         // Create uploads directory
         $uploadDir = wp_upload_dir();
@@ -323,7 +341,8 @@ class FeedManager
             'success' => true,
             'file_path' => $filePath,
             'file_url' => $fileUrl,
-            'product_count' => count($products),
+            'product_count' => $uniqueProductCount,
+            'attribute_count' => count($attributeNames),
             'format' => $format,
         ];
     }
