@@ -164,7 +164,9 @@
                 
                 // Check cache first
                 if (self.subtabCache[subtab]) {
-                    $('.hp-gmc-issues-content').html(self.subtabCache[subtab]);
+                    const $content = $('.hp-gmc-issues-content');
+                    $content.html(self.subtabCache[subtab]);
+                    $content.css('opacity', '1'); // Ensure opacity is reset
                     GMCDashboard.initIssuesEvents();
                     return;
                 }

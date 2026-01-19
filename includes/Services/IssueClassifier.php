@@ -303,8 +303,9 @@ class IssueClassifier
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_product_status';
 
+        // Filter out invalid rows (product_id = 0 or NULL) - these are data quality issues
         $results = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table WHERE status IN ('disapproved', 'warning') ORDER BY last_updated DESC LIMIT %d",
+            "SELECT * FROM $table WHERE status IN ('disapproved', 'warning') AND product_id > 0 ORDER BY last_updated DESC LIMIT %d",
             $limit
         ), ARRAY_A);
 
