@@ -581,7 +581,7 @@ class Plugin
             ],
             'gmc-feed-add-products' => [
                 'title' => 'Add Products to Feed',
-                'description' => 'Add one or more products to a feed',
+                'description' => 'Add one or more products to a feed. For custom feeds, specify attribute_name (e.g., color, gender, age_group)',
                 'callback' => [Abilities\FeedAbilities::class, 'addProducts'],
                 'input_schema' => [
                     'type' => 'object',
@@ -595,13 +595,17 @@ class Plugin
                             'items' => ['type' => 'string'],
                             'description' => 'List of product SKUs to add',
                         ],
+                        'attribute_name' => [
+                            'type' => 'string',
+                            'description' => 'GMC attribute name (e.g., color, gender, age_group). Required for custom feeds.',
+                        ],
                         'value' => [
                             'type' => 'string',
-                            'description' => 'Attribute value (destinations for exclusion, URL for redirect)',
+                            'description' => 'Attribute value to set for all products in this batch',
                         ],
                         'reason' => [
                             'type' => 'string',
-                            'description' => 'Optional reason for the exclusion/redirect',
+                            'description' => 'Optional reason/note for the change',
                         ],
                     ],
                     'required' => ['feed_id', 'skus', 'value'],
