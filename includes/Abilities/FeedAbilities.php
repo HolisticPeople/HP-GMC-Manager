@@ -99,6 +99,7 @@ class FeedAbilities
         $skus = $params['skus'] ?? [];
         $value = $params['value'] ?? '';
         $reason = $params['reason'] ?? null;
+        $attributeName = $params['attribute_name'] ?? null;
 
         if (!$feedId) {
             return ['success' => false, 'error' => 'Feed ID is required'];
@@ -117,7 +118,18 @@ class FeedAbilities
             return ['success' => false, 'error' => 'Feed not found'];
         }
 
-        $attribute = $feed['feed_type'] === 'redirect' ? 'ads_redirect' : 'excluded_destination';
+        // Determine attribute name based on feed type or explicit parameter
+        if ($attributeName) {
+            // Use explicitly provided attribute name (for custom feeds)
+            $attribute = sanitize_text_field($attributeName);
+        } elseif ($feed['feed_type'] === 'redirect') {
+            $attribute = 'ads_redirect';
+        } elseif ($feed['feed_type'] === 'exclusion') {
+            $attribute = 'excluded_destination';
+        } else {
+            // For custom feeds without explicit attribute, require it
+            return ['success' => false, 'error' => 'attribute_name is required for custom feeds'];
+        }
 
         $added = 0;
         $failed = [];
