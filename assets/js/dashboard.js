@@ -698,6 +698,287 @@
     $(document).ready(function() {
         GMCDashboard.init();
         GMCDashboard.initFeedEvents();
+        GMCDashboard.initIssuesEvents();
     });
 
+})(jQuery);
+
+/**
+ * Issues Tab - 3-Tier Classification Handlers
+ */
+(function($) {
+    'use strict';
+    
+    // Extend GMCDashboard with issues functionality
+    window.GMCDashboard = window.GMCDashboard || {};
+    
+    GMCDashboard.initIssuesEvents = function() {
+        // Analyze triggers button
+        $(document).on('click', '.hp-gmc-analyze-triggers', this.analyzeTriggers.bind(this));
+        
+        // Mark as restriction button
+        $(document).on('click', '.hp-gmc-mark-restriction', this.markAsRestriction.bind(this));
+        
+        // Add to feed (single product)
+        $(document).on('click', '.hp-gmc-add-to-feed', this.addSingleToFeed.bind(this));
+        
+        // Bulk add to feed button
+        $('#hp-gmc-bulk-add-to-feed').on('click', () => {
+            const selected = $('.hp-gmc-restriction-checkbox:checked').length;
+            if (selected === 0) {
+                alert('Please select at least one product');
+                return;
+            }
+            $('#hp-gmc-bulk-selected-count').text(selected + ' product(s) selected');
+            $('#hp-gmc-bulk-feed-modal').show();
+        });
+        
+        // Bulk add confirm
+        $('#hp-gmc-bulk-add-confirm').on('click', this.bulkAddToFeed.bind(this));
+        
+        // Export fixable CSV
+        $('#hp-gmc-export-fixable').on('click', this.exportFixableCSV.bind(this));
+        
+        // Select all checkboxes
+        $('#hp-gmc-select-all-fixable').on('change', function() {
+            $('.hp-gmc-fixable-checkbox').prop('checked', $(this).is(':checked'));
+        });
+        
+        $('#hp-gmc-select-all-restriction').on('change', function() {
+            $('.hp-gmc-restriction-checkbox').prop('checked', $(this).is(':checked'));
+        });
+    };
+    
+    GMCDashboard.analyzeTriggers = function(e) {
+        const $btn = $(e.target);
+        const productId = $btn.data('product-id');
+        const issue = $btn.data('issue');
+        
+        $btn.prop('disabled', true).text('...');
+        
+        $.ajax({
+            url: hpGmcData.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'hp_gmc_analyze_triggers',
+                nonce: hpGmcData.nonce,
+                product_id: productId,
+                issue: issue
+            },
+            success: function(response) {
+                if (response.success) {
+                    GMCDashboard.showTriggerModal(response.data);
+                } else {
+                    alert(response.data?.error || 'Failed to analyze triggers');
+                }
+            },
+            error: function() {
+                alert('Network error');
+            },
+            complete: function() {
+                $btn.prop('disabled', false).text('Analyze');
+            }
+        });
+    };
+    
+    GMCDashboard.showTriggerModal = function(data) {
+        let html = '<h4>' + (data.product_name || 'Product') + '</h4>';
+        
+        if (data.likely_cause) {
+            html += '<p><strong>Likely Cause:</strong> ' + data.likely_cause + '</p>';
+        }
+        
+        if (data.fix_strategy) {
+            html += '<p><strong>Fix Strategy:</strong> ' + data.fix_strategy + '</p>';
+        }
+        
+        if (data.triggers_found && data.triggers_found.length > 0) {
+            html += '<h4>Trigger Keywords Found (' + data.triggers_found.length + ')</h4>';
+            html += '<div class="hp-gmc-trigger-list">';
+            
+            data.triggers_found.forEach(function(trigger) {
+                html += '<div class="hp-gmc-trigger-item">';
+                html += '<span class="hp-gmc-trigger-keyword">' + trigger.keyword + '</span>';
+                html += ' found in <strong>' + trigger.location + '</strong>';
+                html += '<span class="hp-gmc-trigger-context">' + trigger.context + '</span>';
+                html += '</div>';
+            });
+            
+            html += '</div>';
+        } else {
+            html += '<p><em>No specific trigger keywords found. The classification may be based on overall product context.</em></p>';
+        }
+        
+        if (data.suggestions && data.suggestions.length > 0) {
+            html += '<h4>Suggested Fixes</h4>';
+            data.suggestions.forEach(function(s) {
+                html += '<div class="hp-gmc-trigger-suggestion">';
+                html += '<strong>Replace:</strong> "' + s.keyword + '" <strong>→</strong> "' + s.suggestion + '"';
+                html += '</div>';
+            });
+        }
+        
+        html += '<div style="margin-top:20px;">';
+        html += '<a href="' + (hpGmcData.adminUrl || '/wp-admin/') + 'post.php?post=' + data.product_id + '&action=edit" class="button button-primary" target="_blank">Edit Product</a>';
+        html += '</div>';
+        
+        $('#hp-gmc-trigger-modal-body').html(html);
+        $('#hp-gmc-trigger-modal').show();
+    };
+    
+    GMCDashboard.markAsRestriction = function(e) {
+        const $btn = $(e.target);
+        const productId = $btn.data('product-id');
+        
+        if (!confirm('Mark this product as a TRUE policy restriction?\n\nThis will move it to Tier 3 for exclusion feed assignment.')) {
+            return;
+        }
+        
+        $btn.prop('disabled', true).text('...');
+        
+        $.ajax({
+            url: hpGmcData.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'hp_gmc_mark_as_restriction',
+                nonce: hpGmcData.nonce,
+                product_id: productId,
+                reason: 'Manually marked by admin'
+            },
+            success: function(response) {
+                if (response.success) {
+                    $btn.closest('tr').fadeOut(function() {
+                        $(this).remove();
+                    });
+                } else {
+                    alert(response.data?.error || 'Failed to mark as restriction');
+                    $btn.prop('disabled', false).text('→ Tier 3');
+                }
+            },
+            error: function() {
+                alert('Network error');
+                $btn.prop('disabled', false).text('→ Tier 3');
+            }
+        });
+    };
+    
+    GMCDashboard.addSingleToFeed = function(e) {
+        const $btn = $(e.target);
+        const productId = $btn.data('product-id');
+        const exclusions = $btn.data('exclusions');
+        const $select = $btn.siblings('.hp-gmc-feed-select');
+        const feedId = $select.val();
+        
+        if (!feedId) {
+            alert('Please select a feed');
+            return;
+        }
+        
+        $btn.prop('disabled', true).text('...');
+        
+        $.ajax({
+            url: hpGmcData.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'hp_gmc_add_product_to_feed',
+                nonce: hpGmcData.nonce,
+                feed_id: feedId,
+                product_id: productId,
+                value: exclusions,
+                reason: 'Policy restriction'
+            },
+            success: function(response) {
+                if (response.success) {
+                    location.reload();
+                } else {
+                    alert(response.data?.message || 'Failed to add to feed');
+                    $btn.prop('disabled', false).text('Add');
+                }
+            },
+            error: function() {
+                alert('Network error');
+                $btn.prop('disabled', false).text('Add');
+            }
+        });
+    };
+    
+    GMCDashboard.bulkAddToFeed = function() {
+        const feedId = $('#hp-gmc-bulk-feed-select').val();
+        const exclusions = $('#hp-gmc-bulk-exclusions').val();
+        
+        if (!feedId) {
+            alert('Please select a feed');
+            return;
+        }
+        
+        const productIds = [];
+        $('.hp-gmc-restriction-checkbox:checked').each(function() {
+            productIds.push($(this).val());
+        });
+        
+        if (productIds.length === 0) {
+            alert('No products selected');
+            return;
+        }
+        
+        const $btn = $('#hp-gmc-bulk-add-confirm');
+        $btn.prop('disabled', true).text('Adding...');
+        
+        $.ajax({
+            url: hpGmcData.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'hp_gmc_bulk_add_to_feed',
+                nonce: hpGmcData.nonce,
+                feed_id: feedId,
+                product_ids: productIds,
+                value: exclusions,
+                reason: 'Bulk add - policy restriction'
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert('Added ' + response.data.added + ' products to feed');
+                    location.reload();
+                } else {
+                    alert(response.data?.message || 'Failed to add products');
+                }
+            },
+            error: function() {
+                alert('Network error');
+            },
+            complete: function() {
+                $btn.prop('disabled', false).text('Add to Feed');
+                $('#hp-gmc-bulk-feed-modal').hide();
+            }
+        });
+    };
+    
+    GMCDashboard.exportFixableCSV = function() {
+        const rows = [['Product ID', 'SKU', 'Product Name', 'Issue', 'Fix Type', 'Suggested Fix']];
+        
+        $('.hp-gmc-fixable-table tbody tr').each(function() {
+            const $row = $(this);
+            const productId = $row.data('product-id');
+            const sku = $row.find('td:eq(2) code').text();
+            const name = $row.find('td:eq(1) a').text() || $row.find('td:eq(1)').text();
+            const issue = $row.find('td:eq(3)').text().trim();
+            const fixType = $row.find('.hp-gmc-fix-type').text().trim();
+            const suggestedFix = $row.find('.hp-gmc-suggested-fix').text().trim();
+            
+            rows.push([productId, sku, name, issue, fixType, suggestedFix]);
+        });
+        
+        // Convert to CSV
+        const csv = rows.map(row => row.map(cell => '"' + (cell || '').replace(/"/g, '""') + '"').join(',')).join('\n');
+        
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'gmc-fixable-issues-' + new Date().toISOString().slice(0, 10) + '.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+    
 })(jQuery);

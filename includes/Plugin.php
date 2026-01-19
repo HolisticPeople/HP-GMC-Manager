@@ -59,6 +59,11 @@ class Plugin
         add_action('wp_ajax_hp_gmc_add_product_to_feed', [self::class, 'ajax_add_product_to_feed']);
         add_action('wp_ajax_hp_gmc_remove_product_from_feed', [self::class, 'ajax_remove_product_from_feed']);
         add_action('wp_ajax_hp_gmc_search_products', [self::class, 'ajax_search_products']);
+        add_action('wp_ajax_hp_gmc_bulk_add_to_feed', [self::class, 'ajax_bulk_add_to_feed']);
+        
+        // Issue classifier / review workflow AJAX handlers
+        add_action('wp_ajax_hp_gmc_analyze_triggers', [self::class, 'ajax_analyze_triggers']);
+        add_action('wp_ajax_hp_gmc_mark_as_restriction', [self::class, 'ajax_mark_as_restriction']);
 
         // Plugin action links
         add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
@@ -739,6 +744,146 @@ class Plugin
                 ],
                 'category' => 'feed',
             ],
+            
+            // Issue classification tools
+            'gmc-classify-issues' => [
+                'title' => 'Classify Issues by Tier',
+                'description' => 'Get products grouped by issue tier: fixable, misclassified (review needed), or true restrictions',
+                'callback' => [Abilities\IssueAbilities::class, 'classifyIssues'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'tier' => [
+                            'type' => 'string',
+                            'description' => 'Filter by tier: fixable, misclassified, or restriction',
+                            'enum' => ['fixable', 'misclassified', 'restriction'],
+                        ],
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'Maximum products to return',
+                            'default' => 50,
+                        ],
+                    ],
+                ],
+                'category' => 'product',
+            ],
+            'gmc-get-issue-summary' => [
+                'title' => 'Get Issue Summary',
+                'description' => 'Get summary of all issues grouped by tier with counts',
+                'callback' => [Abilities\IssueAbilities::class, 'getIssueSummary'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [],
+                ],
+                'category' => 'overview',
+            ],
+            'gmc-suggest-text-fix' => [
+                'title' => 'Suggest Text Fix',
+                'description' => 'Analyze a misclassified product and suggest text corrections to avoid policy flags',
+                'callback' => [Abilities\IssueAbilities::class, 'suggestTextFix'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'product_id' => [
+                            'type' => 'integer',
+                            'description' => 'WooCommerce product ID',
+                        ],
+                        'issue' => [
+                            'type' => 'string',
+                            'description' => 'The issue description that triggered the misclassification',
+                        ],
+                    ],
+                    'required' => ['product_id', 'issue'],
+                ],
+                'category' => 'product',
+            ],
+            'gmc-apply-text-fix' => [
+                'title' => 'Apply Text Fix',
+                'description' => 'Apply a text replacement to a product field to fix misclassification',
+                'callback' => [Abilities\IssueAbilities::class, 'applyTextFix'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'product_id' => [
+                            'type' => 'integer',
+                            'description' => 'WooCommerce product ID',
+                        ],
+                        'field' => [
+                            'type' => 'string',
+                            'description' => 'Field to update: title, description, or short_description',
+                            'enum' => ['title', 'description', 'short_description'],
+                        ],
+                        'old_text' => [
+                            'type' => 'string',
+                            'description' => 'Text to replace',
+                        ],
+                        'new_text' => [
+                            'type' => 'string',
+                            'description' => 'Replacement text',
+                        ],
+                    ],
+                    'required' => ['product_id', 'field', 'old_text', 'new_text'],
+                ],
+                'category' => 'product',
+            ],
+            'gmc-auto-populate-feed' => [
+                'title' => 'Auto-Populate Feed',
+                'description' => 'Automatically add products matching issue patterns to a feed',
+                'callback' => [Abilities\FeedAbilities::class, 'autoPopulateFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID to populate',
+                        ],
+                        'issue_patterns' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Regex patterns to match issue descriptions',
+                        ],
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'If true, only show what would be added',
+                            'default' => true,
+                        ],
+                    ],
+                    'required' => ['feed_id', 'issue_patterns'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-create-policy-feeds' => [
+                'title' => 'Create Policy Feeds',
+                'description' => 'Create all standard exclusion feeds for policy violations (personalization, pharma, otc)',
+                'callback' => [Abilities\FeedAbilities::class, 'createPolicyFeeds'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'If true, only show what would be created',
+                            'default' => true,
+                        ],
+                    ],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-statistics' => [
+                'title' => 'Get Feed Statistics',
+                'description' => 'Get detailed statistics for a feed including issue types and pending products',
+                'callback' => [Abilities\FeedAbilities::class, 'getFeedStatistics'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
         ];
     }
 
@@ -1089,5 +1234,97 @@ class Plugin
         }
 
         wp_send_json_success(['products' => $results]);
+    }
+
+    /**
+     * AJAX: Bulk add products to a feed.
+     */
+    public static function ajax_bulk_add_to_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+        $productIds = isset($_POST['product_ids']) ? array_map('intval', (array) $_POST['product_ids']) : [];
+        $value = sanitize_text_field($_POST['value'] ?? '');
+        $reason = sanitize_text_field($_POST['reason'] ?? '');
+
+        if (!$feedId || empty($productIds)) {
+            wp_send_json_error(['message' => 'Feed ID and product IDs are required']);
+        }
+
+        // Get feed to determine attribute name
+        $feed = Services\FeedManager::get($feedId);
+        if (!$feed) {
+            wp_send_json_error(['message' => 'Feed not found']);
+        }
+
+        $attribute = $feed['feed_type'] === 'redirect' ? 'ads_redirect' : 'excluded_destination';
+
+        $result = Services\FeedManager::bulkAddProducts($feedId, $productIds, $attribute, $value, $reason ?: null);
+
+        wp_send_json_success([
+            'added' => $result['added'],
+            'failed' => $result['failed'],
+            'message' => sprintf('Added %d products to feed', $result['added']),
+        ]);
+    }
+
+    /**
+     * AJAX: Analyze trigger keywords for a misclassified product.
+     */
+    public static function ajax_analyze_triggers(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $productId = (int) ($_POST['product_id'] ?? 0);
+        $issue = sanitize_text_field($_POST['issue'] ?? '');
+
+        if (!$productId) {
+            wp_send_json_error(['error' => 'Product ID is required']);
+        }
+
+        // Get suggestion from IssueClassifier
+        $result = Services\IssueClassifier::suggestTextFix($productId, $issue);
+
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX: Mark a misclassified product as a true restriction.
+     */
+    public static function ajax_mark_as_restriction(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $productId = (int) ($_POST['product_id'] ?? 0);
+        $reason = sanitize_text_field($_POST['reason'] ?? 'Manually marked by admin');
+
+        if (!$productId) {
+            wp_send_json_error(['error' => 'Product ID is required']);
+        }
+
+        $result = Services\IssueClassifier::markAsRestriction($productId, $reason);
+
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
     }
 }

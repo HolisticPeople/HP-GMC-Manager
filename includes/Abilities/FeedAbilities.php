@@ -370,4 +370,131 @@ class FeedAbilities
             'count' => count($results),
         ];
     }
+
+    /**
+     * Auto-populate a feed with products matching issue patterns.
+     */
+    public static function autoPopulateFeed(array $params): array
+    {
+        $feedId = (int) ($params['feed_id'] ?? 0);
+        $issuePatterns = $params['issue_patterns'] ?? [];
+        $dryRun = $params['dry_run'] ?? true;
+
+        if (!$feedId) {
+            return ['success' => false, 'error' => 'feed_id is required'];
+        }
+
+        if (empty($issuePatterns)) {
+            return ['success' => false, 'error' => 'issue_patterns array is required'];
+        }
+
+        $result = FeedManager::autoPopulate($feedId, $issuePatterns, $dryRun);
+
+        if (!$dryRun && $result['success']) {
+            AuditLog::log('feed_auto_populate', $params, $result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Create standard policy exclusion feeds.
+     */
+    public static function createPolicyFeeds(array $params): array
+    {
+        $dryRun = $params['dry_run'] ?? true;
+
+        // Define the standard feeds based on issue categories
+        $standardFeeds = [
+            [
+                'name' => 'hp-exclusions-personalization',
+                'type' => 'exclusion',
+                'category' => 'personalization',
+                'description' => 'Excludes products from personalized ads (Display, Video)',
+                'exclusions' => 'Display_ads,Video_ads',
+                'issue_patterns' => ['Personal.*Hardship', 'Sexual.*interest'],
+            ],
+            [
+                'name' => 'hp-exclusions-pharma',
+                'type' => 'exclusion',
+                'category' => 'pharma',
+                'description' => 'Excludes supplements classified as pharmaceuticals',
+                'exclusions' => 'Shopping_ads,Display_ads',
+                'issue_patterns' => ['Prohibited.*pharmaceuticals', 'Prohibited.*supplement'],
+            ],
+            [
+                'name' => 'hp-exclusions-otc',
+                'type' => 'exclusion',
+                'category' => 'otc',
+                'description' => 'Excludes OTC medication and pet pharma products',
+                'exclusions' => 'Shopping_ads',
+                'issue_patterns' => ['Over.*counter', 'OTC', 'Pet.*pharmaceutical'],
+            ],
+        ];
+
+        if ($dryRun) {
+            return [
+                'success' => true,
+                'dry_run' => true,
+                'feeds_to_create' => $standardFeeds,
+                'message' => 'Set dry_run=false to create these feeds',
+            ];
+        }
+
+        // Check for existing feeds
+        $existingFeeds = FeedManager::getAll('exclusion');
+        $existingNames = array_column($existingFeeds, 'name');
+
+        $created = [];
+        $skipped = [];
+
+        foreach ($standardFeeds as $feedDef) {
+            if (in_array($feedDef['name'], $existingNames)) {
+                $skipped[] = $feedDef['name'];
+                continue;
+            }
+
+            $feedId = FeedManager::create($feedDef['name'], $feedDef['type'], $feedDef['category']);
+            
+            if ($feedId) {
+                $created[] = [
+                    'feed_id' => $feedId,
+                    'name' => $feedDef['name'],
+                    'category' => $feedDef['category'],
+                ];
+            }
+        }
+
+        AuditLog::log('create_policy_feeds', $params, [
+            'created' => count($created),
+            'skipped' => count($skipped),
+        ]);
+
+        return [
+            'success' => true,
+            'dry_run' => false,
+            'created' => $created,
+            'skipped' => $skipped,
+            'message' => count($created) . ' feeds created, ' . count($skipped) . ' already existed',
+            'next_steps' => [
+                '1. Use gmc-auto-populate-feed to add matching products to each feed',
+                '2. Review products in each feed via gmc-feed-get or dashboard',
+                '3. Generate and upload feeds to GMC',
+            ],
+        ];
+    }
+
+    /**
+     * Get detailed statistics for a feed.
+     */
+    public static function getFeedStatistics(array $params): array
+    {
+        $feedId = (int) ($params['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            return ['success' => false, 'error' => 'feed_id is required'];
+        }
+
+        return FeedManager::getStatistics($feedId);
+    }
 }

@@ -197,67 +197,35 @@ class Dashboard
     }
 
     /**
-     * Render the issues tab.
+     * Render the issues tab with 3-tier sub-tabs.
      */
     private static function render_issues_tab(): void
     {
         global $wpdb;
-        $table = $wpdb->prefix . 'hp_gmc_product_status';
         
-        // Get products with issues only (disapproved/warning)
-        $issues = $wpdb->get_results("
-            SELECT * FROM $table 
-            WHERE status IN ('disapproved', 'warning') 
-            ORDER BY status DESC, last_updated DESC
-        ");
-        
-        // Fresh read of last sync time (bypass WP caching entirely)
+        // Fresh read of last sync time
         $last_sync = $wpdb->get_var($wpdb->prepare(
             "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
             'hp_gmc_last_sync'
         ));
         
-        // Count statuses from the issues we're displaying (only disapproved/warning)
-        $statuses = [
-            'disapproved' => 0,
-            'warning' => 0,
+        // Get products grouped by tier
+        $productsByTier = \HP_GMC\Services\IssueClassifier::getProductsByTier();
+        
+        $tierCounts = [
+            'fixable' => count($productsByTier[\HP_GMC\Services\IssueClassifier::TIER_FIXABLE]),
+            'misclassified' => count($productsByTier[\HP_GMC\Services\IssueClassifier::TIER_MISCLASSIFIED]),
+            'restriction' => count($productsByTier[\HP_GMC\Services\IssueClassifier::TIER_RESTRICTION]),
         ];
         
-        // Collect unique brands and issue types with counts
-        $all_brands = [];
-        $issue_type_counts = [];
+        $totalIssues = array_sum($tierCounts);
         
-        foreach ($issues as $product_row) {
-            // Count statuses
-            if (isset($statuses[$product_row->status])) {
-                $statuses[$product_row->status]++;
-            }
-            
-            $product = wc_get_product($product_row->product_id);
-            if ($product) {
-                $brand = self::get_product_brand($product);
-                if ($brand && !in_array($brand, $all_brands)) {
-                    $all_brands[] = $brand;
-                }
-            }
-            
-            // Collect issue types with counts
-            $issue_data = json_decode($product_row->issues, true) ?: [];
-            foreach ($issue_data as $i) {
-                $desc = $i['description'] ?? (is_string($i) ? $i : '');
-                if ($desc) {
-                    if (!isset($issue_type_counts[$desc])) {
-                        $issue_type_counts[$desc] = 0;
-                    }
-                    $issue_type_counts[$desc]++;
-                }
-            }
+        // Determine active sub-tab
+        $activeSubTab = isset($_GET['issues_tab']) ? sanitize_key($_GET['issues_tab']) : 'fixable';
+        if (!in_array($activeSubTab, ['fixable', 'misclassified', 'restriction'])) {
+            $activeSubTab = 'fixable';
         }
         
-        sort($all_brands);
-        ksort($issue_type_counts);
-        
-        // Get fresh current time for comparison
         $now = time();
         ?>
         <div class="hp-gmc-issues">
@@ -290,119 +258,356 @@ class Dashboard
                 </button>
             </div>
             
-            <?php if (empty($issues)): ?>
+            <?php if ($totalIssues === 0): ?>
             <p><?php esc_html_e('No issues found. All products are approved!', 'hp-gmc-manager'); ?></p>
             <?php else: ?>
             
-            <!-- Filters -->
-            <div class="hp-gmc-filters">
-                <select id="hp-gmc-filter-status" class="hp-gmc-filter">
-                    <option value=""><?php esc_html_e('All Statuses', 'hp-gmc-manager'); ?></option>
-                    <?php foreach ($statuses as $status_key => $count): ?>
-                        <?php if ($count > 0): ?>
-                            <option value="<?php echo esc_attr($status_key); ?>">
-                                <?php echo esc_html(ucfirst($status_key) . ' (' . $count . ')'); ?>
-                            </option>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                </select>
-                
-                <select id="hp-gmc-filter-brand" class="hp-gmc-filter">
-                    <option value=""><?php esc_html_e('All Brands', 'hp-gmc-manager'); ?></option>
-                    <?php foreach ($all_brands as $brand): ?>
-                        <option value="<?php echo esc_attr($brand); ?>"><?php echo esc_html($brand); ?></option>
-                    <?php endforeach; ?>
-                </select>
-                
-                <select id="hp-gmc-filter-issue" class="hp-gmc-filter">
-                    <option value=""><?php esc_html_e('All Issue Types', 'hp-gmc-manager'); ?></option>
-                    <?php foreach ($issue_type_counts as $issue_type => $count): ?>
-                        <option value="<?php echo esc_attr($issue_type); ?>">
-                            <?php echo esc_html($issue_type . ' (' . $count . ')'); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                
-                <button type="button" class="button" id="hp-gmc-clear-filters">
-                    <?php esc_html_e('Clear Filters', 'hp-gmc-manager'); ?>
-                </button>
-                
-                <span class="hp-gmc-filter-count">
-                    <?php printf(esc_html__('Showing %d products', 'hp-gmc-manager'), count($issues)); ?>
-                </span>
+            <!-- Sub-tab Navigation -->
+            <div class="hp-gmc-issues-subtabs">
+                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'fixable')); ?>" 
+                   class="hp-gmc-subtab <?php echo $activeSubTab === 'fixable' ? 'active' : ''; ?>">
+                    <span class="hp-gmc-subtab-icon">🔧</span>
+                    <span class="hp-gmc-subtab-label"><?php esc_html_e('Fixable Issues', 'hp-gmc-manager'); ?></span>
+                    <span class="hp-gmc-subtab-count"><?php echo esc_html($tierCounts['fixable']); ?></span>
+                </a>
+                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'misclassified')); ?>" 
+                   class="hp-gmc-subtab hp-gmc-subtab-warning <?php echo $activeSubTab === 'misclassified' ? 'active' : ''; ?>">
+                    <span class="hp-gmc-subtab-icon">⚠️</span>
+                    <span class="hp-gmc-subtab-label"><?php esc_html_e('Review Needed', 'hp-gmc-manager'); ?></span>
+                    <span class="hp-gmc-subtab-count"><?php echo esc_html($tierCounts['misclassified']); ?></span>
+                </a>
+                <a href="<?php echo esc_url(add_query_arg('issues_tab', 'restriction')); ?>" 
+                   class="hp-gmc-subtab <?php echo $activeSubTab === 'restriction' ? 'active' : ''; ?>">
+                    <span class="hp-gmc-subtab-icon">🚫</span>
+                    <span class="hp-gmc-subtab-label"><?php esc_html_e('True Restrictions', 'hp-gmc-manager'); ?></span>
+                    <span class="hp-gmc-subtab-count"><?php echo esc_html($tierCounts['restriction']); ?></span>
+                </a>
             </div>
             
-            <table class="wp-list-table widefat fixed striped hp-gmc-issues-table" id="hp-gmc-issues-table">
-                <thead>
-                    <tr>
-                        <th class="column-product"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
-                        <th class="column-sku"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
-                        <th class="column-brand"><?php esc_html_e('Brand', 'hp-gmc-manager'); ?></th>
-                        <th class="column-gmc-id"><?php esc_html_e('GMC ID', 'hp-gmc-manager'); ?></th>
-                        <th class="column-status"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
-                        <th class="column-issues"><?php esc_html_e('Issues', 'hp-gmc-manager'); ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($issues as $issue): 
-                        $product = wc_get_product($issue->product_id);
-                        $issue_data = json_decode($issue->issues, true) ?: [];
-                        $sku = $product ? $product->get_sku() : '';
-                        $brand = $product ? self::get_product_brand($product) : '';
-                        
-                        // Deduplicate issues and count occurrences
-                        $issue_counts = [];
-                        foreach ($issue_data as $i) {
-                            $desc = $i['description'] ?? (is_string($i) ? $i : '');
-                            if ($desc) {
-                                if (!isset($issue_counts[$desc])) {
-                                    $issue_counts[$desc] = 0;
-                                }
-                                $issue_counts[$desc]++;
-                            }
-                        }
-                    ?>
-                    <tr data-status="<?php echo esc_attr($issue->status); ?>" 
-                        data-brand="<?php echo esc_attr($brand); ?>"
-                        data-issues="<?php echo esc_attr(implode('|', array_keys($issue_counts))); ?>">
-                        <td class="column-product">
-                            <?php if ($product): ?>
-                                <a href="<?php echo esc_url(get_edit_post_link($issue->product_id)); ?>">
-                                    <?php echo esc_html($product->get_name()); ?>
-                                </a>
-                            <?php else: ?>
-                                <?php echo esc_html__('Product #', 'hp-gmc-manager') . esc_html($issue->product_id); ?>
-                            <?php endif; ?>
-                        </td>
-                        <td class="column-sku"><code><?php echo esc_html($sku ?: '-'); ?></code></td>
-                        <td class="column-brand"><?php echo esc_html($brand ?: '-'); ?></td>
-                        <td class="column-gmc-id"><code><?php echo esc_html($issue->gla_id); ?></code></td>
-                        <td class="column-status">
-                            <span class="hp-gmc-status hp-gmc-status-<?php echo esc_attr($issue->status); ?>">
-                                <?php echo esc_html(ucfirst($issue->status)); ?>
-                            </span>
-                        </td>
-                        <td class="column-issues">
-                            <?php if (!empty($issue_counts)): ?>
-                                <ul class="hp-gmc-issue-list">
-                                    <?php foreach ($issue_counts as $desc => $count): ?>
-                                        <li>
-                                            <?php echo esc_html($desc); ?>
-                                            <?php if ($count > 1): ?>
-                                                <span class="hp-gmc-issue-count">(×<?php echo esc_html($count); ?>)</span>
-                                            <?php endif; ?>
-                                        </li>
-                                    <?php endforeach; ?>
-                                </ul>
-                            <?php else: ?>
-                                -
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+            <!-- Sub-tab Content -->
+            <div class="hp-gmc-issues-content">
+                <?php 
+                switch ($activeSubTab) {
+                    case 'fixable':
+                        self::render_fixable_issues_subtab($productsByTier[\HP_GMC\Services\IssueClassifier::TIER_FIXABLE]);
+                        break;
+                    case 'misclassified':
+                        self::render_misclassified_issues_subtab($productsByTier[\HP_GMC\Services\IssueClassifier::TIER_MISCLASSIFIED]);
+                        break;
+                    case 'restriction':
+                        self::render_restriction_issues_subtab($productsByTier[\HP_GMC\Services\IssueClassifier::TIER_RESTRICTION]);
+                        break;
+                }
+                ?>
+            </div>
+            
             <?php endif; ?>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render the Fixable Issues sub-tab (Tier 1).
+     */
+    private static function render_fixable_issues_subtab(array $products): void
+    {
+        ?>
+        <div class="hp-gmc-subtab-header">
+            <p><?php esc_html_e('These issues can be fixed by adding missing attributes or editing product content.', 'hp-gmc-manager'); ?></p>
+            <div class="hp-gmc-subtab-actions">
+                <button type="button" class="button" id="hp-gmc-export-fixable">
+                    <?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?>
+                </button>
+            </div>
+        </div>
+        
+        <?php if (empty($products)): ?>
+        <p><?php esc_html_e('No fixable issues found.', 'hp-gmc-manager'); ?></p>
+        <?php else: ?>
+        
+        <table class="wp-list-table widefat fixed striped hp-gmc-fixable-table">
+            <thead>
+                <tr>
+                    <th style="width:5%"><input type="checkbox" id="hp-gmc-select-all-fixable"></th>
+                    <th style="width:25%"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                    <th style="width:10%"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
+                    <th style="width:20%"><?php esc_html_e('Issue', 'hp-gmc-manager'); ?></th>
+                    <th style="width:10%"><?php esc_html_e('Fix Type', 'hp-gmc-manager'); ?></th>
+                    <th style="width:22%"><?php esc_html_e('Suggested Fix', 'hp-gmc-manager'); ?></th>
+                    <th style="width:8%"><?php esc_html_e('Action', 'hp-gmc-manager'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($products as $product): 
+                    $classification = $product['classification']['classifications'][0] ?? [];
+                ?>
+                <tr data-product-id="<?php echo esc_attr($product['product_id']); ?>">
+                    <td><input type="checkbox" class="hp-gmc-fixable-checkbox" value="<?php echo esc_attr($product['product_id']); ?>"></td>
+                    <td>
+                        <?php if ($product['edit_url']): ?>
+                        <a href="<?php echo esc_url($product['edit_url']); ?>"><?php echo esc_html($product['product_name']); ?></a>
+                        <?php else: ?>
+                        <?php echo esc_html($product['product_name']); ?>
+                        <?php endif; ?>
+                    </td>
+                    <td><code><?php echo esc_html($product['sku'] ?: '-'); ?></code></td>
+                    <td>
+                        <?php 
+                        $issues = array_column($product['classification']['classifications'], 'issue');
+                        echo esc_html(implode(', ', array_slice($issues, 0, 2)));
+                        if (count($issues) > 2) {
+                            echo ' <small>(+' . (count($issues) - 2) . ')</small>';
+                        }
+                        ?>
+                    </td>
+                    <td>
+                        <span class="hp-gmc-fix-type hp-gmc-fix-type-<?php echo esc_attr($classification['fix_type'] ?? 'manual'); ?>">
+                            <?php echo esc_html(ucfirst($classification['fix_type'] ?? 'Manual')); ?>
+                        </span>
+                    </td>
+                    <td>
+                        <span class="hp-gmc-suggested-fix"><?php echo esc_html($classification['suggested_fix'] ?? '—'); ?></span>
+                    </td>
+                    <td>
+                        <a href="<?php echo esc_url($product['edit_url']); ?>" class="button button-small">
+                            <?php esc_html_e('Edit', 'hp-gmc-manager'); ?>
+                        </a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+        <?php
+    }
+    
+    /**
+     * Render the Review Needed sub-tab (Tier 2 - Misclassified).
+     */
+    private static function render_misclassified_issues_subtab(array $products): void
+    {
+        ?>
+        <div class="hp-gmc-subtab-header hp-gmc-subtab-header-warning">
+            <div class="hp-gmc-warning-banner">
+                <strong>⚠️ <?php esc_html_e('DO NOT EXCLUDE these products!', 'hp-gmc-manager'); ?></strong>
+                <p><?php esc_html_e('These products are likely misclassified by Google. Your store does not sell prescription drugs or tobacco. Review the triggering text and apply fixes to avoid the policy flags.', 'hp-gmc-manager'); ?></p>
+            </div>
+        </div>
+        
+        <?php if (empty($products)): ?>
+        <p><?php esc_html_e('No misclassified products found.', 'hp-gmc-manager'); ?></p>
+        <?php else: ?>
+        
+        <table class="wp-list-table widefat fixed striped hp-gmc-misclassified-table">
+            <thead>
+                <tr>
+                    <th style="width:20%"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                    <th style="width:8%"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
+                    <th style="width:15%"><?php esc_html_e('Policy Flag', 'hp-gmc-manager'); ?></th>
+                    <th style="width:20%"><?php esc_html_e('Likely Cause', 'hp-gmc-manager'); ?></th>
+                    <th style="width:12%"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
+                    <th style="width:25%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($products as $product): 
+                    $classification = $product['classification']['classifications'][0] ?? [];
+                    $reviewStatus = \HP_GMC\Services\IssueClassifier::getReviewStatus($product['product_id']);
+                ?>
+                <tr data-product-id="<?php echo esc_attr($product['product_id']); ?>">
+                    <td>
+                        <?php if ($product['edit_url']): ?>
+                        <a href="<?php echo esc_url($product['edit_url']); ?>"><?php echo esc_html($product['product_name']); ?></a>
+                        <?php else: ?>
+                        <?php echo esc_html($product['product_name']); ?>
+                        <?php endif; ?>
+                    </td>
+                    <td><code><?php echo esc_html($product['sku'] ?: '-'); ?></code></td>
+                    <td>
+                        <span class="hp-gmc-policy-flag"><?php echo esc_html($classification['issue'] ?? '—'); ?></span>
+                    </td>
+                    <td>
+                        <span class="hp-gmc-likely-cause"><?php echo esc_html($classification['likely_cause'] ?? '—'); ?></span>
+                    </td>
+                    <td>
+                        <?php 
+                        $statusLabels = [
+                            '' => ['label' => 'Pending Review', 'class' => 'pending'],
+                            'pending_review' => ['label' => 'Pending Review', 'class' => 'pending'],
+                            'fix_applied' => ['label' => 'Fix Applied', 'class' => 'success'],
+                            'awaiting_recrawl' => ['label' => 'Awaiting Re-crawl', 'class' => 'info'],
+                            'marked_restriction' => ['label' => 'Marked Restriction', 'class' => 'warning'],
+                        ];
+                        $statusInfo = $statusLabels[$reviewStatus ?? ''] ?? $statusLabels[''];
+                        ?>
+                        <span class="hp-gmc-review-status hp-gmc-review-status-<?php echo esc_attr($statusInfo['class']); ?>">
+                            <?php echo esc_html($statusInfo['label']); ?>
+                        </span>
+                    </td>
+                    <td class="hp-gmc-review-actions">
+                        <button type="button" class="button button-small hp-gmc-analyze-triggers" 
+                                data-product-id="<?php echo esc_attr($product['product_id']); ?>"
+                                data-issue="<?php echo esc_attr($classification['issue'] ?? ''); ?>">
+                            <?php esc_html_e('Analyze', 'hp-gmc-manager'); ?>
+                        </button>
+                        <a href="<?php echo esc_url($product['edit_url']); ?>" class="button button-small">
+                            <?php esc_html_e('Edit', 'hp-gmc-manager'); ?>
+                        </a>
+                        <button type="button" class="button button-small hp-gmc-mark-restriction" 
+                                data-product-id="<?php echo esc_attr($product['product_id']); ?>"
+                                title="<?php esc_attr_e('Mark as true restriction (moves to Tier 3)', 'hp-gmc-manager'); ?>">
+                            <?php esc_html_e('→ Tier 3', 'hp-gmc-manager'); ?>
+                        </button>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+        
+        <!-- Trigger Analysis Modal -->
+        <div id="hp-gmc-trigger-modal" class="hp-gmc-modal" style="display:none;">
+            <div class="hp-gmc-modal-content hp-gmc-modal-lg">
+                <div class="hp-gmc-modal-header">
+                    <h3><?php esc_html_e('Trigger Analysis', 'hp-gmc-manager'); ?></h3>
+                    <button type="button" class="hp-gmc-modal-close">&times;</button>
+                </div>
+                <div class="hp-gmc-modal-body" id="hp-gmc-trigger-modal-body">
+                    <p><?php esc_html_e('Loading...', 'hp-gmc-manager'); ?></p>
+                </div>
+                <div class="hp-gmc-modal-footer">
+                    <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Close', 'hp-gmc-manager'); ?></button>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Render the True Restrictions sub-tab (Tier 3).
+     */
+    private static function render_restriction_issues_subtab(array $products): void
+    {
+        // Get available feeds for assignment
+        $feeds = \HP_GMC\Services\FeedManager::getAll(\HP_GMC\Services\FeedManager::TYPE_EXCLUSION);
+        ?>
+        <div class="hp-gmc-subtab-header">
+            <p><?php esc_html_e('These products genuinely fall under restricted categories (supplements, health products) and require exclusion feeds.', 'hp-gmc-manager'); ?></p>
+            <div class="hp-gmc-subtab-actions">
+                <button type="button" class="button button-primary" id="hp-gmc-bulk-add-to-feed">
+                    <?php esc_html_e('Add Selected to Feed', 'hp-gmc-manager'); ?>
+                </button>
+            </div>
+        </div>
+        
+        <?php if (empty($products)): ?>
+        <p><?php esc_html_e('No products with true policy restrictions found.', 'hp-gmc-manager'); ?></p>
+        <?php else: ?>
+        
+        <table class="wp-list-table widefat fixed striped hp-gmc-restriction-table">
+            <thead>
+                <tr>
+                    <th style="width:5%"><input type="checkbox" id="hp-gmc-select-all-restriction"></th>
+                    <th style="width:22%"><?php esc_html_e('Product', 'hp-gmc-manager'); ?></th>
+                    <th style="width:8%"><?php esc_html_e('SKU', 'hp-gmc-manager'); ?></th>
+                    <th style="width:18%"><?php esc_html_e('Policy Issue', 'hp-gmc-manager'); ?></th>
+                    <th style="width:15%"><?php esc_html_e('Recommended Exclusions', 'hp-gmc-manager'); ?></th>
+                    <th style="width:15%"><?php esc_html_e('Feed Status', 'hp-gmc-manager'); ?></th>
+                    <th style="width:17%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($products as $product): 
+                    $classification = $product['classification']['classifications'][0] ?? [];
+                    $productFeeds = \HP_GMC\Services\FeedManager::getFeedsForProduct($product['product_id']);
+                ?>
+                <tr data-product-id="<?php echo esc_attr($product['product_id']); ?>">
+                    <td>
+                        <?php if (empty($productFeeds)): ?>
+                        <input type="checkbox" class="hp-gmc-restriction-checkbox" value="<?php echo esc_attr($product['product_id']); ?>">
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if ($product['edit_url']): ?>
+                        <a href="<?php echo esc_url($product['edit_url']); ?>"><?php echo esc_html($product['product_name']); ?></a>
+                        <?php else: ?>
+                        <?php echo esc_html($product['product_name']); ?>
+                        <?php endif; ?>
+                    </td>
+                    <td><code><?php echo esc_html($product['sku'] ?: '-'); ?></code></td>
+                    <td>
+                        <span class="hp-gmc-policy-issue"><?php echo esc_html($classification['issue'] ?? '—'); ?></span>
+                    </td>
+                    <td>
+                        <?php 
+                        $exclusions = $classification['exclusions'] ?? [];
+                        foreach ($exclusions as $exclusion): 
+                        ?>
+                        <span class="hp-gmc-exclusion-badge"><?php echo esc_html($exclusion); ?></span>
+                        <?php endforeach; ?>
+                    </td>
+                    <td>
+                        <?php if (!empty($productFeeds)): ?>
+                            <?php foreach ($productFeeds as $feed): ?>
+                            <span class="hp-gmc-feed-badge hp-gmc-feed-badge-<?php echo esc_attr($feed['status']); ?>">
+                                <?php echo esc_html($feed['name']); ?>
+                            </span>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <span class="hp-gmc-not-in-feed"><?php esc_html_e('Not in any feed', 'hp-gmc-manager'); ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <?php if (empty($productFeeds)): ?>
+                        <select class="hp-gmc-feed-select" data-product-id="<?php echo esc_attr($product['product_id']); ?>">
+                            <option value=""><?php esc_html_e('Select feed...', 'hp-gmc-manager'); ?></option>
+                            <?php foreach ($feeds as $feed): ?>
+                            <option value="<?php echo esc_attr($feed['id']); ?>"><?php echo esc_html($feed['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <button type="button" class="button button-small hp-gmc-add-to-feed" 
+                                data-product-id="<?php echo esc_attr($product['product_id']); ?>"
+                                data-exclusions="<?php echo esc_attr(implode(',', $exclusions)); ?>">
+                            <?php esc_html_e('Add', 'hp-gmc-manager'); ?>
+                        </button>
+                        <?php else: ?>
+                        <span class="hp-gmc-in-feed-check">✓</span>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+        
+        <!-- Bulk Add to Feed Modal -->
+        <div id="hp-gmc-bulk-feed-modal" class="hp-gmc-modal" style="display:none;">
+            <div class="hp-gmc-modal-content">
+                <div class="hp-gmc-modal-header">
+                    <h3><?php esc_html_e('Add Products to Feed', 'hp-gmc-manager'); ?></h3>
+                    <button type="button" class="hp-gmc-modal-close">&times;</button>
+                </div>
+                <div class="hp-gmc-modal-body">
+                    <p>
+                        <label for="hp-gmc-bulk-feed-select"><?php esc_html_e('Select Feed:', 'hp-gmc-manager'); ?></label>
+                        <select id="hp-gmc-bulk-feed-select">
+                            <option value=""><?php esc_html_e('Select a feed...', 'hp-gmc-manager'); ?></option>
+                            <?php foreach ($feeds as $feed): ?>
+                            <option value="<?php echo esc_attr($feed['id']); ?>"><?php echo esc_html($feed['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </p>
+                    <p>
+                        <label for="hp-gmc-bulk-exclusions"><?php esc_html_e('Exclusion Destinations:', 'hp-gmc-manager'); ?></label>
+                        <input type="text" id="hp-gmc-bulk-exclusions" class="regular-text" value="Shopping_ads,Display_ads">
+                    </p>
+                    <p id="hp-gmc-bulk-selected-count"></p>
+                </div>
+                <div class="hp-gmc-modal-footer">
+                    <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Cancel', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-primary" id="hp-gmc-bulk-add-confirm"><?php esc_html_e('Add to Feed', 'hp-gmc-manager'); ?></button>
+                </div>
+            </div>
         </div>
         <?php
     }
@@ -617,17 +822,32 @@ class Dashboard
             <table class="wp-list-table widefat fixed striped hp-gmc-feeds-table">
                 <thead>
                     <tr>
-                        <th style="width:25%"><?php esc_html_e('Feed Name', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%"><?php esc_html_e('Type', 'hp-gmc-manager'); ?></th>
+                        <th style="width:22%"><?php esc_html_e('Feed Name', 'hp-gmc-manager'); ?></th>
+                        <th style="width:8%"><?php esc_html_e('Type', 'hp-gmc-manager'); ?></th>
                         <th style="width:10%"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
-                        <th style="width:15%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%"><?php esc_html_e('GMC Status', 'hp-gmc-manager'); ?></th>
-                        <th style="width:20%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                        <th style="width:18%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
+                        <th style="width:12%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
+                        <th style="width:12%"><?php esc_html_e('GMC Status', 'hp-gmc-manager'); ?></th>
+                        <th style="width:18%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($feeds as $feed): ?>
+                    <?php foreach ($feeds as $feed): 
+                        // Get statistics for this feed
+                        $stats = \HP_GMC\Services\FeedManager::getStatistics((int)$feed['id']);
+                        $pendingCount = $stats['pending_products'] ?? 0;
+                        
+                        // Map status to display labels
+                        $statusLabels = [
+                            'draft' => ['label' => 'Draft', 'class' => 'draft'],
+                            'generated' => ['label' => 'Ready', 'class' => 'generated'],
+                            'uploaded' => ['label' => 'Pending', 'class' => 'uploaded'],
+                            'processing' => ['label' => 'Processing', 'class' => 'processing'],
+                            'active' => ['label' => 'Live', 'class' => 'active'],
+                            'error' => ['label' => 'Error', 'class' => 'error'],
+                        ];
+                        $statusInfo = $statusLabels[$feed['status']] ?? $statusLabels['draft'];
+                    ?>
                     <tr data-feed-id="<?php echo esc_attr($feed['id']); ?>">
                         <td>
                             <strong>
@@ -636,7 +856,7 @@ class Dashboard
                                 </a>
                             </strong>
                             <?php if ($feed['category']): ?>
-                            <br><small><?php echo esc_html($feed['category']); ?></small>
+                            <br><small class="hp-gmc-feed-category"><?php echo esc_html(ucfirst($feed['category'])); ?></small>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -645,21 +865,39 @@ class Dashboard
                             </span>
                         </td>
                         <td>
-                            <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo esc_attr($feed['status']); ?>">
-                                <?php echo esc_html(ucfirst($feed['status'])); ?>
+                            <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo esc_attr($statusInfo['class']); ?>">
+                                <?php echo esc_html($statusInfo['label']); ?>
                             </span>
                         </td>
-                        <td><?php echo esc_html($feed['product_count']); ?></td>
+                        <td>
+                            <span class="hp-gmc-feed-product-stats">
+                                <strong><?php echo esc_html($feed['product_count']); ?></strong>
+                                <?php esc_html_e('included', 'hp-gmc-manager'); ?>
+                                <?php if ($pendingCount > 0): ?>
+                                <br><span class="hp-gmc-pending-count" title="<?php esc_attr_e('Products with matching issues not yet in this feed', 'hp-gmc-manager'); ?>">
+                                    +<?php echo esc_html($pendingCount); ?> <?php esc_html_e('pending', 'hp-gmc-manager'); ?>
+                                </span>
+                                <?php endif; ?>
+                            </span>
+                        </td>
                         <td>
                             <?php 
                             if ($feed['last_uploaded']) {
                                 echo esc_html(human_time_diff(strtotime($feed['last_uploaded']), time()) . ' ago');
                             } else {
-                                echo '-';
+                                echo '<span class="hp-gmc-not-uploaded">' . esc_html__('Never', 'hp-gmc-manager') . '</span>';
                             }
                             ?>
                         </td>
-                        <td><?php echo esc_html($feed['gmc_status'] ?: '-'); ?></td>
+                        <td>
+                            <?php if ($feed['gmc_status']): ?>
+                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-<?php echo esc_attr($feed['gmc_status']); ?>">
+                                <?php echo esc_html(ucfirst($feed['gmc_status'])); ?>
+                            </span>
+                            <?php else: ?>
+                            -
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>" class="button button-small">
                                 <?php esc_html_e('View', 'hp-gmc-manager'); ?>
@@ -682,12 +920,16 @@ class Dashboard
                 <h3><?php esc_html_e('Feed Management via MCP', 'hp-gmc-manager'); ?></h3>
                 <div class="hp-gmc-mcp-commands">
                     <div class="hp-gmc-mcp-command">
-                        <code>gmc-feed-create</code>
-                        <span><?php esc_html_e('Create a new feed (name, type, category)', 'hp-gmc-manager'); ?></span>
+                        <code>gmc-create-policy-feeds</code>
+                        <span><?php esc_html_e('Create standard exclusion feeds (personalization, pharma, otc)', 'hp-gmc-manager'); ?></span>
                     </div>
                     <div class="hp-gmc-mcp-command">
-                        <code>gmc-feed-add-products</code>
-                        <span><?php esc_html_e('Add products to a feed', 'hp-gmc-manager'); ?></span>
+                        <code>gmc-auto-populate-feed</code>
+                        <span><?php esc_html_e('Auto-add products matching issue patterns to a feed', 'hp-gmc-manager'); ?></span>
+                    </div>
+                    <div class="hp-gmc-mcp-command">
+                        <code>gmc-feed-statistics</code>
+                        <span><?php esc_html_e('Get statistics for a feed (issues covered, pending products)', 'hp-gmc-manager'); ?></span>
                     </div>
                     <div class="hp-gmc-mcp-command">
                         <code>gmc-feed-generate</code>

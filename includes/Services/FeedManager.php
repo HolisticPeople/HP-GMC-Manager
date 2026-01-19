@@ -560,4 +560,262 @@ class FeedManager
             'errors' => $errors,
         ];
     }
+
+    /**
+     * Get statistics for a feed, including issue types covered and pending products.
+     */
+    public static function getStatistics(int $feedId): array
+    {
+        global $wpdb;
+        $feed = self::get($feedId);
+        
+        if (!$feed) {
+            return ['success' => false, 'error' => 'Feed not found'];
+        }
+
+        $products = self::getProducts($feedId);
+        
+        // Get issue types covered by products in this feed
+        $issueTypes = [];
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+        
+        foreach ($products as $product) {
+            $status = $wpdb->get_row($wpdb->prepare(
+                "SELECT issues FROM $statusTable WHERE product_id = %d",
+                $product['product_id']
+            ));
+            
+            if ($status && $status->issues) {
+                $issues = json_decode($status->issues, true) ?: [];
+                foreach ($issues as $issue) {
+                    $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                    if ($desc && !isset($issueTypes[$desc])) {
+                        $issueTypes[$desc] = 0;
+                    }
+                    if ($desc) {
+                        $issueTypes[$desc]++;
+                    }
+                }
+            }
+        }
+
+        // Count products with matching issues that are NOT yet in any feed
+        $pendingCount = self::countProductsNotInFeeds($feed['category']);
+
+        return [
+            'success' => true,
+            'feed_id' => $feedId,
+            'feed_name' => $feed['name'],
+            'product_count' => (int) $feed['product_count'],
+            'issue_types' => $issueTypes,
+            'pending_products' => $pendingCount,
+            'status' => $feed['status'],
+            'last_uploaded' => $feed['last_uploaded'],
+        ];
+    }
+
+    /**
+     * Count products with issues matching a category that are not in any feed.
+     */
+    private static function countProductsNotInFeeds(?string $category): int
+    {
+        global $wpdb;
+        
+        if (!$category) {
+            return 0;
+        }
+
+        // Map categories to issue patterns
+        $categoryPatterns = [
+            'personalization' => ['Personal Hardships', 'Sexual interests'],
+            'pharma' => ['Prohibited pharmaceuticals', 'Prohibited supplement'],
+            'otc' => ['Over.*counter', 'OTC', 'Pet.*pharmaceutical'],
+        ];
+
+        $patterns = $categoryPatterns[$category] ?? [];
+        if (empty($patterns)) {
+            return 0;
+        }
+
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+        $feedProductsTable = $wpdb->prefix . 'hp_gmc_feed_products';
+
+        // Get products with these issues
+        $products = $wpdb->get_results(
+            "SELECT ps.product_id FROM $statusTable ps 
+             WHERE ps.status IN ('disapproved', 'warning')
+             AND ps.product_id NOT IN (
+                 SELECT fp.product_id FROM $feedProductsTable fp
+             )",
+            ARRAY_A
+        );
+
+        $matchCount = 0;
+        foreach ($products as $row) {
+            $productStatus = $wpdb->get_row($wpdb->prepare(
+                "SELECT issues FROM $statusTable WHERE product_id = %d",
+                $row['product_id']
+            ));
+            
+            if ($productStatus && $productStatus->issues) {
+                $issues = json_decode($productStatus->issues, true) ?: [];
+                foreach ($issues as $issue) {
+                    $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                    foreach ($patterns as $pattern) {
+                        if (preg_match('/' . $pattern . '/i', $desc)) {
+                            $matchCount++;
+                            break 2; // Count product only once
+                        }
+                    }
+                }
+            }
+        }
+
+        return $matchCount;
+    }
+
+    /**
+     * Auto-populate a feed with products matching issue patterns.
+     * 
+     * @param int $feedId Feed ID to populate
+     * @param array $issuePatterns Array of regex patterns to match issue descriptions
+     * @param bool $dryRun If true, only return what would be added
+     */
+    public static function autoPopulate(int $feedId, array $issuePatterns, bool $dryRun = true): array
+    {
+        global $wpdb;
+        $feed = self::get($feedId);
+        
+        if (!$feed) {
+            return ['success' => false, 'error' => 'Feed not found'];
+        }
+
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+        $feedProductsTable = $wpdb->prefix . 'hp_gmc_feed_products';
+
+        // Get products with issues that are not yet in this feed
+        $products = $wpdb->get_results($wpdb->prepare(
+            "SELECT ps.* FROM $statusTable ps 
+             WHERE ps.status IN ('disapproved', 'warning')
+             AND ps.product_id NOT IN (
+                 SELECT fp.product_id FROM $feedProductsTable fp WHERE fp.feed_id = %d
+             )",
+            $feedId
+        ), ARRAY_A);
+
+        $matches = [];
+        $attribute = $feed['feed_type'] === 'redirect' ? 'ads_redirect' : 'excluded_destination';
+
+        // Determine default exclusion value based on feed category
+        $categoryExclusions = [
+            'personalization' => 'Display_ads,Video_ads',
+            'pharma' => 'Shopping_ads,Display_ads',
+            'otc' => 'Shopping_ads',
+        ];
+        $defaultValue = $categoryExclusions[$feed['category']] ?? 'Shopping_ads';
+
+        foreach ($products as $row) {
+            $issues = json_decode($row['issues'], true) ?: [];
+            
+            foreach ($issues as $issue) {
+                $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                
+                foreach ($issuePatterns as $pattern) {
+                    if (preg_match('/' . $pattern . '/i', $desc)) {
+                        $product = wc_get_product($row['product_id']);
+                        $matches[] = [
+                            'product_id' => (int) $row['product_id'],
+                            'sku' => $product ? $product->get_sku() : '',
+                            'product_name' => $product ? $product->get_name() : 'Unknown',
+                            'matched_issue' => $desc,
+                            'matched_pattern' => $pattern,
+                        ];
+                        break 2; // Only add each product once
+                    }
+                }
+            }
+        }
+
+        if ($dryRun) {
+            return [
+                'success' => true,
+                'dry_run' => true,
+                'feed_id' => $feedId,
+                'feed_name' => $feed['name'],
+                'would_add' => count($matches),
+                'products' => $matches,
+                'suggested_value' => $defaultValue,
+            ];
+        }
+
+        // Actually add the products
+        $added = 0;
+        $failed = 0;
+
+        foreach ($matches as $match) {
+            $result = self::addProduct(
+                $feedId,
+                $match['product_id'],
+                $attribute,
+                $defaultValue,
+                'Auto-populated: ' . $match['matched_issue']
+            );
+            
+            if ($result) {
+                $added++;
+            } else {
+                $failed++;
+            }
+        }
+
+        // Log to audit
+        AuditLog::log('feed_auto_populate', [
+            'feed_id' => $feedId,
+            'feed_name' => $feed['name'],
+            'patterns' => $issuePatterns,
+            'matched' => count($matches),
+            'added' => $added,
+            'failed' => $failed,
+        ], ['success' => true, 'added' => $added]);
+
+        return [
+            'success' => true,
+            'dry_run' => false,
+            'feed_id' => $feedId,
+            'feed_name' => $feed['name'],
+            'added' => $added,
+            'failed' => $failed,
+            'products' => $matches,
+        ];
+    }
+
+    /**
+     * Get products not in any exclusion feed.
+     */
+    public static function getProductsNotInAnyFeed(int $limit = 100): array
+    {
+        global $wpdb;
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+        $feedProductsTable = $wpdb->prefix . 'hp_gmc_feed_products';
+
+        $products = $wpdb->get_results($wpdb->prepare(
+            "SELECT ps.* FROM $statusTable ps 
+             WHERE ps.status IN ('disapproved', 'warning')
+             AND ps.product_id NOT IN (
+                 SELECT DISTINCT fp.product_id FROM $feedProductsTable fp
+             )
+             ORDER BY ps.last_updated DESC
+             LIMIT %d",
+            $limit
+        ), ARRAY_A);
+
+        foreach ($products as &$row) {
+            $row['issues'] = json_decode($row['issues'], true) ?: [];
+            $product = wc_get_product($row['product_id']);
+            $row['product_name'] = $product ? $product->get_name() : 'Unknown';
+            $row['sku'] = $product ? $product->get_sku() : '';
+        }
+
+        return $products;
+    }
 }
