@@ -23,9 +23,6 @@
 
         handleHashChange: function() {
             const hash = window.location.hash.replace('#', '') || 'overview';
-            // #region agent log
-            fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard.js:handleHashChange',message:'Hash changed',data:{hash:hash,fullUrl:window.location.href},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-            // #endregion
             this.switchTab(hash);
         },
 
@@ -149,10 +146,6 @@
                 const $tab = $(this);
                 const subtab = $tab.data('subtab') || 'fixable';
                 
-                // #region agent log
-                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard.js:initSubTabsClientSide',message:'Sub-tab clicked',data:{subtab:subtab,currentHash:window.location.hash,hasCache:!!self.subtabCache[subtab]},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C'})}).catch(()=>{});
-                // #endregion
-                
                 // Update sub-tab UI immediately (no waiting for AJAX)
                 $('.hp-gmc-subtab').removeClass('active');
                 $tab.addClass('active');
@@ -209,9 +202,6 @@
                         GMCDashboard.initIssuesEvents();
                     } else {
                         // Fallback: reload the page with the subtab parameter (with hash preserved)
-                        // #region agent log
-                        fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'dashboard.js:loadSubTabContent',message:'AJAX failed, falling back to page reload',data:{subtab:subtab,response:response},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-                        // #endregion
                         const url = new URL(window.location.href);
                         url.searchParams.set('issues_tab', subtab);
                         url.hash = 'issues';
