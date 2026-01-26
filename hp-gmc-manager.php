@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.8.9
+ * Version: 1.9.0
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.8.9');
+define('HP_GMC_VERSION', '1.9.0');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -84,11 +84,25 @@ function hp_gmc_init() {
  * Always runs hp_gmc_activate() on version change since dbDelta handles existing tables gracefully.
  */
 function hp_gmc_maybe_create_tables() {
+    global $wpdb;
     $db_version = get_option('hp_gmc_db_version', '0');
     
     // Only run if version changed
     if (version_compare($db_version, HP_GMC_VERSION, '>=')) {
         return;
+    }
+
+    // Cleanup old unique key that prevents multiple attributes per product in a feed
+    $feed_products_table = $wpdb->prefix . 'hp_gmc_feed_products';
+    
+    // Check if table exists before running index check
+    $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $feed_products_table));
+    
+    if ($table_exists) {
+        $old_key = $wpdb->get_results("SHOW INDEX FROM $feed_products_table WHERE Key_name = 'product_feed'");
+        if (!empty($old_key)) {
+            $wpdb->query("ALTER TABLE $feed_products_table DROP INDEX product_feed");
+        }
     }
 
     // Always run activation on version change - dbDelta safely handles existing tables
@@ -230,7 +244,7 @@ register_activation_hook(__FILE__, 'hp_gmc_activate');
 function hp_gmc_deactivate() {
     wp_clear_scheduled_hook('hp_gmc_sync_status');
 }
-register_deactivation_hook(__FILE__, 'hp_gmc_deactivate');
+register_deactivation_hook(__FILE__, 'hp_gmc_activate');
 
 /**
  * Get the current environment (production, staging, local).
