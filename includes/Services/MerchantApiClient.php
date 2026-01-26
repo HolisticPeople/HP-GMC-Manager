@@ -295,21 +295,41 @@ class MerchantApiClient
     }
 
     /**
-     * Update feed content (fetch URL).
+     * Update feed content (fetch URL) and trigger immediate fetch.
+     * Uses PUT (full replacement) as Content API doesn't support PATCH.
      */
     public function uploadFeedContent(string $feedId, string $fileUrl): array
     {
-        // Update fetch URL via patch
-        $updateResult = $this->call('PATCH', "datafeeds/{$feedId}", [
-            'fetchSchedule' => [
-                'fetchUrl' => $fileUrl,
-                'paused' => false,
-            ],
-        ], 'content');
+        // First GET the existing feed to preserve all fields
+        $getResult = $this->call('GET', "datafeeds/{$feedId}", [], 'content');
+        
+        if (!$getResult['success']) {
+            return [
+                'success' => false,
+                'error' => 'Failed to get existing feed: ' . ($getResult['error'] ?? 'unknown'),
+            ];
+        }
+        
+        $feedData = $getResult['data'];
+        
+        // Update the fetch URL
+        if (!isset($feedData['fetchSchedule'])) {
+            $feedData['fetchSchedule'] = [];
+        }
+        $feedData['fetchSchedule']['fetchUrl'] = $fileUrl;
+        $feedData['fetchSchedule']['paused'] = false;
+        
+        // Remove read-only fields that can't be sent in update
+        unset($feedData['id']);
+        unset($feedData['kind']);
+        
+        // PUT the updated feed (full replacement)
+        $updateResult = $this->call('PUT', "datafeeds/{$feedId}", $feedData, 'content');
 
         if ($updateResult['success']) {
             // Trigger immediate fetch
-            $this->call('POST', "datafeeds/{$feedId}/fetchNow", [], 'content');
+            $fetchResult = $this->call('POST', "datafeeds/{$feedId}/fetchNow", [], 'content');
+            $updateResult['fetch_triggered'] = $fetchResult['success'];
         }
 
         return $updateResult;
