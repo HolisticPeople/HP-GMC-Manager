@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.9.0
+ * Version: 1.9.1
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.9.0');
+define('HP_GMC_VERSION', '1.9.1');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -99,9 +99,12 @@ function hp_gmc_maybe_create_tables() {
     $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $feed_products_table));
     
     if ($table_exists) {
-        $old_key = $wpdb->get_results("SHOW INDEX FROM $feed_products_table WHERE Key_name = 'product_feed'");
-        if (!empty($old_key)) {
-            $wpdb->query("ALTER TABLE $feed_products_table DROP INDEX product_feed");
+        $old_keys = ['product_feed', 'feed_product'];
+        foreach ($old_keys as $key_name) {
+            $exists = $wpdb->get_results($wpdb->prepare("SHOW INDEX FROM $feed_products_table WHERE Key_name = %s", $key_name));
+            if (!empty($exists)) {
+                $wpdb->query("ALTER TABLE $feed_products_table DROP INDEX $key_name");
+            }
         }
     }
 
