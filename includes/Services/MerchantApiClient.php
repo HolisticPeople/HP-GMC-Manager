@@ -2,8 +2,6 @@
 namespace HP_GMC\Services;
 
 use Google\Auth\Credentials\ServiceAccountCredentials;
-use Google\Shopping\Merchant\Accounts\V1beta\Client\AccountsServiceClient;
-use Google\Shopping\Merchant\Products\V1beta\Client\ProductsServiceClient;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -15,8 +13,6 @@ if (!defined('ABSPATH')) {
  */
 class MerchantApiClient
 {
-    private ?object $accountsClient = null;
-    private ?object $productsClient = null;
     private string $merchantId;
     private string $mode;
     private ?array $credentials = null;
@@ -60,79 +56,15 @@ class MerchantApiClient
 
         $serviceAccountPath = get_option('hp_gmc_service_account_path', '');
 
-        // Check 1: Path configured?
-        if (empty($serviceAccountPath)) {
-            throw new \Exception('Service account path not configured. Go to Settings and enter the JSON file path.');
+        if (empty($serviceAccountPath) || !file_exists($serviceAccountPath)) {
+            throw new \Exception('Service account path not configured or file not found.');
         }
 
-        // Check 2: File exists?
-        if (!file_exists($serviceAccountPath)) {
-            // Provide diagnostic info
-            $parentDir = dirname($serviceAccountPath);
-            $parentExists = is_dir($parentDir);
-            $details = sprintf(
-                'File not found: %s | Parent directory "%s" %s',
-                $serviceAccountPath,
-                $parentDir,
-                $parentExists ? 'exists' : 'does NOT exist'
-            );
-            throw new \Exception($details);
-        }
-
-        // Check 3: File readable?
-        if (!is_readable($serviceAccountPath)) {
-            $perms = substr(sprintf('%o', fileperms($serviceAccountPath)), -4);
-            throw new \Exception(sprintf(
-                'File exists but is not readable: %s (permissions: %s). Check file ownership and permissions.',
-                $serviceAccountPath,
-                $perms
-            ));
-        }
-
-        // Check 4: File size?
-        $fileSize = filesize($serviceAccountPath);
-        if ($fileSize === 0) {
-            throw new \Exception('Service account JSON file is empty (0 bytes): ' . $serviceAccountPath);
-        }
-
-        // Check 5: Read content
         $json = file_get_contents($serviceAccountPath);
-        if ($json === false) {
-            throw new \Exception('Failed to read service account JSON file: ' . $serviceAccountPath);
-        }
-
-        // Check 6: Valid JSON?
         $this->credentials = json_decode($json, true);
+
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception(sprintf(
-                'Service account JSON is malformed: %s (file size: %d bytes, JSON error: %s)',
-                $serviceAccountPath,
-                $fileSize,
-                json_last_error_msg()
-            ));
-        }
-
-        // Check 7: Required fields present?
-        $requiredFields = ['type', 'project_id', 'private_key', 'client_email'];
-        $missingFields = [];
-        foreach ($requiredFields as $field) {
-            if (empty($this->credentials[$field])) {
-                $missingFields[] = $field;
-            }
-        }
-        if (!empty($missingFields)) {
-            throw new \Exception(sprintf(
-                'Service account JSON is missing required fields: %s',
-                implode(', ', $missingFields)
-            ));
-        }
-
-        // Check 8: Correct type?
-        if ($this->credentials['type'] !== 'service_account') {
-            throw new \Exception(sprintf(
-                'Invalid credential type: "%s". Expected "service_account".',
-                $this->credentials['type']
-            ));
+            throw new \Exception('Service account JSON is malformed.');
         }
 
         return $this->credentials;
@@ -155,21 +87,18 @@ class MerchantApiClient
         try {
             $creds = $this->loadCredentials();
             
-            // Check if Google API classes are available
             if (!class_exists(ServiceAccountCredentials::class)) {
                 return [
                     'success' => false,
-                    'message' => 'Google API client not installed. Run: composer install',
+                    'message' => 'Google API client not installed.',
                 ];
             }
 
-            // Create credentials and verify they work
             $credentials = new ServiceAccountCredentials(
                 ['https://www.googleapis.com/auth/content'],
                 $creds
             );
 
-            // Try to get an access token (this validates the credentials)
             $authToken = $credentials->fetchAuthToken();
 
             if (empty($authToken['access_token'])) {
@@ -183,7 +112,6 @@ class MerchantApiClient
                 'success' => true,
                 'message' => 'Successfully connected to Google Merchant API',
                 'merchant_id' => $this->merchantId,
-                'service_account' => $creds['client_email'] ?? 'unknown',
             ];
         } catch (\Exception $e) {
             return [
@@ -196,18 +124,17 @@ class MerchantApiClient
     /**
      * Make an API call (or simulate it in dry run mode).
      */
-    public function call(string $method, string $endpoint, array $data = []): array
+    public function call(string $method, string $endpoint, array $data = [], string $apiType = 'merchant'): array
     {
         if ($this->mode === 'mock') {
-            return $this->getMockResponse($method, $endpoint, $data);
+            return ['success' => true, 'mock' => true, 'data' => []];
         }
 
         if ($this->mode === 'dry_run') {
             return $this->logAndSimulate($method, $endpoint, $data);
         }
 
-        // Live mode - make actual API call
-        return $this->executeReal($method, $endpoint, $data);
+        return $this->executeReal($method, $endpoint, $data, $apiType);
     }
 
     /**
@@ -218,11 +145,8 @@ class MerchantApiClient
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_dry_run_log';
 
-        // Extract action name from endpoint
-        $action = $this->extractActionName($endpoint);
-
         $wpdb->insert($table, [
-            'action' => $action,
+            'action' => 'api_call',
             'endpoint' => $method . ' ' . $endpoint,
             'params' => wp_json_encode($data),
             'simulated_response' => wp_json_encode(['success' => true]),
@@ -232,44 +156,18 @@ class MerchantApiClient
         return [
             'success' => true,
             'dry_run' => true,
-            'action' => $action,
-            'params' => $data,
             'would_execute' => $method . ' ' . $endpoint,
-            'logged_at' => current_time('c'),
-        ];
-    }
-
-    /**
-     * Get a mock response for testing.
-     */
-    private function getMockResponse(string $method, string $endpoint, array $data): array
-    {
-        // Return realistic mock data based on the endpoint
-        if (strpos($endpoint, 'shippingSettings') !== false) {
-            return $this->getMockShippingSettings();
-        }
-
-        if (strpos($endpoint, 'productstatuses') !== false) {
-            return $this->getMockProductStatuses();
-        }
-
-        return [
-            'success' => true,
-            'mock' => true,
-            'data' => [],
         ];
     }
 
     /**
      * Execute a real API call.
      */
-    private function executeReal(string $method, string $endpoint, array $data): array
+    private function executeReal(string $method, string $endpoint, array $data, string $apiType = 'merchant'): array
     {
         try {
             $creds = $this->loadCredentials();
 
-            // For now, implement a basic HTTP call using the auth token
-            // The full Google API client usage can be expanded later
             $credentials = new ServiceAccountCredentials(
                 ['https://www.googleapis.com/auth/content'],
                 $creds
@@ -282,11 +180,13 @@ class MerchantApiClient
                 throw new \Exception('Failed to obtain access token');
             }
 
-            // Build the API URL - determine base URL based on endpoint type
-            if (strpos($endpoint, 'products') !== false || strpos($endpoint, 'productStatuses') !== false) {
-                $baseUrl = 'https://merchantapi.googleapis.com/products/v1beta/';
+            // Build the API URL
+            if ($apiType === 'content') {
+                $baseUrl = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/";
+            } elseif (strpos($endpoint, 'products') !== false || strpos($endpoint, 'productStatuses') !== false) {
+                $baseUrl = "https://merchantapi.googleapis.com/products/v1beta/";
             } else {
-                $baseUrl = 'https://merchantapi.googleapis.com/accounts/v1beta/';
+                $baseUrl = "https://merchantapi.googleapis.com/accounts/v1beta/";
             }
             $url = $baseUrl . $endpoint;
 
@@ -294,14 +194,13 @@ class MerchantApiClient
                 $url .= '?' . http_build_query($data);
             }
 
-            // Make the HTTP request
             $response = wp_remote_request($url, [
                 'method' => $method,
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
                     'Content-Type' => 'application/json',
                 ],
-                'body' => $method !== 'GET' ? wp_json_encode($data) : null,
+                'body' => ($method !== 'GET' && !empty($data)) ? wp_json_encode($data) : null,
                 'timeout' => 30,
             ]);
 
@@ -315,7 +214,7 @@ class MerchantApiClient
 
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
-                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
+                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body . ' | URL: ' . $url);
                 throw new \Exception($errorMessage);
             }
 
@@ -329,97 +228,6 @@ class MerchantApiClient
                 'error' => $e->getMessage(),
             ];
         }
-    }
-
-    /**
-     * Extract a readable action name from an endpoint.
-     */
-    private function extractActionName(string $endpoint): string
-    {
-        if (strpos($endpoint, 'shippingSettings') !== false) {
-            return 'shipping_settings';
-        }
-        if (strpos($endpoint, 'productstatuses') !== false) {
-            return 'product_statuses';
-        }
-        if (strpos($endpoint, 'products') !== false) {
-            return 'products';
-        }
-        return 'unknown';
-    }
-
-    /**
-     * Get mock shipping settings.
-     */
-    private function getMockShippingSettings(): array
-    {
-        return [
-            'success' => true,
-            'mock' => true,
-            'data' => [
-                'services' => [
-                    [
-                        'serviceName' => 'Standard Shipping',
-                        'deliveryCountries' => ['US'],
-                        'active' => true,
-                        'deliveryTime' => [
-                            'minHandlingTimeDays' => 1,
-                            'maxHandlingTimeDays' => 2,
-                            'minTransitTimeDays' => 3,
-                            'maxTransitTimeDays' => 7,
-                        ],
-                    ],
-                    [
-                        'serviceName' => 'Express Shipping',
-                        'deliveryCountries' => ['US'],
-                        'active' => true,
-                        'deliveryTime' => [
-                            'minHandlingTimeDays' => 0,
-                            'maxHandlingTimeDays' => 1,
-                            'minTransitTimeDays' => 1,
-                            'maxTransitTimeDays' => 2,
-                        ],
-                    ],
-                ],
-            ],
-        ];
-    }
-
-    /**
-     * Get mock product statuses.
-     */
-    private function getMockProductStatuses(): array
-    {
-        return [
-            'success' => true,
-            'mock' => true,
-            'data' => [
-                'products' => [
-                    [
-                        'productId' => 'gla_12345',
-                        'title' => 'Sample Product 1',
-                        'status' => 'approved',
-                        'issues' => [],
-                    ],
-                    [
-                        'productId' => 'gla_12346',
-                        'title' => 'Sample Product 2',
-                        'status' => 'disapproved',
-                        'issues' => [
-                            ['description' => 'Missing shipping information'],
-                        ],
-                    ],
-                    [
-                        'productId' => 'gla_12347',
-                        'title' => 'Sample Product 3',
-                        'status' => 'warning',
-                        'issues' => [
-                            ['description' => 'Low quality image'],
-                        ],
-                    ],
-                ],
-            ],
-        ];
     }
 
     /**
@@ -427,32 +235,17 @@ class MerchantApiClient
      */
     public function getShippingSettings(): array
     {
-        $endpoint = "accounts/{$this->merchantId}/shippingSettings";
-        return $this->call('GET', $endpoint);
+        return $this->call('GET', "accounts/{$this->merchantId}/shippingSettings");
     }
 
     /**
-     * Update shipping settings in GMC.
-     */
-    public function updateShippingSettings(array $settings, string $etag): array
-    {
-        $endpoint = "accounts/{$this->merchantId}/shippingSettings:insert";
-        $settings['etag'] = $etag;
-        return $this->call('POST', $endpoint, $settings);
-    }
-
-    /**
-     * Get product statuses from GMC (list products with status info).
+     * Get product statuses from GMC.
      */
     public function getProductStatuses(int $pageSize = 100, ?string $pageToken = null): array
     {
-        // Use products endpoint with productStatuses view
-        $endpoint = "accounts/{$this->merchantId}/products";
         $params = ['pageSize' => $pageSize];
-        if ($pageToken) {
-            $params['pageToken'] = $pageToken;
-        }
-        return $this->call('GET', $endpoint, $params);
+        if ($pageToken) $params['pageToken'] = $pageToken;
+        return $this->call('GET', "accounts/{$this->merchantId}/products", $params);
     }
 
     /**
@@ -460,17 +253,7 @@ class MerchantApiClient
      */
     public function getAccountStatus(): array
     {
-        $endpoint = "accounts/{$this->merchantId}";
-        return $this->call('GET', $endpoint);
-    }
-    
-    /**
-     * Get business info from GMC.
-     */
-    public function getBusinessInfo(): array
-    {
-        $endpoint = "accounts/{$this->merchantId}/businessInfo";
-        return $this->call('GET', $endpoint);
+        return $this->call('GET', "accounts/{$this->merchantId}");
     }
 
     /**
@@ -478,374 +261,54 @@ class MerchantApiClient
      */
     public function createSupplementalFeed(string $name, string $country = 'US'): array
     {
-        if ($this->isDryRun()) {
-            return [
-                'success' => true,
-                'dry_run' => true,
-                'data' => [
-                    'feedId' => 'dry-run-feed-' . time(),
-                    'name' => $name,
-                    'status' => 'created',
-                ],
-                'message' => 'Dry run: Would create supplemental feed "' . $name . '"',
-            ];
-        }
+        $feedData = [
+            'name' => $name,
+            'contentType' => 'products',
+            'attributeLanguage' => 'en',
+            'targetCountry' => $country,
+            'feedType' => 'SUPPLEMENTAL_PRODUCT_DATA',
+            'fetchSchedule' => [
+                'fetchUrl' => 'https://example.com/pending',
+            ],
+        ];
 
-        try {
-            $creds = $this->loadCredentials();
-
-            $credentials = new ServiceAccountCredentials(
-                ['https://www.googleapis.com/auth/content'],
-                $creds
-            );
-
-            $authToken = $credentials->fetchAuthToken();
-            $accessToken = $authToken['access_token'] ?? null;
-
-            if (!$accessToken) {
-                throw new \Exception('Failed to obtain access token');
-            }
-
-            // Create supplemental feed via Content API
-            $url = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds";
-
-            $feedData = [
-                'name' => $name,
-                'contentType' => 'products',
-                'attributeLanguage' => 'en',
-                'targetCountry' => $country,
-                'feedType' => 'SUPPLEMENTAL_PRODUCT_DATA',
-                'fetchSchedule' => [
-                    'fetchUrl' => '', // Will be updated after file upload
-                ],
-            ];
-
-            $response = wp_remote_post($url, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
-                    'Content-Type' => 'application/json',
-                ],
-                'body' => wp_json_encode($feedData),
-                'timeout' => 30,
-            ]);
-
-            if (is_wp_error($response)) {
-                throw new \Exception($response->get_error_message());
-            }
-
-            $statusCode = wp_remote_retrieve_response_code($response);
-            $body = wp_remote_retrieve_body($response);
-            $responseData = json_decode($body, true);
-
-            if ($statusCode >= 400) {
-                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
-                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
-                throw new \Exception($errorMessage);
-            }
-
-            return [
-                'success' => true,
-                'data' => $responseData,
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
+        return $this->call('POST', "datafeeds", $feedData, 'content');
     }
 
     /**
-     * Upload feed content to an existing datafeed.
-     * Updates the fetch URL in GMC so it pulls the file from our server.
+     * Update feed content (fetch URL).
      */
     public function uploadFeedContent(string $feedId, string $fileUrl): array
     {
-        if ($this->isDryRun()) {
-            return [
-                'success' => true,
-                'dry_run' => true,
-                'data' => [
-                    'feedId' => $feedId,
-                    'status' => 'content_uploaded',
-                    'fileUrl' => $fileUrl,
-                ],
-                'message' => 'Dry run: Would update fetch URL for feed "' . $feedId . '" to ' . $fileUrl,
-            ];
-        }
+        // Update fetch URL via patch
+        $updateResult = $this->call('PATCH', "datafeeds/{$feedId}", [
+            'fetchSchedule' => [
+                'fetchUrl' => $fileUrl,
+                'paused' => false,
+            ],
+        ], 'content');
 
-        try {
-            $creds = $this->loadCredentials();
-
-            $credentials = new ServiceAccountCredentials(
-                ['https://www.googleapis.com/auth/content'],
-                $creds
-            );
-
-            $authToken = $credentials->fetchAuthToken();
-            $accessToken = $authToken['access_token'] ?? null;
-
-            if (!$accessToken) {
-                throw new \Exception('Failed to obtain access token');
-            }
-
-            // Update fetch URL via patch
-            $url = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds/{$feedId}";
-
-            $feedData = [
-                'fetchSchedule' => [
-                    'fetchUrl' => $fileUrl,
-                    'paused' => false,
-                ],
-            ];
-
-            $response = wp_remote_request($url, [
-                'method' => 'PATCH',
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
-                    'Content-Type' => 'application/json',
-                ],
-                'body' => wp_json_encode($feedData),
-                'timeout' => 30,
-            ]);
-
-            if (is_wp_error($response)) {
-                throw new \Exception($response->get_error_message());
-            }
-
-            $statusCode = wp_remote_retrieve_response_code($response);
-            $body = wp_remote_retrieve_body($response);
-            $responseData = json_decode($body, true);
-
-            if ($statusCode >= 400) {
-                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
-                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
-                throw new \Exception($errorMessage);
-            }
-
+        if ($updateResult['success']) {
             // Trigger immediate fetch
-            $fetchUrl = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds/{$feedId}/fetchNow";
-            wp_remote_post($fetchUrl, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
-                ],
-                'timeout' => 10,
-            ]);
-
-            return [
-                'success' => true,
-                'data' => [
-                    'feedId' => $feedId,
-                    'status' => 'updated',
-                    'fetchUrl' => $fileUrl,
-                    'message' => 'Feed fetch URL updated and fetch triggered.',
-                ],
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
+            $this->call('POST', "datafeeds/{$feedId}/fetchNow", [], 'content');
         }
+
+        return $updateResult;
     }
 
     /**
-     * Get datafeed status from GMC.
+     * Get datafeed status.
      */
     public function getDatafeedStatus(string $feedId): array
     {
-        if ($this->isDryRun()) {
-            return [
-                'success' => true,
-                'dry_run' => true,
-                'data' => [
-                    'feedId' => $feedId,
-                    'processingStatus' => 'simulated',
-                    'itemsTotal' => 50,
-                    'itemsValid' => 48,
-                ],
-            ];
-        }
-
-        try {
-            $creds = $this->loadCredentials();
-
-            $credentials = new ServiceAccountCredentials(
-                ['https://www.googleapis.com/auth/content'],
-                $creds
-            );
-
-            $authToken = $credentials->fetchAuthToken();
-            $accessToken = $authToken['access_token'] ?? null;
-
-            if (!$accessToken) {
-                throw new \Exception('Failed to obtain access token');
-            }
-
-            $url = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds/{$feedId}";
-
-            $response = wp_remote_get($url, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
-                ],
-                'timeout' => 30,
-            ]);
-
-            if (is_wp_error($response)) {
-                throw new \Exception($response->get_error_message());
-            }
-
-            $statusCode = wp_remote_retrieve_response_code($response);
-            $body = wp_remote_retrieve_body($response);
-            $responseData = json_decode($body, true);
-
-            if ($statusCode >= 400) {
-                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
-                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
-                throw new \Exception($errorMessage);
-            }
-
-            return [
-                'success' => true,
-                'data' => $responseData,
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
+        return $this->call('GET', "datafeeds/{$feedId}", [], 'content');
     }
 
     /**
-     * Delete a datafeed from GMC.
+     * Delete a datafeed.
      */
     public function deleteDatafeed(string $feedId): array
     {
-        if ($this->isDryRun()) {
-            return [
-                'success' => true,
-                'dry_run' => true,
-                'data' => ['feedId' => $feedId, 'status' => 'deleted'],
-                'message' => 'Dry run: Would delete feed "' . $feedId . '"',
-            ];
-        }
-
-        try {
-            $creds = $this->loadCredentials();
-
-            $credentials = new ServiceAccountCredentials(
-                ['https://www.googleapis.com/auth/content'],
-                $creds
-            );
-
-            $authToken = $credentials->fetchAuthToken();
-            $accessToken = $authToken['access_token'] ?? null;
-
-            if (!$accessToken) {
-                throw new \Exception('Failed to obtain access token');
-            }
-
-            $url = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds/{$feedId}";
-
-            $response = wp_remote_request($url, [
-                'method' => 'DELETE',
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
-                ],
-                'timeout' => 30,
-            ]);
-
-            if (is_wp_error($response)) {
-                throw new \Exception($response->get_error_message());
-            }
-
-            $statusCode = wp_remote_retrieve_response_code($response);
-
-            if ($statusCode >= 400) {
-                $body = wp_remote_retrieve_body($response);
-                $responseData = json_decode($body, true);
-                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
-                throw new \Exception($errorMessage);
-            }
-
-            return [
-                'success' => true,
-                'data' => ['feedId' => $feedId, 'status' => 'deleted'],
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    /**
-     * List all datafeeds in the merchant account.
-     */
-    public function listDatafeeds(): array
-    {
-        if ($this->isDryRun()) {
-            return [
-                'success' => true,
-                'dry_run' => true,
-                'data' => [
-                    'datafeeds' => [
-                        ['id' => 'primary-feed', 'name' => 'Primary Feed', 'feedType' => 'PRIMARY'],
-                        ['id' => 'supp-1', 'name' => 'HP Exclusions', 'feedType' => 'SUPPLEMENTAL_PRODUCT_DATA'],
-                    ],
-                ],
-            ];
-        }
-
-        try {
-            $creds = $this->loadCredentials();
-
-            $credentials = new ServiceAccountCredentials(
-                ['https://www.googleapis.com/auth/content'],
-                $creds
-            );
-
-            $authToken = $credentials->fetchAuthToken();
-            $accessToken = $authToken['access_token'] ?? null;
-
-            if (!$accessToken) {
-                throw new \Exception('Failed to obtain access token');
-            }
-
-            $url = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds";
-
-            $response = wp_remote_get($url, [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . $accessToken,
-                ],
-                'timeout' => 30,
-            ]);
-
-            if (is_wp_error($response)) {
-                throw new \Exception($response->get_error_message());
-            }
-
-            $statusCode = wp_remote_retrieve_response_code($response);
-            $body = wp_remote_retrieve_body($response);
-            $responseData = json_decode($body, true);
-
-            if ($statusCode >= 400) {
-                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
-                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
-                throw new \Exception($errorMessage);
-            }
-
-            return [
-                'success' => true,
-                'data' => $responseData,
-            ];
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
+        return $this->call('DELETE', "datafeeds/{$feedId}", [], 'content');
     }
 }
