@@ -315,6 +315,7 @@ class MerchantApiClient
 
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
                 throw new \Exception($errorMessage);
             }
 
@@ -538,6 +539,7 @@ class MerchantApiClient
 
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
                 throw new \Exception($errorMessage);
             }
 
@@ -617,6 +619,7 @@ class MerchantApiClient
 
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
                 throw new \Exception($errorMessage);
             }
 
@@ -698,6 +701,7 @@ class MerchantApiClient
 
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
                 throw new \Exception($errorMessage);
             }
 
@@ -829,6 +833,7 @@ class MerchantApiClient
 
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body);
                 throw new \Exception($errorMessage);
             }
 
