@@ -258,17 +258,36 @@ class MerchantApiClient
 
     /**
      * Create a supplemental datafeed in GMC.
+     * 
+     * Content API v2.1 requires: name, fileName, contentType.
+     * For supplemental feeds, we also need targets array.
      */
     public function createSupplementalFeed(string $name, string $country = 'US'): array
     {
+        // Generate unique filename from feed name
+        $fileName = sanitize_file_name($name) . '-' . time() . '.tsv';
+        
         $feedData = [
             'name' => $name,
+            'fileName' => $fileName,
             'contentType' => 'products',
             'attributeLanguage' => 'en',
-            'targetCountry' => $country,
-            'feedType' => 'SUPPLEMENTAL_PRODUCT_DATA',
+            'targets' => [
+                [
+                    'country' => $country,
+                    'language' => 'en',
+                    'includedDestinations' => ['Shopping'],
+                ],
+            ],
             'fetchSchedule' => [
-                'fetchUrl' => 'https://example.com/pending',
+                'fetchUrl' => 'https://example.com/pending', // Will be updated after creation
+                'timeZone' => 'America/Los_Angeles',
+                'hour' => 6,
+            ],
+            'format' => [
+                'columnDelimiter' => 'tab',
+                'fileEncoding' => 'utf-8',
+                'quotingMode' => 'value quoting',
             ],
         ];
 
