@@ -408,9 +408,16 @@ class FeedManager
 
             $gmcFeedId = $createResult['data']['id'] ?? $createResult['data']['feedId'] ?? null;
             
-            if ($gmcFeedId) {
-                self::update($feedId, ['gmc_feed_id' => $gmcFeedId]);
+            if (!$gmcFeedId) {
+                self::update($feedId, ['status' => self::STATUS_ERROR, 'gmc_status' => 'create_failed']);
+                return [
+                    'success' => false,
+                    'error' => 'Failed to get GMC feed ID from create response',
+                    'api_response' => $createResult,
+                ];
             }
+
+            self::update($feedId, ['gmc_feed_id' => $gmcFeedId]);
 
             // Update URL and fetch
             $result = $client->uploadFeedContent($gmcFeedId, $fileUrl);
