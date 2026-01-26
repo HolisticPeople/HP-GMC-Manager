@@ -555,10 +555,9 @@ class MerchantApiClient
 
     /**
      * Upload feed content to an existing datafeed.
-     * Note: GMC doesn't support direct content upload via API.
-     * Content must be fetched from a URL. This method updates the fetch URL.
+     * Updates the fetch URL in GMC so it pulls the file from our server.
      */
-    public function uploadFeedContent(string $feedId, string $content): array
+    public function uploadFeedContent(string $feedId, string $fileUrl): array
     {
         if ($this->isDryRun()) {
             return [
@@ -567,27 +566,84 @@ class MerchantApiClient
                 'data' => [
                     'feedId' => $feedId,
                     'status' => 'content_uploaded',
-                    'contentLength' => strlen($content),
+                    'fileUrl' => $fileUrl,
                 ],
-                'message' => 'Dry run: Would upload ' . strlen($content) . ' bytes to feed "' . $feedId . '"',
+                'message' => 'Dry run: Would update fetch URL for feed "' . $feedId . '" to ' . $fileUrl,
             ];
         }
 
-        // Since GMC requires a fetch URL, we need to either:
-        // 1. Host the file at a public URL and update the feed's fetchUrl
-        // 2. Use the Content API batch upload (more complex)
-        
-        // For now, we'll return info about how to complete the upload
-        return [
-            'success' => true,
-            'data' => [
-                'feedId' => $feedId,
-                'status' => 'file_ready',
-                'message' => 'Feed file generated. Upload to GMC via Merchant Center console or configure fetch URL.',
-                'contentLength' => strlen($content),
-            ],
-            'note' => 'Direct content upload requires hosting the file at a public URL and configuring the datafeed to fetch from it.',
-        ];
+        try {
+            $creds = $this->loadCredentials();
+
+            $credentials = new ServiceAccountCredentials(
+                ['https://www.googleapis.com/auth/content'],
+                $creds
+            );
+
+            $authToken = $credentials->fetchAuthToken();
+            $accessToken = $authToken['access_token'] ?? null;
+
+            if (!$accessToken) {
+                throw new \Exception('Failed to obtain access token');
+            }
+
+            // Update fetch URL via patch
+            $url = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds/{$feedId}";
+
+            $feedData = [
+                'fetchSchedule' => [
+                    'fetchUrl' => $fileUrl,
+                    'paused' => false,
+                ],
+            ];
+
+            $response = wp_remote_request($url, [
+                'method' => 'PATCH',
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Content-Type' => 'application/json',
+                ],
+                'body' => wp_json_encode($feedData),
+                'timeout' => 30,
+            ]);
+
+            if (is_wp_error($response)) {
+                throw new \Exception($response->get_error_message());
+            }
+
+            $statusCode = wp_remote_retrieve_response_code($response);
+            $body = wp_remote_retrieve_body($response);
+            $responseData = json_decode($body, true);
+
+            if ($statusCode >= 400) {
+                $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
+                throw new \Exception($errorMessage);
+            }
+
+            // Trigger immediate fetch
+            $fetchUrl = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/datafeeds/{$feedId}/fetchNow";
+            wp_remote_post($fetchUrl, [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $accessToken,
+                ],
+                'timeout' => 10,
+            ]);
+
+            return [
+                'success' => true,
+                'data' => [
+                    'feedId' => $feedId,
+                    'status' => 'updated',
+                    'fetchUrl' => $fileUrl,
+                    'message' => 'Feed fetch URL updated and fetch triggered.',
+                ],
+            ];
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     /**

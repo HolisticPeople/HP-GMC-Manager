@@ -385,18 +385,18 @@ class FeedManager
             $feed = self::get($feedId);
         }
 
-        // Read file content
-        $content = file_get_contents($feed['file_path']);
-        if ($content === false) {
-            return ['success' => false, 'error' => 'Failed to read feed file'];
+        // Get file URL
+        $fileUrl = self::getFileUrl($feedId);
+        if (empty($fileUrl)) {
+            return ['success' => false, 'error' => 'Feed file URL not found'];
         }
 
         $client = new MerchantApiClient();
 
         // Check if feed already exists in GMC
         if (!empty($feed['gmc_feed_id'])) {
-            // Update existing feed
-            $result = $client->uploadFeedContent($feed['gmc_feed_id'], $content);
+            // Update existing feed URL and fetch
+            $result = $client->uploadFeedContent($feed['gmc_feed_id'], $fileUrl);
         } else {
             // Create new supplemental feed
             $createResult = $client->createSupplementalFeed($feed['name']);
@@ -406,14 +406,14 @@ class FeedManager
                 return $createResult;
             }
 
-            $gmcFeedId = $createResult['data']['feedId'] ?? $createResult['data']['name'] ?? null;
+            $gmcFeedId = $createResult['data']['id'] ?? $createResult['data']['feedId'] ?? null;
             
             if ($gmcFeedId) {
                 self::update($feedId, ['gmc_feed_id' => $gmcFeedId]);
             }
 
-            // Upload content
-            $result = $client->uploadFeedContent($gmcFeedId, $content);
+            // Update URL and fetch
+            $result = $client->uploadFeedContent($gmcFeedId, $fileUrl);
         }
 
         if ($result['success']) {
