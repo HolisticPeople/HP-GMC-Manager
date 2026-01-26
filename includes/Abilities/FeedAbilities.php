@@ -233,9 +233,18 @@ class FeedAbilities
             return ['success' => false, 'error' => 'Feed ID is required'];
         }
 
-        $result = FeedManager::uploadToGMC($feedId);
-
-        return $result;
+        try {
+            $result = FeedManager::uploadToGMC($feedId);
+            return $result;
+        } catch (\Throwable $e) {
+            error_log('[HP-GMC] Feed upload exception: ' . $e->getMessage() . ' | Trace: ' . $e->getTraceAsString());
+            return [
+                'success' => false,
+                'error' => 'Exception during upload: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ];
+        }
     }
 
     /**
@@ -249,7 +258,15 @@ class FeedAbilities
             return ['success' => false, 'error' => 'Feed ID is required'];
         }
 
-        return FeedManager::checkGMCStatus($feedId);
+        try {
+            return FeedManager::checkGMCStatus($feedId);
+        } catch (\Throwable $e) {
+            error_log('[HP-GMC] Feed status check exception: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'error' => 'Exception: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
