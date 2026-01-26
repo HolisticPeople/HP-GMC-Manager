@@ -319,8 +319,7 @@ class MerchantApiClient
         $feedData['fetchSchedule']['fetchUrl'] = $fileUrl;
         $feedData['fetchSchedule']['paused'] = false;
         
-        // Remove read-only fields that can't be sent in update
-        unset($feedData['id']);
+        // Remove read-only fields that can't be sent in update (but keep id - it's required)
         unset($feedData['kind']);
         
         // PUT the updated feed (full replacement)
