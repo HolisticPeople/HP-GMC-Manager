@@ -339,7 +339,7 @@ class IssueClassifier
     }
 
     /**
-     * Get issue summary with counts by tier.
+     * Get issue summary with counts by tier and destination.
      */
     public static function getIssueSummary(): array
     {
@@ -352,20 +352,41 @@ class IssueClassifier
                 self::TIER_MISCLASSIFIED => ['count' => 0, 'issues' => []],
                 self::TIER_RESTRICTION => ['count' => 0, 'issues' => []],
             ],
+            'by_destination' => [],
         ];
 
         foreach ($products as $tier => $tierProducts) {
             $summary['by_tier'][$tier]['count'] = count($tierProducts);
             $summary['total_products'] += count($tierProducts);
             
-            // Collect issue types
+            // Collect issue types and destination stats
             foreach ($tierProducts as $product) {
+                // Issues
                 foreach ($product['classification']['classifications'] as $classification) {
                     $issue = $classification['issue'];
                     if (!isset($summary['by_tier'][$tier]['issues'][$issue])) {
                         $summary['by_tier'][$tier]['issues'][$issue] = 0;
                     }
                     $summary['by_tier'][$tier]['issues'][$issue]++;
+                }
+
+                // Destinations
+                $destinations = json_decode($product['destinations'] ?? '[]', true) ?: [];
+                foreach ($destinations as $dest) {
+                    $ctx = $dest['context'] ?? 'unknown';
+                    if (!isset($summary['by_destination'][$ctx])) {
+                        $summary['by_destination'][$ctx] = [
+                            'total' => 0,
+                            'approved' => 0,
+                            'disapproved' => 0,
+                        ];
+                    }
+                    $summary['by_destination'][$ctx]['total']++;
+                    if (!empty($dest['approved_countries'])) {
+                        $summary['by_destination'][$ctx]['approved']++;
+                    } else {
+                        $summary['by_destination'][$ctx]['disapproved']++;
+                    }
                 }
             }
         }
@@ -424,10 +445,23 @@ class IssueClassifier
     {
         $classification = self::classifyIssue($issueDescription);
         
-        if ($classification['tier'] !== self::TIER_MISCLASSIFIED) {
+        // Allow suggest fix for misclassified OR specific fixable text issues
+        $allowedFixable = ['False or misleading', 'Unsubstantiated.*claim', 'Invalid.*title'];
+        $isAllowedFixable = false;
+        if ($classification['tier'] === self::TIER_FIXABLE && $classification['pattern']) {
+            foreach ($allowedFixable as $pattern) {
+                if (preg_match('/' . $pattern . '/i', $classification['pattern'])) {
+                    $isAllowedFixable = true;
+                    break;
+                }
+            }
+        }
+
+        if ($classification['tier'] !== self::TIER_MISCLASSIFIED && !$isAllowedFixable) {
             return [
                 'success' => false,
-                'error' => 'This issue is not classified as a misclassification. Tier: ' . $classification['tier'],
+                'error' => 'This issue is not eligible for text fix suggestions. Tier: ' . $classification['tier'],
+                'classification' => $classification,
             ];
         }
 
@@ -436,9 +470,23 @@ class IssueClassifier
             return ['success' => false, 'error' => 'Product not found'];
         }
 
-        // Analyze which triggers are present
-        $triggerAnalysis = self::analyzeTriggers($productId, $classification['trigger_keywords']);
+        // Use trigger keywords from classification or default to some health-related ones if fixable
+        $keywords = $classification['trigger_keywords'] ?? ['guaranteed', 'cure', 'treat', 'prevent', 'shield', '5g', 'tachyon'];
         
+        // Analyze which triggers are present
+        $triggerAnalysis = self::analyzeTriggers($productId, $keywords);
+        
+        if (empty($triggerAnalysis['triggers_found'])) {
+            return [
+                'success' => true,
+                'product_id' => $productId,
+                'product_name' => $product->get_name(),
+                'message' => 'No specific trigger keywords found in title or description, but you should review for general health claims.',
+                'classification' => $classification,
+                'suggestions' => [],
+            ];
+        }
+
         $suggestions = [];
         foreach ($triggerAnalysis['triggers_found'] as $trigger) {
             $suggestions[] = [
@@ -454,11 +502,90 @@ class IssueClassifier
             'product_id' => $productId,
             'product_name' => $product->get_name(),
             'issue' => $issueDescription,
-            'likely_cause' => $classification['likely_cause'],
-            'fix_strategy' => $classification['fix_strategy'],
+            'likely_cause' => $classification['likely_cause'] ?? 'Language triggering policy flags',
+            'fix_strategy' => $classification['fix_strategy'] ?? 'Replace or remove problematic keywords',
             'triggers_found' => $triggerAnalysis['triggers_found'],
             'suggestions' => $suggestions,
         ];
+    }
+
+    /**
+     * Batch fix fixable attributes for a list of products.
+     * Only applies fixes where a suggested_value is defined in FIXABLE_PATTERNS.
+     */
+    public static function batchFixFixableAttributes(array $productIds): array
+    {
+        $results = [
+            'total' => count($productIds),
+            'fixed' => 0,
+            'skipped' => 0,
+            'errors' => [],
+            'details' => [],
+        ];
+
+        foreach ($productIds as $productId) {
+            try {
+                $statusRow = self::getProductStatusById($productId);
+                if (!$statusRow) {
+                    $results['skipped']++;
+                    continue;
+                }
+
+                $issues = json_decode($statusRow['issues'], true) ?: [];
+                $classification = self::classifyProduct($issues);
+                
+                $fixedCount = 0;
+                $appliedFixes = [];
+
+                foreach ($classification['classifications'] as $c) {
+                    if ($c['tier'] === self::TIER_FIXABLE && isset($c['details']['suggested_value'])) {
+                        $attr = $c['details']['attribute'];
+                        $val = $c['details']['suggested_value'];
+                        
+                        // Apply attribute fix via WooCommerce meta
+                        // For GLA/GMC, these are often stored in specific meta keys
+                        $metaKey = '_wc_gla_' . $attr; 
+                        update_post_meta($productId, $metaKey, $val);
+                        
+                        $appliedFixes[] = [
+                            'attribute' => $attr,
+                            'value' => $val,
+                        ];
+                        $fixedCount++;
+                    }
+                }
+
+                if ($fixedCount > 0) {
+                    $results['fixed']++;
+                    $results['details'][] = [
+                        'product_id' => $productId,
+                        'fixes' => $appliedFixes,
+                    ];
+                    
+                    AuditLog::log('batch_attribute_fix', [
+                        'product_id' => $productId,
+                        'fixes' => $appliedFixes,
+                    ], ['success' => true]);
+                } else {
+                    $results['skipped']++;
+                }
+
+            } catch (\Exception $e) {
+                $results['errors'][] = "Product {$productId}: " . $e->getMessage();
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Get product status row by WC product ID.
+     */
+    private static function getProductStatusById(int $productId): ?array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+        return $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE product_id = %d", $productId), ARRAY_A);
     }
 
     /**

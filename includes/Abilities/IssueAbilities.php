@@ -73,33 +73,55 @@ class IssueAbilities
     public static function getIssueSummary(array $params): array
     {
         $summary = IssueClassifier::getIssueSummary();
+        $byTier = [
+            'fixable' => [
+                'count' => $summary['by_tier'][IssueClassifier::TIER_FIXABLE]['count'],
+                'description' => 'Products with missing attributes or content issues that can be fixed',
+                'top_issues' => array_slice($summary['by_tier'][IssueClassifier::TIER_FIXABLE]['issues'], 0, 5, true),
+            ],
+            'misclassified' => [
+                'count' => $summary['by_tier'][IssueClassifier::TIER_MISCLASSIFIED]['count'],
+                'description' => 'Likely false positives (prescription drugs, tobacco) - need text corrections, DO NOT EXCLUDE',
+                'top_issues' => array_slice($summary['by_tier'][IssueClassifier::TIER_MISCLASSIFIED]['issues'], 0, 5, true),
+            ],
+            'restriction' => [
+                'count' => $summary['by_tier'][IssueClassifier::TIER_RESTRICTION]['count'],
+                'description' => 'True policy restrictions requiring exclusion feeds',
+                'top_issues' => array_slice($summary['by_tier'][IssueClassifier::TIER_RESTRICTION]['issues'], 0, 5, true),
+            ],
+        ];
 
         return [
             'success' => true,
             'total_products_with_issues' => $summary['total_products'],
-            'by_tier' => [
-                'fixable' => [
-                    'count' => $summary['by_tier'][IssueClassifier::TIER_FIXABLE]['count'],
-                    'description' => 'Products with missing attributes or content issues that can be fixed',
-                    'top_issues' => array_slice($summary['by_tier'][IssueClassifier::TIER_FIXABLE]['issues'], 0, 5, true),
-                ],
-                'misclassified' => [
-                    'count' => $summary['by_tier'][IssueClassifier::TIER_MISCLASSIFIED]['count'],
-                    'description' => 'Likely false positives (prescription drugs, tobacco) - need text corrections, DO NOT EXCLUDE',
-                    'top_issues' => array_slice($summary['by_tier'][IssueClassifier::TIER_MISCLASSIFIED]['issues'], 0, 5, true),
-                ],
-                'restriction' => [
-                    'count' => $summary['by_tier'][IssueClassifier::TIER_RESTRICTION]['count'],
-                    'description' => 'True policy restrictions requiring exclusion feeds',
-                    'top_issues' => array_slice($summary['by_tier'][IssueClassifier::TIER_RESTRICTION]['issues'], 0, 5, true),
-                ],
-            ],
+            'by_tier' => $byTier,
+            'by_destination' => $summary['by_destination'] ?? [],
             'recommended_actions' => [
-                'fixable' => 'Use gmc-suggest-text-fix or edit products directly in WooCommerce',
-                'misclassified' => 'Review trigger keywords with gmc-suggest-text-fix and apply fixes - DO NOT add to exclusion feeds',
-                'restriction' => 'Use gmc-auto-populate-feed or gmc-feed-add-products to add to appropriate exclusion feeds',
+                'fixable' => 'Use gmc-batch-fix-attributes or gmc-suggest-text-fix',
+                'misclassified' => 'Review trigger keywords with gmc-suggest-text-fix and apply fixes',
+                'restriction' => 'Use gmc-auto-populate-feed or gmc-feed-add-products',
             ],
         ];
+    }
+
+    /**
+     * Batch fix fixable attributes for a list of products.
+     */
+    public static function batchFixAttributes(array $params): array
+    {
+        $productIds = $params['product_ids'] ?? [];
+        if (empty($productIds)) {
+            // If no IDs provided, find all products in fixable tier
+            $fixable = IssueClassifier::getProductsByTier(IssueClassifier::TIER_FIXABLE, 100);
+            $productIds = array_column($fixable, 'product_id');
+        }
+
+        if (empty($productIds)) {
+            return ['success' => true, 'message' => 'No fixable products found', 'fixed' => 0];
+        }
+
+        $results = IssueClassifier::batchFixFixableAttributes($productIds);
+        return array_merge(['success' => true], $results);
     }
 
     /**

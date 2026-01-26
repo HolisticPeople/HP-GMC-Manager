@@ -784,7 +784,7 @@ class Plugin
             ],
             'gmc-suggest-text-fix' => [
                 'title' => 'Suggest Text Fix',
-                'description' => 'Analyze a misclassified product and suggest text corrections to avoid policy flags',
+                'description' => 'Analyze a misclassified product or a product with text-based fixable issues and suggest text corrections to avoid policy flags',
                 'callback' => [Abilities\IssueAbilities::class, 'suggestTextFix'],
                 'input_schema' => [
                     'type' => 'object',
@@ -799,6 +799,22 @@ class Plugin
                         ],
                     ],
                     'required' => ['product_id', 'issue'],
+                ],
+                'category' => 'product',
+            ],
+            'gmc-batch-fix-attributes' => [
+                'title' => 'Batch Fix Attributes',
+                'description' => 'Automatically apply standard fixes for missing attributes (age group, gender) to fixable products',
+                'callback' => [Abilities\IssueAbilities::class, 'batchFixAttributes'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'product_ids' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'integer'],
+                            'description' => 'Optional: specific product IDs to fix. If empty, fixes all products in fixable tier.',
+                        ],
+                    ],
                 ],
                 'category' => 'product',
             ],
