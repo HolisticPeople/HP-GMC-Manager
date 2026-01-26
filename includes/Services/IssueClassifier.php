@@ -87,6 +87,12 @@ class IssueClassifier
             'fix' => 'Remove health claims, use compliant language',
             'field' => 'description',
         ],
+        'misleading claims' => [
+            'type' => 'text',
+            'fix' => 'Remove health claims, use compliant language',
+            'field' => 'description',
+            'trigger_keywords' => ['guaranteed', 'cure', 'treat', 'prevent', 'shield', '5g', 'tachyon', 'protection', 'healing'],
+        ],
         'Unsubstantiated.*claim' => [
             'type' => 'text',
             'fix' => 'Remove or substantiate health claims',
@@ -475,6 +481,10 @@ class IssueClassifier
         
         // Analyze which triggers are present
         $triggerAnalysis = self::analyzeTriggers($productId, $keywords);
+        
+        if (!$triggerAnalysis['success']) {
+            return $triggerAnalysis;
+        }
         
         if (empty($triggerAnalysis['triggers_found'])) {
             return [
