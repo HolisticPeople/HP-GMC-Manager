@@ -797,8 +797,17 @@
                 success: function(response) {
                     $('#hp-gmc-pending-products-loading').hide();
                     
+                    // Debug info
+                    let debugHtml = '<div style="background:#f0f0f0;padding:10px;margin-bottom:10px;font-size:11px;">';
+                    debugHtml += '<strong>Debug:</strong> ';
+                    debugHtml += 'category="' + (response.data.category || 'null') + '", ';
+                    debugHtml += 'category_lower="' + (response.data.category_lower || 'null') + '", ';
+                    debugHtml += 'patterns=' + JSON.stringify(response.data.patterns_found || []) + ', ';
+                    debugHtml += 'pending_count=' + (response.data.pending_count || 0);
+                    debugHtml += '</div>';
+                    
                     if (response.success && response.data.products.length > 0) {
-                        let html = '<table class="wp-list-table widefat fixed striped">';
+                        let html = debugHtml + '<table class="wp-list-table widefat fixed striped">';
                         html += '<thead><tr><th>SKU</th><th>Product</th><th>Matched Issue</th></tr></thead><tbody>';
                         
                         response.data.products.forEach(function(product) {
@@ -813,7 +822,7 @@
                         $('#hp-gmc-pending-products-list').html(html);
                         $('#hp-gmc-add-all-pending').show();
                     } else {
-                        $('#hp-gmc-pending-products-list').html('<p>No pending products found.</p>');
+                        $('#hp-gmc-pending-products-list').html(debugHtml + '<p>No pending products found.</p>');
                         $('#hp-gmc-add-all-pending').hide();
                     }
                 },

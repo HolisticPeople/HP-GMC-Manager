@@ -741,6 +741,9 @@ class FeedManager
             ARRAY_A
         );
 
+        // Debug: log products found and patterns
+        error_log("getPendingProducts: category=$category, patterns=" . json_encode($patterns) . ", products_found=" . count($products));
+
         $pending = [];
         foreach ($products as $row) {
             // Fetch issues separately (same pattern as working count logic)
