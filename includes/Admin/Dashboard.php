@@ -927,7 +927,7 @@ class Dashboard
                         </td>
                         <td>
                             <strong>
-                                <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>">
+                                <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id']) . '#feeds'); ?>">
                                     <?php echo esc_html($feed['name']); ?>
                                 </a>
                             </strong>
@@ -970,14 +970,15 @@ class Dashboard
                         <td>
                             <?php 
                             if ($feed['last_uploaded']) {
-                                echo esc_html(human_time_diff(strtotime($feed['last_uploaded']), time()) . ' ago');
+                                // Use current_time('timestamp') to match WordPress timezone used in storage
+                                echo esc_html(human_time_diff(strtotime($feed['last_uploaded']), current_time('timestamp')) . ' ago');
                             } else {
                                 echo '<span class="hp-gmc-not-uploaded">' . esc_html__('Never', 'hp-gmc-manager') . '</span>';
                             }
                             ?>
                         </td>
                         <td class="hp-gmc-feed-actions-cell">
-                            <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>" class="button button-small" title="<?php esc_attr_e('View details', 'hp-gmc-manager'); ?>">
+                            <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id']) . '#feeds'); ?>" class="button button-small" title="<?php esc_attr_e('View details', 'hp-gmc-manager'); ?>">
                                 <?php esc_html_e('View', 'hp-gmc-manager'); ?>
                             </a>
                             <?php if ((int)$feed['product_count'] > 0): ?>
