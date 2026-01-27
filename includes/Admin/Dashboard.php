@@ -729,7 +729,7 @@ class Dashboard
             <!-- Feed Detail View -->
             <div class="hp-gmc-feed-detail">
                 <div class="hp-gmc-feed-detail-header">
-                    <a href="<?php echo esc_url(remove_query_arg('feed_id')); ?>" class="button">&larr; <?php esc_html_e('Back to List', 'hp-gmc-manager'); ?></a>
+                    <a href="<?php echo esc_url(remove_query_arg('feed_id') . '#feeds'); ?>" class="button">&larr; <?php esc_html_e('Back to List', 'hp-gmc-manager'); ?></a>
                     <h3><?php echo esc_html($selectedFeed['name']); ?></h3>
                     <span class="hp-gmc-feed-type-badge hp-gmc-feed-type-<?php echo esc_attr($selectedFeed['feed_type']); ?>">
                         <?php echo esc_html(ucfirst($selectedFeed['feed_type'])); ?>
