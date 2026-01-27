@@ -845,17 +845,38 @@ class Dashboard
             </div>
             <?php else: ?>
             
+            <!-- Bulk Actions Bar -->
+            <div class="hp-gmc-feeds-toolbar">
+                <div class="hp-gmc-bulk-actions">
+                    <input type="checkbox" id="hp-gmc-select-all-feeds" title="<?php esc_attr_e('Select All', 'hp-gmc-manager'); ?>">
+                    <select id="hp-gmc-bulk-action">
+                        <option value=""><?php esc_html_e('Bulk Actions', 'hp-gmc-manager'); ?></option>
+                        <option value="refresh"><?php esc_html_e('Refresh Status', 'hp-gmc-manager'); ?></option>
+                        <option value="upload"><?php esc_html_e('Upload to GMC', 'hp-gmc-manager'); ?></option>
+                        <option value="delete"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></option>
+                    </select>
+                    <button type="button" class="button" id="hp-gmc-apply-bulk-action"><?php esc_html_e('Apply', 'hp-gmc-manager'); ?></button>
+                </div>
+                <div class="hp-gmc-feeds-toolbar-right">
+                    <button type="button" class="button" id="hp-gmc-refresh-all-feeds" title="<?php esc_attr_e('Refresh GMC status for all uploaded feeds', 'hp-gmc-manager'); ?>">
+                        <span class="dashicons dashicons-update"></span> <?php esc_html_e('Refresh All', 'hp-gmc-manager'); ?>
+                    </button>
+                </div>
+            </div>
+            
             <h3><?php esc_html_e('All Feeds', 'hp-gmc-manager'); ?></h3>
             <table class="wp-list-table widefat fixed striped hp-gmc-feeds-table">
                 <thead>
                     <tr>
-                        <th style="width:22%"><?php esc_html_e('Feed Name', 'hp-gmc-manager'); ?></th>
-                        <th style="width:8%"><?php esc_html_e('Type', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%"><?php esc_html_e('Status', 'hp-gmc-manager'); ?></th>
-                        <th style="width:18%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
-                        <th style="width:12%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
-                        <th style="width:12%"><?php esc_html_e('GMC Status', 'hp-gmc-manager'); ?></th>
-                        <th style="width:18%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                        <th style="width:3%" class="check-column"><span class="screen-reader-text"><?php esc_html_e('Select', 'hp-gmc-manager'); ?></span></th>
+                        <th style="width:4%" title="<?php esc_attr_e('Feed health: green = active, yellow = pending products, red = errors', 'hp-gmc-manager'); ?>"></th>
+                        <th style="width:18%"><?php esc_html_e('Feed Name', 'hp-gmc-manager'); ?></th>
+                        <th style="width:7%"><?php esc_html_e('Type', 'hp-gmc-manager'); ?></th>
+                        <th style="width:8%" title="<?php esc_attr_e('Local feed state (Draft/Ready/Uploaded/Live)', 'hp-gmc-manager'); ?>"><?php esc_html_e('Local', 'hp-gmc-manager'); ?></th>
+                        <th style="width:9%" title="<?php esc_attr_e('Google Merchant Center processing state', 'hp-gmc-manager'); ?>"><?php esc_html_e('GMC', 'hp-gmc-manager'); ?></th>
+                        <th style="width:13%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
+                        <th style="width:28%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -874,8 +895,36 @@ class Dashboard
                             'error' => ['label' => 'Error', 'class' => 'error'],
                         ];
                         $statusInfo = $statusLabels[$feed['status']] ?? $statusLabels['draft'];
+                        
+                        // Determine health indicator
+                        $healthClass = 'neutral';
+                        $healthTitle = __('Not uploaded', 'hp-gmc-manager');
+                        if ($feed['status'] === 'error' || $feed['gmc_status'] === 'failed' || $feed['gmc_status'] === 'error') {
+                            $healthClass = 'error';
+                            $healthTitle = __('Feed has errors', 'hp-gmc-manager');
+                        } elseif ($feed['status'] === 'active' && in_array($feed['gmc_status'], ['success', 'active', 'completed'])) {
+                            if ($pendingCount > 0) {
+                                $healthClass = 'warning';
+                                $healthTitle = sprintf(__('Live but %d pending products', 'hp-gmc-manager'), $pendingCount);
+                            } else {
+                                $healthClass = 'success';
+                                $healthTitle = __('Feed active, all products covered', 'hp-gmc-manager');
+                            }
+                        } elseif ($feed['status'] === 'processing' || $feed['gmc_status'] === 'processing') {
+                            $healthClass = 'processing';
+                            $healthTitle = __('Processing in GMC', 'hp-gmc-manager');
+                        } elseif ($feed['file_url'] && !$feed['gmc_feed_id']) {
+                            $healthClass = 'ready';
+                            $healthTitle = __('Ready to upload', 'hp-gmc-manager');
+                        }
                     ?>
                     <tr data-feed-id="<?php echo esc_attr($feed['id']); ?>">
+                        <td class="check-column">
+                            <input type="checkbox" class="hp-gmc-feed-checkbox" value="<?php echo esc_attr($feed['id']); ?>">
+                        </td>
+                        <td class="hp-gmc-health-column">
+                            <span class="hp-gmc-health-indicator hp-gmc-health-<?php echo esc_attr($healthClass); ?>" title="<?php echo esc_attr($healthTitle); ?>"></span>
+                        </td>
                         <td>
                             <strong>
                                 <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>">
@@ -897,12 +946,20 @@ class Dashboard
                             </span>
                         </td>
                         <td>
+                            <?php if ($feed['gmc_status']): ?>
+                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-<?php echo esc_attr($feed['gmc_status']); ?>">
+                                <?php echo esc_html(ucfirst($feed['gmc_status'])); ?>
+                            </span>
+                            <?php else: ?>
+                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-none"><?php esc_html_e('Not uploaded', 'hp-gmc-manager'); ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
                             <span class="hp-gmc-feed-product-stats">
                                 <strong><?php echo esc_html($feed['product_count']); ?></strong>
-                                <?php esc_html_e('included', 'hp-gmc-manager'); ?>
                                 <?php if ($pendingCount > 0): ?>
-                                <br><span class="hp-gmc-pending-count" title="<?php esc_attr_e('Products with matching issues not yet in this feed', 'hp-gmc-manager'); ?>">
-                                    +<?php echo esc_html($pendingCount); ?> <?php esc_html_e('pending', 'hp-gmc-manager'); ?>
+                                <span class="hp-gmc-pending-count" title="<?php esc_attr_e('Products with matching issues not yet in this feed', 'hp-gmc-manager'); ?>">
+                                    (+<?php echo esc_html($pendingCount); ?>)
                                 </span>
                                 <?php endif; ?>
                             </span>
@@ -916,22 +973,35 @@ class Dashboard
                             }
                             ?>
                         </td>
-                        <td>
-                            <?php if ($feed['gmc_status']): ?>
-                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-<?php echo esc_attr($feed['gmc_status']); ?>">
-                                <?php echo esc_html(ucfirst($feed['gmc_status'])); ?>
-                            </span>
-                            <?php else: ?>
-                            -
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>" class="button button-small">
+                        <td class="hp-gmc-feed-actions-cell">
+                            <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id'])); ?>" class="button button-small" title="<?php esc_attr_e('View details', 'hp-gmc-manager'); ?>">
                                 <?php esc_html_e('View', 'hp-gmc-manager'); ?>
                             </a>
+                            <?php if ((int)$feed['product_count'] > 0): ?>
+                                <?php if (!$feed['file_url'] || !$feed['gmc_feed_id']): ?>
+                                <button type="button" class="button button-small button-primary hp-gmc-feed-publish" 
+                                        data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
+                                        title="<?php esc_attr_e('Generate file and upload to GMC', 'hp-gmc-manager'); ?>">
+                                    <?php esc_html_e('Publish', 'hp-gmc-manager'); ?>
+                                </button>
+                                <?php else: ?>
+                                <button type="button" class="button button-small hp-gmc-feed-upload" 
+                                        data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
+                                        title="<?php esc_attr_e('Re-upload to GMC', 'hp-gmc-manager'); ?>">
+                                    <?php esc_html_e('Upload', 'hp-gmc-manager'); ?>
+                                </button>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <?php if ($feed['gmc_feed_id']): ?>
+                            <button type="button" class="button button-small hp-gmc-feed-check-status" 
+                                    data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
+                                    title="<?php esc_attr_e('Refresh GMC status', 'hp-gmc-manager'); ?>">
+                                <span class="dashicons dashicons-update-alt"></span>
+                            </button>
+                            <?php endif; ?>
                             <?php if ($feed['file_url']): ?>
-                            <a href="<?php echo esc_url($feed['file_url']); ?>" class="button button-small" download>
-                                <?php esc_html_e('Download', 'hp-gmc-manager'); ?>
+                            <a href="<?php echo esc_url($feed['file_url']); ?>" class="button button-small" download title="<?php esc_attr_e('Download feed file', 'hp-gmc-manager'); ?>">
+                                <span class="dashicons dashicons-download"></span>
                             </a>
                             <?php endif; ?>
                         </td>

@@ -446,6 +446,12 @@
             $(document).on('click', '.hp-gmc-feed-check-status', this.checkFeedStatus.bind(this));
             $(document).on('click', '.hp-gmc-feed-delete', this.deleteFeed.bind(this));
             $(document).on('click', '.hp-gmc-remove-product', this.removeProductFromFeed.bind(this));
+            $(document).on('click', '.hp-gmc-feed-publish', this.publishFeed.bind(this));
+            
+            // Bulk actions
+            $('#hp-gmc-refresh-all-feeds').on('click', this.refreshAllFeedStatuses.bind(this));
+            $('#hp-gmc-select-all-feeds').on('change', this.toggleSelectAllFeeds.bind(this));
+            $('#hp-gmc-apply-bulk-action').on('click', this.applyBulkFeedAction.bind(this));
             
             // Add product
             $('#hp-gmc-add-product-btn').on('click', this.addProductToFeed.bind(this));
@@ -625,11 +631,11 @@
         },
         
         checkFeedStatus: function(e) {
-            const feedId = $(e.target).data('feed-id');
-            const $btn = $(e.target);
-            const originalText = $btn.text();
+            const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
+            const $btn = $(e.target).closest('button');
+            const originalHtml = $btn.html();
             
-            $btn.prop('disabled', true).text('Checking...');
+            $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
             
             $.ajax({
                 url: hpGmcData.ajaxUrl,
@@ -641,7 +647,6 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        alert('GMC Status: ' + JSON.stringify(response.data.data, null, 2));
                         location.reload();
                     } else {
                         alert(response.data?.error || 'Failed to check status');
@@ -651,6 +656,118 @@
                     alert('Network error');
                 },
                 complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        },
+        
+        publishFeed: function(e) {
+            const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
+            const $btn = $(e.target).closest('button');
+            const originalText = $btn.text();
+            
+            $btn.prop('disabled', true).text('Publishing...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_publish_feed',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert(response.data?.message || 'Failed to publish feed');
+                        $btn.prop('disabled', false).text(originalText);
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        refreshAllFeedStatuses: function() {
+            const $btn = $('#hp-gmc-refresh-all-feeds');
+            const originalHtml = $btn.html();
+            
+            $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Refreshing...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_refresh_all_feed_statuses',
+                    nonce: hpGmcData.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert('Failed to refresh statuses');
+                        $btn.prop('disabled', false).html(originalHtml);
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        },
+        
+        toggleSelectAllFeeds: function(e) {
+            const isChecked = $(e.target).prop('checked');
+            $('.hp-gmc-feed-checkbox').prop('checked', isChecked);
+        },
+        
+        applyBulkFeedAction: function() {
+            const action = $('#hp-gmc-bulk-action').val();
+            const feedIds = $('.hp-gmc-feed-checkbox:checked').map(function() {
+                return $(this).val();
+            }).get();
+            
+            if (!action) {
+                alert('Please select a bulk action');
+                return;
+            }
+            
+            if (feedIds.length === 0) {
+                alert('Please select at least one feed');
+                return;
+            }
+            
+            if (action === 'delete' && !confirm('Are you sure you want to delete ' + feedIds.length + ' feed(s)?')) {
+                return;
+            }
+            
+            const $btn = $('#hp-gmc-apply-bulk-action');
+            const originalText = $btn.text();
+            
+            $btn.prop('disabled', true).text('Processing...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_bulk_feed_action',
+                    nonce: hpGmcData.nonce,
+                    bulk_action: action,
+                    feed_ids: feedIds
+                },
+                success: function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert(response.data?.message || 'Bulk action failed');
+                        $btn.prop('disabled', false).text(originalText);
+                    }
+                },
+                error: function() {
+                    alert('Network error');
                     $btn.prop('disabled', false).text(originalText);
                 }
             });

@@ -1232,6 +1232,131 @@
     color: #721c24;
 }
 
+.hp-gmc-gmc-status-none {
+    background: #f0f0f0;
+    color: #666;
+    font-style: italic;
+}
+
+/* Feed Health Indicators */
+.hp-gmc-health-column {
+    text-align: center;
+}
+
+.hp-gmc-health-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+
+.hp-gmc-health-success {
+    background: #00a32a;
+}
+
+.hp-gmc-health-warning {
+    background: #dba617;
+}
+
+.hp-gmc-health-error {
+    background: #d63638;
+}
+
+.hp-gmc-health-processing {
+    background: #2271b1;
+    animation: pulse-processing 1.5s infinite;
+}
+
+.hp-gmc-health-ready {
+    background: #72aee6;
+}
+
+.hp-gmc-health-neutral {
+    background: #c3c4c7;
+}
+
+@keyframes pulse-processing {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Feeds Toolbar */
+.hp-gmc-feeds-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding: 10px 0;
+    border-bottom: 1px solid #ddd;
+}
+
+.hp-gmc-bulk-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hp-gmc-bulk-actions input[type="checkbox"] {
+    margin: 0;
+}
+
+.hp-gmc-feeds-toolbar-right {
+    display: flex;
+    gap: 10px;
+}
+
+.hp-gmc-feeds-toolbar-right .button .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: text-bottom;
+}
+
+/* Feed Actions Cell */
+.hp-gmc-feed-actions-cell {
+    white-space: nowrap;
+}
+
+.hp-gmc-feed-actions-cell .button {
+    margin-right: 4px;
+    margin-bottom: 2px;
+}
+
+.hp-gmc-feed-actions-cell .button .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+.hp-gmc-feed-actions-cell .button-small {
+    padding: 0 6px;
+    min-height: 24px;
+    line-height: 22px;
+}
+
+/* Spin animation for refresh icons */
+.dashicons.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Check column styling */
+.hp-gmc-feeds-table .check-column {
+    width: 30px;
+    padding: 8px 0 8px 3px;
+}
+
+.hp-gmc-feeds-table .check-column input[type="checkbox"] {
+    margin: 0;
+}
+
 /* Large Modal */
 .hp-gmc-modal-lg {
     max-width: 700px;

@@ -60,6 +60,9 @@ class Plugin
         add_action('wp_ajax_hp_gmc_remove_product_from_feed', [self::class, 'ajax_remove_product_from_feed']);
         add_action('wp_ajax_hp_gmc_search_products', [self::class, 'ajax_search_products']);
         add_action('wp_ajax_hp_gmc_bulk_add_to_feed', [self::class, 'ajax_bulk_add_to_feed']);
+        add_action('wp_ajax_hp_gmc_refresh_all_feed_statuses', [self::class, 'ajax_refresh_all_feed_statuses']);
+        add_action('wp_ajax_hp_gmc_publish_feed', [self::class, 'ajax_publish_feed']);
+        add_action('wp_ajax_hp_gmc_bulk_feed_action', [self::class, 'ajax_bulk_feed_action']);
         
         // Issue classifier / review workflow AJAX handlers
         add_action('wp_ajax_hp_gmc_analyze_triggers', [self::class, 'ajax_analyze_triggers']);
@@ -1127,6 +1130,146 @@ class Plugin
         } else {
             wp_send_json_error($result);
         }
+    }
+
+    /**
+     * AJAX: Refresh all feed statuses from GMC.
+     */
+    public static function ajax_refresh_all_feed_statuses(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feeds = Services\FeedManager::getAll();
+        $results = [];
+        $refreshed = 0;
+
+        foreach ($feeds as $feed) {
+            if (!empty($feed['gmc_feed_id'])) {
+                $result = Services\FeedManager::checkGMCStatus((int)$feed['id']);
+                $results[$feed['id']] = $result;
+                if ($result['success']) {
+                    $refreshed++;
+                }
+            }
+        }
+
+        wp_send_json_success([
+            'results' => $results,
+            'refreshed' => $refreshed,
+            'total' => count($feeds),
+        ]);
+    }
+
+    /**
+     * AJAX: Publish feed (generate + upload in one step).
+     */
+    public static function ajax_publish_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        // Step 1: Generate the file
+        $generateResult = Services\FeedManager::generateFile($feedId);
+        
+        if (!$generateResult['success']) {
+            wp_send_json_error([
+                'message' => 'Failed to generate file: ' . ($generateResult['error'] ?? 'Unknown error'),
+                'step' => 'generate',
+            ]);
+        }
+
+        // Step 2: Upload to GMC
+        $uploadResult = Services\FeedManager::uploadToGMC($feedId);
+        
+        if (!$uploadResult['success']) {
+            wp_send_json_error([
+                'message' => 'File generated but upload failed: ' . ($uploadResult['error'] ?? 'Unknown error'),
+                'step' => 'upload',
+                'file_url' => $generateResult['file_url'] ?? null,
+            ]);
+        }
+
+        wp_send_json_success([
+            'message' => 'Feed published successfully',
+            'file_url' => $generateResult['file_url'] ?? null,
+            'gmc_feed_id' => $uploadResult['gmc_feed_id'] ?? null,
+        ]);
+    }
+
+    /**
+     * AJAX: Bulk feed action (refresh, upload, delete).
+     */
+    public static function ajax_bulk_feed_action(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $action = sanitize_text_field($_POST['bulk_action'] ?? '');
+        $feedIds = array_map('intval', (array) ($_POST['feed_ids'] ?? []));
+
+        if (empty($action) || empty($feedIds)) {
+            wp_send_json_error(['message' => 'Action and feed IDs are required']);
+        }
+
+        $results = [];
+        $successCount = 0;
+
+        foreach ($feedIds as $feedId) {
+            switch ($action) {
+                case 'refresh':
+                    $feed = Services\FeedManager::get($feedId);
+                    if ($feed && !empty($feed['gmc_feed_id'])) {
+                        $result = Services\FeedManager::checkGMCStatus($feedId);
+                        $results[$feedId] = $result;
+                        if ($result['success']) {
+                            $successCount++;
+                        }
+                    }
+                    break;
+
+                case 'upload':
+                    $feed = Services\FeedManager::get($feedId);
+                    if ($feed && !empty($feed['file_url'])) {
+                        $result = Services\FeedManager::uploadToGMC($feedId);
+                        $results[$feedId] = $result;
+                        if ($result['success']) {
+                            $successCount++;
+                        }
+                    }
+                    break;
+
+                case 'delete':
+                    $result = Services\FeedManager::delete($feedId);
+                    $results[$feedId] = ['success' => $result];
+                    if ($result) {
+                        $successCount++;
+                    }
+                    break;
+            }
+        }
+
+        wp_send_json_success([
+            'action' => $action,
+            'results' => $results,
+            'success_count' => $successCount,
+            'total' => count($feedIds),
+        ]);
     }
 
     /**
