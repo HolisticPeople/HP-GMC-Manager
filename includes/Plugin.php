@@ -1300,7 +1300,9 @@ class Plugin
         $patterns = Services\FeedManager::getCategoryPatterns();
         $matchedPatterns = $patterns[strtolower($category)] ?? [];
         
-        $pending = Services\FeedManager::getPendingProducts($category);
+        $result = Services\FeedManager::getPendingProducts($category);
+        $pending = $result['products'] ?? [];
+        $debug = $result['debug'] ?? [];
 
         wp_send_json_success([
             'feed_id' => $feedId,
@@ -1309,6 +1311,7 @@ class Plugin
             'category_lower' => strtolower($category),
             'patterns_found' => $matchedPatterns,
             'pending_count' => count($pending),
+            'query_debug' => $debug,
             'products' => $pending,
         ]);
     }

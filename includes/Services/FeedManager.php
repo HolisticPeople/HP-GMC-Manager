@@ -741,29 +741,46 @@ class FeedManager
             ARRAY_A
         );
 
-        // Debug: log products found and patterns
-        error_log("getPendingProducts: category=$category, patterns=" . json_encode($patterns) . ", products_found=" . count($products));
-
+        // Use the EXACT same logic as countProductsNotInFeeds
+        // to ensure consistency
         $pending = [];
+        $debugInfo = [
+            'products_in_query' => count($products),
+            'products_checked' => 0,
+            'products_with_issues' => 0,
+            'pattern_matches' => 0,
+        ];
+        
         foreach ($products as $row) {
-            // Fetch issues separately (same pattern as working count logic)
+            $debugInfo['products_checked']++;
+            
             $productStatus = $wpdb->get_row($wpdb->prepare(
-                "SELECT sku, issues, status FROM $statusTable WHERE product_id = %d",
+                "SELECT issues FROM $statusTable WHERE product_id = %d",
                 $row['product_id']
             ));
             
             if ($productStatus && $productStatus->issues) {
+                $debugInfo['products_with_issues']++;
                 $issues = json_decode($productStatus->issues, true) ?: [];
+                
                 foreach ($issues as $issue) {
                     $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
                     foreach ($patterns as $pattern) {
                         if (preg_match('/' . $pattern . '/i', $desc)) {
+                            $debugInfo['pattern_matches']++;
+                            
+                            // Get additional info for display
+                            $fullStatus = $wpdb->get_row($wpdb->prepare(
+                                "SELECT sku, status FROM $statusTable WHERE product_id = %d",
+                                $row['product_id']
+                            ));
                             $product = wc_get_product($row['product_id']);
+                            
                             $pending[] = [
                                 'product_id' => (int) $row['product_id'],
-                                'sku' => $productStatus->sku ?: ($product ? $product->get_sku() : ''),
+                                'sku' => $fullStatus->sku ?: ($product ? $product->get_sku() : ''),
                                 'name' => $product ? $product->get_name() : 'Unknown',
-                                'status' => $productStatus->status,
+                                'status' => $fullStatus->status ?? 'unknown',
                                 'matched_issue' => $desc,
                                 'matched_pattern' => $pattern,
                             ];
@@ -773,8 +790,12 @@ class FeedManager
                 }
             }
         }
-
-        return $pending;
+        
+        // Return pending products along with debug info
+        return [
+            'products' => $pending,
+            'debug' => $debugInfo,
+        ];
     }
 
     /**
@@ -790,7 +811,8 @@ class FeedManager
             return ['success' => false, 'error' => 'Feed not found'];
         }
 
-        $pending = self::getPendingProducts($feed['category']);
+        $result = self::getPendingProducts($feed['category']);
+        $pending = $result['products'] ?? [];
         if (empty($pending)) {
             return ['success' => true, 'added' => 0, 'message' => 'No pending products to add'];
         }
