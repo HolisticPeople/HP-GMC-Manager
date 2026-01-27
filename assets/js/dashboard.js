@@ -650,13 +650,39 @@
                 },
                 success: function(response) {
                     if (response.success) {
+                        // Show status summary before reload
+                        const summary = response.data?.status_summary;
+                        const rawData = response.data?.data;
+                        
+                        let msg = 'GMC Status Updated\n\n';
+                        
+                        if (summary) {
+                            msg += 'Processing Status: ' + (summary.processing_status || 'unknown') + '\n';
+                            msg += 'Items Total: ' + (summary.items_total || 0) + '\n';
+                            msg += 'Items Valid: ' + (summary.items_valid || 0) + '\n';
+                            msg += 'Errors: ' + (summary.error_count || 0) + '\n';
+                            msg += 'Warnings: ' + (summary.warning_count || 0) + '\n';
+                            
+                            if (summary.errors && summary.errors.length > 0) {
+                                msg += '\nFirst Errors:\n';
+                                summary.errors.forEach(function(err, i) {
+                                    msg += (i+1) + '. ' + (err.message || JSON.stringify(err)) + '\n';
+                                });
+                            }
+                        } else if (rawData) {
+                            msg += 'Raw Response:\n' + JSON.stringify(rawData, null, 2);
+                        } else {
+                            msg += 'Raw Response:\n' + JSON.stringify(response.data, null, 2);
+                        }
+                        
+                        alert(msg);
                         location.reload();
                     } else {
-                        alert(response.data?.error || 'Failed to check status');
+                        alert('Failed to check status:\n\n' + JSON.stringify(response.data, null, 2));
                     }
                 },
-                error: function() {
-                    alert('Network error');
+                error: function(xhr, status, error) {
+                    alert('Network error: ' + error);
                 },
                 complete: function() {
                     $btn.prop('disabled', false).html(originalHtml);

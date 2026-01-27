@@ -335,11 +335,19 @@ class MerchantApiClient
     }
 
     /**
-     * Get datafeed status.
+     * Get datafeed configuration.
+     */
+    public function getDatafeed(string $feedId): array
+    {
+        return $this->call('GET', "datafeeds/{$feedId}", [], 'content');
+    }
+
+    /**
+     * Get datafeed processing status (itemsTotal, itemsValid, processingStatus, etc.)
      */
     public function getDatafeedStatus(string $feedId): array
     {
-        return $this->call('GET', "datafeeds/{$feedId}", [], 'content');
+        return $this->call('GET', "datafeedstatuses/{$feedId}", [], 'content');
     }
 
     /**

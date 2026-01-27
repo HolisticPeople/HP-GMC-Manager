@@ -445,6 +445,7 @@ class FeedManager
 
     /**
      * Check GMC processing status for a feed.
+     * Returns full status data including itemsTotal, itemsValid, errors, warnings.
      */
     public static function checkGMCStatus(int $feedId): array
     {
@@ -457,19 +458,42 @@ class FeedManager
         $result = $client->getDatafeedStatus($feed['gmc_feed_id']);
 
         if ($result['success']) {
-            $status = $result['data']['processingStatus'] ?? 'unknown';
+            $data = $result['data'] ?? [];
+            
+            // datafeedstatuses returns: processingStatus, itemsTotal, itemsValid, etc.
+            $processingStatus = $data['processingStatus'] ?? 'unknown';
+            $itemsTotal = $data['itemsTotal'] ?? 0;
+            $itemsValid = $data['itemsValid'] ?? 0;
+            $errors = $data['errors'] ?? [];
+            $warnings = $data['warnings'] ?? [];
+            
+            // Determine local status based on GMC processing status
             $newStatus = self::STATUS_PROCESSING;
-
-            if (in_array($status, ['success', 'active', 'completed'])) {
+            
+            // Note: GMC uses "success" for completed processing
+            if (in_array(strtolower($processingStatus), ['success', 'active', 'completed'])) {
                 $newStatus = self::STATUS_ACTIVE;
-            } elseif (in_array($status, ['failed', 'error'])) {
+            } elseif (in_array(strtolower($processingStatus), ['failure', 'failed', 'error'])) {
                 $newStatus = self::STATUS_ERROR;
+            } elseif (in_array(strtolower($processingStatus), ['in progress', 'in_progress', 'processing'])) {
+                $newStatus = self::STATUS_PROCESSING;
             }
 
             self::update($feedId, [
                 'status' => $newStatus,
-                'gmc_status' => $status,
+                'gmc_status' => $processingStatus,
             ]);
+            
+            // Return enriched data for display
+            $result['status_summary'] = [
+                'processing_status' => $processingStatus,
+                'items_total' => $itemsTotal,
+                'items_valid' => $itemsValid,
+                'error_count' => count($errors),
+                'warning_count' => count($warnings),
+                'errors' => array_slice($errors, 0, 5), // First 5 errors
+                'warnings' => array_slice($warnings, 0, 5), // First 5 warnings
+            ];
         }
 
         return $result;
