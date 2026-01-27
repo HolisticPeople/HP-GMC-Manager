@@ -447,6 +447,8 @@
             $(document).on('click', '.hp-gmc-feed-delete', this.deleteFeed.bind(this));
             $(document).on('click', '.hp-gmc-remove-product', this.removeProductFromFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-publish', this.publishFeed.bind(this));
+            $(document).on('click', '.hp-gmc-view-pending', this.viewPendingProducts.bind(this));
+            $('#hp-gmc-add-all-pending').on('click', this.addAllPendingProducts.bind(this));
             
             // Bulk actions
             $('#hp-gmc-refresh-all-feeds').on('click', this.refreshAllFeedStatuses.bind(this));
@@ -763,6 +765,86 @@
                         location.reload();
                     } else {
                         alert(response.data?.message || 'Bulk action failed');
+                        $btn.prop('disabled', false).text(originalText);
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+        
+        viewPendingProducts: function(e) {
+            e.preventDefault();
+            const feedId = $(e.target).data('feed-id');
+            const feedName = $(e.target).data('feed-name');
+            
+            $('#hp-gmc-pending-feed-name').text(feedName);
+            $('#hp-gmc-add-all-pending').data('feed-id', feedId);
+            $('#hp-gmc-pending-products-loading').show();
+            $('#hp-gmc-pending-products-list').html('');
+            $('#hp-gmc-pending-products-modal').show();
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_get_pending_products',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    $('#hp-gmc-pending-products-loading').hide();
+                    
+                    if (response.success && response.data.products.length > 0) {
+                        let html = '<table class="wp-list-table widefat fixed striped">';
+                        html += '<thead><tr><th>SKU</th><th>Product</th><th>Matched Issue</th></tr></thead><tbody>';
+                        
+                        response.data.products.forEach(function(product) {
+                            html += '<tr>';
+                            html += '<td><code>' + product.sku + '</code></td>';
+                            html += '<td>' + product.name + '</td>';
+                            html += '<td><small>' + product.matched_issue + '</small></td>';
+                            html += '</tr>';
+                        });
+                        
+                        html += '</tbody></table>';
+                        $('#hp-gmc-pending-products-list').html(html);
+                        $('#hp-gmc-add-all-pending').show();
+                    } else {
+                        $('#hp-gmc-pending-products-list').html('<p>No pending products found.</p>');
+                        $('#hp-gmc-add-all-pending').hide();
+                    }
+                },
+                error: function() {
+                    $('#hp-gmc-pending-products-loading').hide();
+                    $('#hp-gmc-pending-products-list').html('<p class="error">Failed to load pending products.</p>');
+                }
+            });
+        },
+        
+        addAllPendingProducts: function() {
+            const feedId = $('#hp-gmc-add-all-pending').data('feed-id');
+            const $btn = $('#hp-gmc-add-all-pending');
+            const originalText = $btn.text();
+            
+            $btn.prop('disabled', true).text('Adding...');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_add_pending_products',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#hp-gmc-pending-products-modal').hide();
+                        location.reload();
+                    } else {
+                        alert(response.data?.error || 'Failed to add products');
                         $btn.prop('disabled', false).text(originalText);
                     }
                 },

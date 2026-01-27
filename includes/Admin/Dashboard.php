@@ -958,9 +958,12 @@ class Dashboard
                             <span class="hp-gmc-feed-product-stats">
                                 <strong><?php echo esc_html($feed['product_count']); ?></strong>
                                 <?php if ($pendingCount > 0): ?>
-                                <span class="hp-gmc-pending-count" title="<?php esc_attr_e('Products with matching issues not yet in this feed', 'hp-gmc-manager'); ?>">
+                                <a href="#" class="hp-gmc-pending-count hp-gmc-view-pending" 
+                                   data-feed-id="<?php echo esc_attr($feed['id']); ?>"
+                                   data-feed-name="<?php echo esc_attr($feed['name']); ?>"
+                                   title="<?php esc_attr_e('Click to view and add pending products', 'hp-gmc-manager'); ?>">
                                     (+<?php echo esc_html($pendingCount); ?>)
-                                </span>
+                                </a>
                                 <?php endif; ?>
                             </span>
                         </td>
@@ -1068,6 +1071,31 @@ class Dashboard
                 <div class="hp-gmc-modal-footer">
                     <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Cancel', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-primary" id="hp-gmc-create-feed-submit"><?php esc_html_e('Create Feed', 'hp-gmc-manager'); ?></button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pending Products Modal -->
+        <div id="hp-gmc-pending-products-modal" class="hp-gmc-modal hp-gmc-modal-lg" style="display:none;">
+            <div class="hp-gmc-modal-content">
+                <div class="hp-gmc-modal-header">
+                    <h3><?php esc_html_e('Pending Products', 'hp-gmc-manager'); ?> - <span id="hp-gmc-pending-feed-name"></span></h3>
+                    <button type="button" class="hp-gmc-modal-close">&times;</button>
+                </div>
+                <div class="hp-gmc-modal-body">
+                    <p class="hp-gmc-pending-info">
+                        <?php esc_html_e('These products have issues matching this feed\'s category but are not yet included in the feed.', 'hp-gmc-manager'); ?>
+                    </p>
+                    <div id="hp-gmc-pending-products-loading" style="display:none;">
+                        <span class="spinner is-active"></span> <?php esc_html_e('Loading...', 'hp-gmc-manager'); ?>
+                    </div>
+                    <div id="hp-gmc-pending-products-list"></div>
+                </div>
+                <div class="hp-gmc-modal-footer">
+                    <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Close', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-primary" id="hp-gmc-add-all-pending" data-feed-id="">
+                        <?php esc_html_e('Add All to Feed', 'hp-gmc-manager'); ?>
+                    </button>
                 </div>
             </div>
         </div>

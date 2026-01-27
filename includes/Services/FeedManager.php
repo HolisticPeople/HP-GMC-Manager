@@ -641,34 +641,52 @@ class FeedManager
     }
 
     /**
-     * Count products with issues matching a category that are not in any feed.
+     * Get category patterns for matching issues.
      */
-    private static function countProductsNotInFeeds(?string $category): int
+    public static function getCategoryPatterns(): array
     {
-        global $wpdb;
-        
-        if (!$category) {
-            return 0;
-        }
-
-        // Map categories to issue patterns
-        $categoryPatterns = [
+        return [
             'personalization' => ['Personal Hardships', 'Sexual interests'],
             'pharma' => ['Prohibited pharmaceuticals', 'Prohibited supplement'],
             'otc' => ['Over.*counter', 'OTC', 'Pet.*pharmaceutical'],
         ];
+    }
 
+    /**
+     * Count products with issues matching a category that are not in any feed.
+     */
+    private static function countProductsNotInFeeds(?string $category): int
+    {
+        $pending = self::getPendingProducts($category);
+        return count($pending);
+    }
+
+    /**
+     * Get pending products (products with matching issues not yet in any feed).
+     * 
+     * @param string|null $category Feed category to match
+     * @return array List of pending products with details
+     */
+    public static function getPendingProducts(?string $category): array
+    {
+        global $wpdb;
+        
+        if (!$category) {
+            return [];
+        }
+
+        $categoryPatterns = self::getCategoryPatterns();
         $patterns = $categoryPatterns[$category] ?? [];
         if (empty($patterns)) {
-            return 0;
+            return [];
         }
 
         $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
         $feedProductsTable = $wpdb->prefix . 'hp_gmc_feed_products';
 
-        // Get products with these issues
+        // Get products with issues that are not in any feed
         $products = $wpdb->get_results(
-            "SELECT ps.product_id FROM $statusTable ps 
+            "SELECT ps.product_id, ps.sku, ps.issues, ps.status FROM $statusTable ps 
              WHERE ps.status IN ('disapproved', 'warning')
              AND ps.product_id NOT IN (
                  SELECT fp.product_id FROM $feedProductsTable fp
@@ -676,28 +694,86 @@ class FeedManager
             ARRAY_A
         );
 
-        $matchCount = 0;
+        $pending = [];
         foreach ($products as $row) {
-            $productStatus = $wpdb->get_row($wpdb->prepare(
-                "SELECT issues FROM $statusTable WHERE product_id = %d",
-                $row['product_id']
-            ));
-            
-            if ($productStatus && $productStatus->issues) {
-                $issues = json_decode($productStatus->issues, true) ?: [];
-                foreach ($issues as $issue) {
-                    $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
-                    foreach ($patterns as $pattern) {
-                        if (preg_match('/' . $pattern . '/i', $desc)) {
-                            $matchCount++;
-                            break 2; // Count product only once
-                        }
+            $issues = json_decode($row['issues'], true) ?: [];
+            foreach ($issues as $issue) {
+                $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                foreach ($patterns as $pattern) {
+                    if (preg_match('/' . $pattern . '/i', $desc)) {
+                        $product = wc_get_product($row['product_id']);
+                        $pending[] = [
+                            'product_id' => (int) $row['product_id'],
+                            'sku' => $row['sku'] ?: ($product ? $product->get_sku() : ''),
+                            'name' => $product ? $product->get_name() : 'Unknown',
+                            'status' => $row['status'],
+                            'matched_issue' => $desc,
+                            'matched_pattern' => $pattern,
+                        ];
+                        break 2; // Count product only once
                     }
                 }
             }
         }
 
-        return $matchCount;
+        return $pending;
+    }
+
+    /**
+     * Add all pending products to a feed.
+     * 
+     * @param int $feedId Feed ID
+     * @return array Result with added count
+     */
+    public static function addPendingProducts(int $feedId): array
+    {
+        $feed = self::get($feedId);
+        if (!$feed) {
+            return ['success' => false, 'error' => 'Feed not found'];
+        }
+
+        $pending = self::getPendingProducts($feed['category']);
+        if (empty($pending)) {
+            return ['success' => true, 'added' => 0, 'message' => 'No pending products to add'];
+        }
+
+        $attribute = $feed['feed_type'] === 'redirect' ? 'ads_redirect' : 'excluded_destination';
+        
+        // Determine default exclusion value based on feed category
+        $categoryExclusions = [
+            'personalization' => 'Display_ads,Video_ads',
+            'pharma' => 'Shopping_ads,Display_ads',
+            'otc' => 'Shopping_ads',
+        ];
+        $defaultValue = $categoryExclusions[$feed['category']] ?? 'Shopping_ads';
+
+        $added = 0;
+        $failed = 0;
+        $errors = [];
+
+        foreach ($pending as $product) {
+            $result = self::addProduct(
+                $feedId,
+                $product['product_id'],
+                $attribute,
+                $defaultValue,
+                'Pending: ' . $product['matched_issue']
+            );
+            
+            if ($result['success']) {
+                $added++;
+            } else {
+                $failed++;
+                $errors[] = $product['sku'] . ': ' . ($result['error'] ?? 'Unknown error');
+            }
+        }
+
+        return [
+            'success' => $failed === 0,
+            'added' => $added,
+            'failed' => $failed,
+            'errors' => $errors,
+        ];
     }
 
     /**

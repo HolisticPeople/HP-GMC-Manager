@@ -1201,6 +1201,40 @@
     font-size: 11px;
 }
 
+a.hp-gmc-pending-count {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+a.hp-gmc-pending-count:hover {
+    color: #a00;
+}
+
+/* Pending products modal */
+.hp-gmc-pending-info {
+    background: #f0f6fc;
+    border-left: 4px solid #2271b1;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+}
+
+#hp-gmc-pending-products-list table {
+    margin-top: 10px;
+}
+
+#hp-gmc-pending-products-list table td {
+    vertical-align: middle;
+}
+
+#hp-gmc-pending-products-list table small {
+    color: #666;
+}
+
+#hp-gmc-pending-products-loading .spinner {
+    float: none;
+    margin: 0 10px 0 0;
+}
+
 .hp-gmc-not-uploaded {
     color: #999;
     font-style: italic;

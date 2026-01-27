@@ -63,6 +63,8 @@ class Plugin
         add_action('wp_ajax_hp_gmc_refresh_all_feed_statuses', [self::class, 'ajax_refresh_all_feed_statuses']);
         add_action('wp_ajax_hp_gmc_publish_feed', [self::class, 'ajax_publish_feed']);
         add_action('wp_ajax_hp_gmc_bulk_feed_action', [self::class, 'ajax_bulk_feed_action']);
+        add_action('wp_ajax_hp_gmc_get_pending_products', [self::class, 'ajax_get_pending_products']);
+        add_action('wp_ajax_hp_gmc_add_pending_products', [self::class, 'ajax_add_pending_products']);
         
         // Issue classifier / review workflow AJAX handlers
         add_action('wp_ajax_hp_gmc_analyze_triggers', [self::class, 'ajax_analyze_triggers']);
@@ -1270,6 +1272,65 @@ class Plugin
             'success_count' => $successCount,
             'total' => count($feedIds),
         ]);
+    }
+
+    /**
+     * AJAX: Get pending products for a feed.
+     */
+    public static function ajax_get_pending_products(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $feed = Services\FeedManager::get($feedId);
+        if (!$feed) {
+            wp_send_json_error(['message' => 'Feed not found']);
+        }
+
+        $pending = Services\FeedManager::getPendingProducts($feed['category']);
+
+        wp_send_json_success([
+            'feed_id' => $feedId,
+            'feed_name' => $feed['name'],
+            'category' => $feed['category'],
+            'pending_count' => count($pending),
+            'products' => $pending,
+        ]);
+    }
+
+    /**
+     * AJAX: Add all pending products to a feed.
+     */
+    public static function ajax_add_pending_products(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::addPendingProducts($feedId);
+        
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
     }
 
     /**
