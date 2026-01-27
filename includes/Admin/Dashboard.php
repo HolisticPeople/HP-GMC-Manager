@@ -885,14 +885,15 @@ class Dashboard
                         $stats = \HP_GMC\Services\FeedManager::getStatistics((int)$feed['id']);
                         $pendingCount = $stats['pending_products'] ?? 0;
                         
-                        // Map status to display labels
+                        // Map LOCAL status to display labels
+                        // Local status = state of our local feed (not GMC state)
                         $statusLabels = [
-                            'draft' => ['label' => 'Draft', 'class' => 'draft'],
-                            'generated' => ['label' => 'Ready', 'class' => 'generated'],
-                            'uploaded' => ['label' => 'Pending', 'class' => 'uploaded'],
-                            'processing' => ['label' => 'Processing', 'class' => 'processing'],
-                            'active' => ['label' => 'Live', 'class' => 'active'],
-                            'error' => ['label' => 'Error', 'class' => 'error'],
+                            'draft' => ['label' => 'Draft', 'class' => 'draft'],           // No file generated
+                            'generated' => ['label' => 'Ready', 'class' => 'generated'],   // File generated, not uploaded
+                            'uploaded' => ['label' => 'Uploaded', 'class' => 'uploaded'],  // Sent to GMC, awaiting processing
+                            'processing' => ['label' => 'Uploaded', 'class' => 'uploaded'],// Same as uploaded (GMC is processing)
+                            'active' => ['label' => 'Live', 'class' => 'active'],          // GMC confirmed active
+                            'error' => ['label' => 'Error', 'class' => 'error'],           // Upload/processing failed
                         ];
                         $statusInfo = $statusLabels[$feed['status']] ?? $statusLabels['draft'];
                         
@@ -1001,6 +1002,12 @@ class Dashboard
                                     data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
                                     title="<?php esc_attr_e('Refresh GMC status', 'hp-gmc-manager'); ?>">
                                 <span class="dashicons dashicons-update-alt"></span>
+                            </button>
+                            <button type="button" class="button button-small hp-gmc-feed-remove-gmc" 
+                                    data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
+                                    data-feed-name="<?php echo esc_attr($feed['name']); ?>"
+                                    title="<?php esc_attr_e('Remove from GMC (keep local)', 'hp-gmc-manager'); ?>">
+                                <span class="dashicons dashicons-cloud-upload" style="transform: rotate(180deg);"></span>
                             </button>
                             <?php endif; ?>
                             <?php if ($feed['file_url']): ?>

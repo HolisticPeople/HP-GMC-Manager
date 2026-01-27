@@ -444,6 +444,7 @@
             $(document).on('click', '.hp-gmc-feed-generate', this.generateFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-upload', this.uploadFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-check-status', this.checkFeedStatus.bind(this));
+            $(document).on('click', '.hp-gmc-feed-remove-gmc', this.removeFromGMC.bind(this));
             $(document).on('click', '.hp-gmc-feed-delete', this.deleteFeed.bind(this));
             $(document).on('click', '.hp-gmc-remove-product', this.removeProductFromFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-publish', this.publishFeed.bind(this));
@@ -652,6 +653,42 @@
                         location.reload();
                     } else {
                         alert(response.data?.error || 'Failed to check status');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        },
+        
+        removeFromGMC: function(e) {
+            const $btn = $(e.target).closest('button');
+            const feedId = $btn.data('feed-id');
+            const feedName = $btn.data('feed-name') || 'this feed';
+            
+            if (!confirm('Remove "' + feedName + '" from Google Merchant Center?\n\nThe feed will be kept locally and can be re-uploaded later.')) {
+                return;
+            }
+            
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_remove_from_gmc',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        location.reload();
+                    } else {
+                        alert(response.data?.message || 'Failed to remove from GMC');
                     }
                 },
                 error: function() {
