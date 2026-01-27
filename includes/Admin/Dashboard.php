@@ -876,6 +876,7 @@ class Dashboard
                         <th style="width:9%" title="<?php esc_attr_e('Google Merchant Center processing state', 'hp-gmc-manager'); ?>"><?php esc_html_e('GMC', 'hp-gmc-manager'); ?></th>
                         <th style="width:13%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
                         <th style="width:10%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%"><?php esc_html_e('Last Crawl', 'hp-gmc-manager'); ?></th>
                         <th style="width:28%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
                     </tr>
                 </thead>
@@ -928,7 +929,7 @@ class Dashboard
                         </td>
                         <td>
                             <strong>
-                                <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id']) . '#feeds'); ?>">
+                                <a href="<?php echo esc_url(add_query_arg('feed_id', $feed['id']) . '#feeds'); ?>" class="hp-gmc-feed-link">
                                     <?php echo esc_html($feed['name']); ?>
                                 </a>
                             </strong>
@@ -971,10 +972,24 @@ class Dashboard
                         <td>
                             <?php 
                             if ($feed['last_uploaded']) {
-                                // Use current_time('timestamp') to match WordPress timezone used in storage
+                                // Standard WP way: human_time_diff between two timestamps
+                                // current_time('timestamp') is site-local
+                                // strtotime($feed['last_uploaded']) is site-local if current_time('mysql') was used
                                 echo esc_html(human_time_diff(strtotime($feed['last_uploaded']), current_time('timestamp')) . ' ago');
                             } else {
                                 echo '<span class="hp-gmc-not-uploaded">' . esc_html__('Never', 'hp-gmc-manager') . '</span>';
+                            }
+                            ?>
+                        </td>
+                        <td>
+                            <?php 
+                            if (!empty($feed['last_crawl_time'])) {
+                                // last_crawl_time is stored from GMC API (ISO 8601) which is UTC
+                                // But FeedManager.php converted it using date('Y-m-d H:i:s', strtotime($lastFetchTime))
+                                // which uses the server's default timezone (usually UTC).
+                                echo esc_html(human_time_diff(strtotime($feed['last_crawl_time']), time()) . ' ago');
+                            } else {
+                                echo '<span class="hp-gmc-not-crawled">' . esc_html__('Never', 'hp-gmc-manager') . '</span>';
                             }
                             ?>
                         </td>
@@ -1002,6 +1017,11 @@ class Dashboard
                                     data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
                                     title="<?php esc_attr_e('Refresh GMC status', 'hp-gmc-manager'); ?>">
                                 <span class="dashicons dashicons-update-alt"></span>
+                            </button>
+                            <button type="button" class="button button-small hp-gmc-feed-debug" 
+                                    data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
+                                    title="<?php esc_attr_e('View raw GMC response', 'hp-gmc-manager'); ?>">
+                                <span class="dashicons dashicons-visibility"></span>
                             </button>
                             <button type="button" class="button button-small hp-gmc-feed-remove-gmc" 
                                     data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
@@ -1104,6 +1124,22 @@ class Dashboard
                     <button type="button" class="button button-primary" id="hp-gmc-add-all-pending" data-feed-id="">
                         <?php esc_html_e('Add All to Feed', 'hp-gmc-manager'); ?>
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feed Debug Modal -->
+        <div id="hp-gmc-feed-debug-modal" class="hp-gmc-modal hp-gmc-modal-lg" style="display:none;">
+            <div class="hp-gmc-modal-content">
+                <div class="hp-gmc-modal-header">
+                    <h3><?php esc_html_e('GMC Feed Debug', 'hp-gmc-manager'); ?></h3>
+                    <button type="button" class="hp-gmc-modal-close">&times;</button>
+                </div>
+                <div class="hp-gmc-modal-body">
+                    <pre id="hp-gmc-feed-debug-content" style="background: #f0f0f1; padding: 10px; border-radius: 4px; overflow: auto; max-height: 500px;"></pre>
+                </div>
+                <div class="hp-gmc-modal-footer">
+                    <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Close', 'hp-gmc-manager'); ?></button>
                 </div>
             </div>
         </div>
