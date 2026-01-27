@@ -1296,22 +1296,14 @@ class Plugin
             wp_send_json_error(['message' => 'Feed not found']);
         }
 
-        $category = $feed['category'];
-        $patterns = Services\FeedManager::getCategoryPatterns();
-        $matchedPatterns = $patterns[strtolower($category)] ?? [];
-        
-        $result = Services\FeedManager::getPendingProducts($category);
+        $result = Services\FeedManager::getPendingProducts($feed['category']);
         $pending = $result['products'] ?? [];
-        $debug = $result['debug'] ?? [];
 
         wp_send_json_success([
             'feed_id' => $feedId,
             'feed_name' => $feed['name'],
-            'category' => $category,
-            'category_lower' => strtolower($category),
-            'patterns_found' => $matchedPatterns,
+            'category' => $feed['category'],
             'pending_count' => count($pending),
-            'query_debug' => $debug,
             'products' => $pending,
         ]);
     }

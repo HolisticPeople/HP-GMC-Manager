@@ -797,23 +797,8 @@
                 success: function(response) {
                     $('#hp-gmc-pending-products-loading').hide();
                     
-                    // Debug info
-                    let debugHtml = '<div style="background:#f0f0f0;padding:10px;margin-bottom:10px;font-size:11px;">';
-                    debugHtml += '<strong>Debug:</strong><br>';
-                    debugHtml += 'category="' + (response.data.category || 'null') + '"<br>';
-                    debugHtml += 'patterns=' + JSON.stringify(response.data.patterns_found || []) + '<br>';
-                    debugHtml += 'pending_count=' + (response.data.pending_count || 0) + '<br>';
-                    if (response.data.query_debug) {
-                        debugHtml += '<strong>Query Debug:</strong> ';
-                        debugHtml += 'products_in_query=' + (response.data.query_debug.products_in_query || 0) + ', ';
-                        debugHtml += 'products_checked=' + (response.data.query_debug.products_checked || 0) + ', ';
-                        debugHtml += 'products_with_issues=' + (response.data.query_debug.products_with_issues || 0) + ', ';
-                        debugHtml += 'pattern_matches=' + (response.data.query_debug.pattern_matches || 0);
-                    }
-                    debugHtml += '</div>';
-                    
                     if (response.success && response.data.products.length > 0) {
-                        let html = debugHtml + '<table class="wp-list-table widefat fixed striped">';
+                        let html = '<table class="wp-list-table widefat fixed striped">';
                         html += '<thead><tr><th>SKU</th><th>Product</th><th>Matched Issue</th></tr></thead><tbody>';
                         
                         response.data.products.forEach(function(product) {
@@ -828,7 +813,7 @@
                         $('#hp-gmc-pending-products-list').html(html);
                         $('#hp-gmc-add-all-pending').show();
                     } else {
-                        $('#hp-gmc-pending-products-list').html(debugHtml + '<p>No pending products found.</p>');
+                        $('#hp-gmc-pending-products-list').html('<p>No pending products found.</p>');
                         $('#hp-gmc-add-all-pending').hide();
                     }
                 },

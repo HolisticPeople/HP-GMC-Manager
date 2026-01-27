@@ -741,46 +741,28 @@ class FeedManager
             ARRAY_A
         );
 
-        // Use the EXACT same logic as countProductsNotInFeeds
-        // to ensure consistency
         $pending = [];
-        $debugInfo = [
-            'products_in_query' => count($products),
-            'products_checked' => 0,
-            'products_with_issues' => 0,
-            'pattern_matches' => 0,
-        ];
         
         foreach ($products as $row) {
-            $debugInfo['products_checked']++;
-            
             $productStatus = $wpdb->get_row($wpdb->prepare(
-                "SELECT issues FROM $statusTable WHERE product_id = %d",
+                "SELECT sku, issues, status FROM $statusTable WHERE product_id = %d",
                 $row['product_id']
             ));
             
             if ($productStatus && $productStatus->issues) {
-                $debugInfo['products_with_issues']++;
                 $issues = json_decode($productStatus->issues, true) ?: [];
                 
                 foreach ($issues as $issue) {
                     $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
                     foreach ($patterns as $pattern) {
                         if (preg_match('/' . $pattern . '/i', $desc)) {
-                            $debugInfo['pattern_matches']++;
-                            
-                            // Get additional info for display
-                            $fullStatus = $wpdb->get_row($wpdb->prepare(
-                                "SELECT sku, status FROM $statusTable WHERE product_id = %d",
-                                $row['product_id']
-                            ));
                             $product = wc_get_product($row['product_id']);
                             
                             $pending[] = [
                                 'product_id' => (int) $row['product_id'],
-                                'sku' => $fullStatus->sku ?: ($product ? $product->get_sku() : ''),
+                                'sku' => $productStatus->sku ?: ($product ? $product->get_sku() : ''),
                                 'name' => $product ? $product->get_name() : 'Unknown',
-                                'status' => $fullStatus->status ?? 'unknown',
+                                'status' => $productStatus->status ?? 'unknown',
                                 'matched_issue' => $desc,
                                 'matched_pattern' => $pattern,
                             ];
@@ -791,10 +773,8 @@ class FeedManager
             }
         }
         
-        // Return pending products along with debug info
         return [
             'products' => $pending,
-            'debug' => $debugInfo,
         ];
     }
 
