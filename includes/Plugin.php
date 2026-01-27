@@ -65,6 +65,7 @@ class Plugin
         add_action('wp_ajax_hp_gmc_bulk_feed_action', [self::class, 'ajax_bulk_feed_action']);
         add_action('wp_ajax_hp_gmc_get_pending_products', [self::class, 'ajax_get_pending_products']);
         add_action('wp_ajax_hp_gmc_add_pending_products', [self::class, 'ajax_add_pending_products']);
+        add_action('wp_ajax_hp_gmc_remove_from_gmc', [self::class, 'ajax_remove_from_gmc']);
         
         // Issue classifier / review workflow AJAX handlers
         add_action('wp_ajax_hp_gmc_analyze_triggers', [self::class, 'ajax_analyze_triggers']);
@@ -1331,6 +1332,36 @@ class Plugin
             wp_send_json_success($result);
         } else {
             wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX: Remove feed from GMC (keep locally).
+     */
+    public static function ajax_remove_from_gmc(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::deleteFromGMC($feedId);
+        
+        if ($result['success']) {
+            wp_send_json_success([
+                'message' => __('Feed removed from GMC successfully', 'hp-gmc-manager'),
+            ]);
+        } else {
+            wp_send_json_error([
+                'message' => $result['error'] ?? __('Failed to remove feed from GMC', 'hp-gmc-manager'),
+            ]);
         }
     }
 
