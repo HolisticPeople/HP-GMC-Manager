@@ -100,7 +100,7 @@ class FeedManager
         $table = $wpdb->prefix . 'hp_gmc_feeds';
 
         // Sanitize allowed fields
-        $allowed = ['name', 'category', 'status', 'gmc_feed_id', 'file_path', 'file_url', 'last_uploaded', 'gmc_status', 'product_count'];
+        $allowed = ['name', 'category', 'status', 'gmc_feed_id', 'file_path', 'file_url', 'last_uploaded', 'last_crawl_time', 'gmc_status', 'product_count', 'target_issue_patterns'];
         $updateData = [];
         
         foreach ($allowed as $field) {
@@ -460,13 +460,20 @@ class FeedManager
         if ($result['success']) {
             $data = $result['data'] ?? [];
             
-            // datafeedstatuses returns: processingStatus, itemsTotal, itemsValid, etc.
+            // datafeedstatuses returns: processingStatus, itemsTotal, itemsValid, lastExecutionDate, etc.
             $processingStatus = $data['processingStatus'] ?? 'unknown';
             $itemsTotal = $data['itemsTotal'] ?? 0;
             $itemsValid = $data['itemsValid'] ?? 0;
             $errors = $data['errors'] ?? [];
             $warnings = $data['warnings'] ?? [];
             
+            // Capture last fetch time (GMC uses lastExecutionDate in ISO 8601 format)
+            $lastFetchTime = $data['lastExecutionDate'] ?? null;
+            $mysqlCrawlTime = null;
+            if ($lastFetchTime) {
+                $mysqlCrawlTime = date('Y-m-d H:i:s', strtotime($lastFetchTime));
+            }
+
             // Determine local status based on GMC processing status
             $newStatus = self::STATUS_PROCESSING;
             
@@ -479,16 +486,23 @@ class FeedManager
                 $newStatus = self::STATUS_PROCESSING;
             }
 
-            self::update($feedId, [
+            $updateData = [
                 'status' => $newStatus,
                 'gmc_status' => $processingStatus,
-            ]);
+            ];
+
+            if ($mysqlCrawlTime) {
+                $updateData['last_crawl_time'] = $mysqlCrawlTime;
+            }
+
+            self::update($feedId, $updateData);
             
             // Return enriched data for display
             $result['status_summary'] = [
                 'processing_status' => $processingStatus,
                 'items_total' => $itemsTotal,
                 'items_valid' => $itemsValid,
+                'last_crawl_time' => $mysqlCrawlTime,
                 'error_count' => count($errors),
                 'warning_count' => count($warnings),
                 'errors' => array_slice($errors, 0, 5), // First 5 errors

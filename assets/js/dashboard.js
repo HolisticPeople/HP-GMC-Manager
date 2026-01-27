@@ -444,6 +444,7 @@
             $(document).on('click', '.hp-gmc-feed-generate', this.generateFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-upload', this.uploadFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-check-status', this.checkFeedStatus.bind(this));
+            $(document).on('click', '.hp-gmc-feed-debug', this.showFeedDebug.bind(this));
             $(document).on('click', '.hp-gmc-feed-remove-gmc', this.removeFromGMC.bind(this));
             $(document).on('click', '.hp-gmc-feed-delete', this.deleteFeed.bind(this));
             $(document).on('click', '.hp-gmc-remove-product', this.removeProductFromFeed.bind(this));
@@ -680,6 +681,35 @@
                     } else {
                         alert('Failed to check status:\n\n' + JSON.stringify(response.data, null, 2));
                     }
+                },
+                error: function(xhr, status, error) {
+                    alert('Network error: ' + error);
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        },
+
+        showFeedDebug: function(e) {
+            const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
+            const $btn = $(e.target).closest('button');
+            const originalHtml = $btn.html();
+            
+            $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
+            
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_check_feed_status',
+                    nonce: hpGmcData.nonce,
+                    feed_id: feedId
+                },
+                success: function(response) {
+                    const rawData = response.data?.data || response.data || response;
+                    $('#hp-gmc-feed-debug-content').text(JSON.stringify(rawData, null, 4));
+                    $('#hp-gmc-feed-debug-modal').show();
                 },
                 error: function(xhr, status, error) {
                     alert('Network error: ' + error);

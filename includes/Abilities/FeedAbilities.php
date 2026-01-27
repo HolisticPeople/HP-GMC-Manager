@@ -526,4 +526,182 @@ class FeedAbilities
 
         return FeedManager::getStatistics($feedId);
     }
+
+    /**
+     * Get correlation report between feed products and GMC issues.
+     */
+    public static function getFeedCorrelationReport(array $params): array
+    {
+        global $wpdb;
+        $feedId = (int) ($params['feed_id'] ?? 0);
+
+        if (!$feedId) {
+            return ['success' => false, 'error' => 'feed_id is required'];
+        }
+
+        $feed = FeedManager::get($feedId);
+        if (!$feed) {
+            return ['success' => false, 'error' => 'Feed not found'];
+        }
+
+        $products = FeedManager::getProducts($feedId);
+        if (empty($products)) {
+            return ['success' => true, 'feed_name' => $feed['name'], 'message' => 'No products in feed'];
+        }
+
+        $report = [
+            'feed_id' => $feedId,
+            'feed_name' => $feed['name'],
+            'total_products' => count($products),
+            'resolved' => 0,
+            'remaining' => 0,
+            'issue_breakdown' => [],
+            'details' => [],
+        ];
+
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+
+        foreach ($products as $product) {
+            $status = $wpdb->get_row($wpdb->prepare(
+                "SELECT status, issues FROM $statusTable WHERE product_id = %d",
+                $product['product_id']
+            ));
+
+            $issues = $status ? (json_decode($status->issues, true) ?: []) : [];
+            $isDisapproved = $status && in_array($status->status, ['disapproved', 'warning']);
+            
+            $productIssues = [];
+            foreach ($issues as $issue) {
+                $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                if ($desc) {
+                    $productIssues[] = $desc;
+                    if (!isset($report['issue_breakdown'][$desc])) {
+                        $report['issue_breakdown'][$desc] = 0;
+                    }
+                    $report['issue_breakdown'][$desc]++;
+                }
+            }
+
+            if (empty($productIssues) && !$isDisapproved) {
+                $report['resolved']++;
+            } else {
+                $report['remaining']++;
+            }
+
+            $report['details'][] = [
+                'sku' => $product['sku'],
+                'name' => $product['product_name'],
+                'status' => $status->status ?? 'unknown',
+                'remaining_issues' => $productIssues,
+                'resolved' => empty($productIssues) && !$isDisapproved,
+            ];
+        }
+
+        return [
+            'success' => true,
+            'report' => $report,
+        ];
+    }
+
+    /**
+     * Create and populate a targeted feed for specific attributes.
+     */
+    public static function createTargetedFeed(array $params): array
+    {
+        global $wpdb;
+        $name = $params['name'] ?? '';
+        $attribute = $params['attribute'] ?? '';
+        $value = $params['value'] ?? '';
+        $issuePattern = $params['issue_pattern'] ?? '';
+        $categoryFilter = $params['category_filter'] ?? null;
+        $dryRun = $params['dry_run'] ?? true;
+
+        if (empty($name) || empty($attribute) || empty($value) || empty($issuePattern)) {
+            return ['success' => false, 'error' => 'name, attribute, value, and issue_pattern are required'];
+        }
+
+        // 1. Create the feed if it doesn't exist
+        $feeds = FeedManager::getAll('custom');
+        $feedId = 0;
+        foreach ($feeds as $f) {
+            if ($f['name'] === $name) {
+                $feedId = (int) $f['id'];
+                break;
+            }
+        }
+
+        if (!$feedId && !$dryRun) {
+            $feedId = FeedManager::create($name, 'custom', 'targeted-fix');
+        }
+
+        // 2. Find matching products
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+        
+        $sql = "SELECT * FROM $statusTable WHERE status IN ('disapproved', 'warning')";
+        $products = $wpdb->get_results($sql, ARRAY_A);
+
+        $matches = [];
+        foreach ($products as $row) {
+            $issues = json_decode($row['issues'], true) ?: [];
+            $match = false;
+            foreach ($issues as $issue) {
+                $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                if (preg_match('/' . $issuePattern . '/i', $desc)) {
+                    $match = true;
+                    break;
+                }
+            }
+
+            if ($match) {
+                $wcProduct = wc_get_product($row['product_id']);
+                if (!$wcProduct) continue;
+
+                // Category filter if provided
+                if ($categoryFilter) {
+                    $terms = wp_get_post_terms($row['product_id'], 'product_cat', ['fields' => 'names']);
+                    $catMatch = false;
+                    foreach ($terms as $termName) {
+                        if (stripos($termName, $categoryFilter) !== false) {
+                            $catMatch = true;
+                            break;
+                        }
+                    }
+                    if (!$catMatch) continue;
+                }
+
+                $matches[] = [
+                    'product_id' => (int) $row['product_id'],
+                    'sku' => $wcProduct->get_sku(),
+                    'name' => $wcProduct->get_name(),
+                ];
+            }
+        }
+
+        if ($dryRun) {
+            return [
+                'success' => true,
+                'dry_run' => true,
+                'feed_name' => $name,
+                'matching_products' => count($matches),
+                'sample' => array_slice($matches, 0, 10),
+                'message' => "Would add " . count($matches) . " products to feed '{$name}' with {$attribute}='{$value}'",
+            ];
+        }
+
+        // 3. Populate the feed
+        $added = 0;
+        foreach ($matches as $m) {
+            if (FeedManager::addProduct($feedId, $m['product_id'], $attribute, $value, 'Targeted fix for ' . $issuePattern)) {
+                $added++;
+            }
+        }
+
+        return [
+            'success' => true,
+            'dry_run' => false,
+            'feed_id' => $feedId,
+            'added' => $added,
+            'message' => "Added {$added} products to feed '{$name}'",
+        ];
+    }
 }
