@@ -709,6 +709,7 @@ class FeedManager
 
     /**
      * Get pending products (products with matching issues not yet in any feed).
+     * Uses same query pattern as countProductsNotInFeeds for consistency.
      * 
      * @param string|null $category Feed category to match
      * @return array List of pending products with details
@@ -730,9 +731,9 @@ class FeedManager
         $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
         $feedProductsTable = $wpdb->prefix . 'hp_gmc_feed_products';
 
-        // Get products with issues that are not in any feed
+        // Get products with issues that are not in any feed (same query as count)
         $products = $wpdb->get_results(
-            "SELECT ps.product_id, ps.sku, ps.issues, ps.status FROM $statusTable ps 
+            "SELECT ps.product_id FROM $statusTable ps 
              WHERE ps.status IN ('disapproved', 'warning')
              AND ps.product_id NOT IN (
                  SELECT fp.product_id FROM $feedProductsTable fp
@@ -742,21 +743,29 @@ class FeedManager
 
         $pending = [];
         foreach ($products as $row) {
-            $issues = json_decode($row['issues'], true) ?: [];
-            foreach ($issues as $issue) {
-                $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
-                foreach ($patterns as $pattern) {
-                    if (preg_match('/' . $pattern . '/i', $desc)) {
-                        $product = wc_get_product($row['product_id']);
-                        $pending[] = [
-                            'product_id' => (int) $row['product_id'],
-                            'sku' => $row['sku'] ?: ($product ? $product->get_sku() : ''),
-                            'name' => $product ? $product->get_name() : 'Unknown',
-                            'status' => $row['status'],
-                            'matched_issue' => $desc,
-                            'matched_pattern' => $pattern,
-                        ];
-                        break 2; // Count product only once
+            // Fetch issues separately (same pattern as working count logic)
+            $productStatus = $wpdb->get_row($wpdb->prepare(
+                "SELECT sku, issues, status FROM $statusTable WHERE product_id = %d",
+                $row['product_id']
+            ));
+            
+            if ($productStatus && $productStatus->issues) {
+                $issues = json_decode($productStatus->issues, true) ?: [];
+                foreach ($issues as $issue) {
+                    $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                    foreach ($patterns as $pattern) {
+                        if (preg_match('/' . $pattern . '/i', $desc)) {
+                            $product = wc_get_product($row['product_id']);
+                            $pending[] = [
+                                'product_id' => (int) $row['product_id'],
+                                'sku' => $productStatus->sku ?: ($product ? $product->get_sku() : ''),
+                                'name' => $product ? $product->get_name() : 'Unknown',
+                                'status' => $productStatus->status,
+                                'matched_issue' => $desc,
+                                'matched_pattern' => $pattern,
+                            ];
+                            break 2; // Count product only once
+                        }
                     }
                 }
             }
