@@ -853,6 +853,22 @@ class Plugin
                 ],
                 'category' => 'product',
             ],
+            'gmc-analyze-policy-language' => [
+                'title' => 'Analyze Policy Language',
+                'description' => 'Scan product for high-risk words (cure, tachyon, etc.) and suggest clean alternatives',
+                'callback' => [Abilities\IssueAbilities::class, 'analyzePolicyLanguage'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'product_id' => [
+                            'type' => 'integer',
+                            'description' => 'WooCommerce product ID',
+                        ],
+                    ],
+                    'required' => ['product_id'],
+                ],
+                'category' => 'product',
+            ],
             'gmc-auto-populate-feed' => [
                 'title' => 'Auto-Populate Feed',
                 'description' => 'Automatically add products matching issue patterns to a feed',
@@ -908,6 +924,59 @@ class Plugin
                         ],
                     ],
                     'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-feed-correlation-report' => [
+                'title' => 'Feed Correlation Report',
+                'description' => 'Show how many GMC issues are covered by a feed and which ones remain after upload',
+                'callback' => [Abilities\FeedAbilities::class, 'getFeedCorrelationReport'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Feed ID',
+                        ],
+                    ],
+                    'required' => ['feed_id'],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-create-targeted-feed' => [
+                'title' => 'Create Targeted Feed',
+                'description' => 'Create and populate a supplemental feed for specific attribute fixes based on issue patterns (e.g., set age_group:adult for missing age group issues)',
+                'callback' => [Abilities\FeedAbilities::class, 'createTargetedFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => [
+                            'type' => 'string',
+                            'description' => 'Feed name',
+                        ],
+                        'attribute' => [
+                            'type' => 'string',
+                            'description' => 'GMC attribute name (e.g., color, gender, age_group)',
+                        ],
+                        'value' => [
+                            'type' => 'string',
+                            'description' => 'Value to set',
+                        ],
+                        'issue_pattern' => [
+                            'type' => 'string',
+                            'description' => 'Regex pattern to match GMC issues',
+                        ],
+                        'category_filter' => [
+                            'type' => 'string',
+                            'description' => 'Optional: Filter by product category name',
+                        ],
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'If true, only preview matches',
+                            'default' => true,
+                        ],
+                    ],
+                    'required' => ['name', 'attribute', 'value', 'issue_pattern'],
                 ],
                 'category' => 'feed',
             ],

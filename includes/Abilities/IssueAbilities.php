@@ -163,4 +163,64 @@ class IssueAbilities
 
         return IssueClassifier::applyTextFix($productId, $field, $oldText, $newText);
     }
+
+    /**
+     * Analyze product fields for high-risk policy language.
+     */
+    public static function analyzePolicyLanguage(array $params): array
+    {
+        $productId = (int) ($params['product_id'] ?? 0);
+        if (!$productId) {
+            return ['success' => false, 'error' => 'product_id is required'];
+        }
+
+        $analysis = IssueClassifier::detectHighRiskWords($productId);
+        if (!$analysis['success']) {
+            return $analysis;
+        }
+
+        $suggestions = [];
+        if (!empty($analysis['found'])) {
+            foreach ($analysis['found'] as $word => $fields) {
+                $suggestions[] = [
+                    'word' => $word,
+                    'fields' => $fields,
+                    'clean_version' => self::getCleanAlternative($word),
+                ];
+            }
+        }
+
+        return [
+            'success' => true,
+            'product_id' => $productId,
+            'product_name' => $analysis['product_name'],
+            'risk_level' => $analysis['risk_level'],
+            'problematic_text' => $analysis['found'],
+            'suggestions' => $suggestions,
+            'instructions' => 'Use gmc-apply-text-fix to replace these words in GMC supplemental feeds (or directly on site if preferred).'
+        ];
+    }
+
+    /**
+     * Get a clean alternative for a high-risk word.
+     */
+    private static function getCleanAlternative(string $word): string
+    {
+        $alternatives = [
+            'cure' => 'support',
+            'tachyon' => 'wellness',
+            'shielding' => 'protection',
+            'guaranteed' => 'high-quality',
+            'treat' => 'manage',
+            'prevent' => 'help reduce',
+            'shield' => 'guard',
+            '5g' => 'environmental',
+            'protection' => 'support',
+            'healing' => 'restorative',
+            'narcotic' => 'supplement',
+            'controlled' => 'quality-tested',
+        ];
+
+        return $alternatives[strtolower($word)] ?? 'wellness-focused';
+    }
 }

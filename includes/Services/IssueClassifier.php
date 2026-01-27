@@ -19,11 +19,21 @@ class IssueClassifier
     const TIER_MISCLASSIFIED = 'misclassified';
     const TIER_RESTRICTION = 'restriction';
 
-    // Review statuses for misclassified products
+    /**
+     * Review statuses for misclassified products
+     */
     const REVIEW_PENDING = 'pending_review';
     const REVIEW_FIX_APPLIED = 'fix_applied';
     const REVIEW_AWAITING_RECRAWL = 'awaiting_recrawl';
     const REVIEW_MARKED_RESTRICTION = 'marked_restriction';
+
+    /**
+     * High risk words that often trigger policy violations.
+     */
+    const HIGH_RISK_WORDS = [
+        'cure', 'tachyon', 'shielding', 'guaranteed', 'treat', 'prevent', 
+        'shield', '5g', 'protection', 'healing', 'narcotic', 'controlled'
+    ];
 
     /**
      * Patterns for Tier 1: Fixable Issues (content/data changes)
@@ -441,6 +451,48 @@ class IssueClassifier
             'product_name' => $title,
             'triggers_found' => $found,
             'trigger_count' => count($found),
+        ];
+    }
+
+    /**
+     * Detect high risk words in product fields.
+     */
+    public static function detectHighRiskWords(int $productId): array
+    {
+        $product = wc_get_product($productId);
+        if (!$product) {
+            return ['success' => false, 'error' => 'Product not found'];
+        }
+
+        $title = $product->get_name();
+        $description = $product->get_description();
+        $shortDescription = $product->get_short_description();
+        
+        $fields = [
+            'title' => $title,
+            'description' => $description,
+            'short_description' => $shortDescription
+        ];
+        
+        $found = [];
+        foreach ($fields as $fieldName => $content) {
+            $contentLower = strtolower($content);
+            foreach (self::HIGH_RISK_WORDS as $word) {
+                if (strpos($contentLower, strtolower($word)) !== false) {
+                    if (!isset($found[$word])) {
+                        $found[$word] = [];
+                    }
+                    $found[$word][] = $fieldName;
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'product_id' => $productId,
+            'product_name' => $title,
+            'found' => $found,
+            'risk_level' => count($found) > 0 ? 'high' : 'low',
         ];
     }
 
