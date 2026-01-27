@@ -654,11 +654,57 @@ class FeedManager
 
     /**
      * Count products with issues matching a category that are not in any feed.
+     * Note: This uses a faster counting method without loading WC products.
      */
     private static function countProductsNotInFeeds(?string $category): int
     {
-        $pending = self::getPendingProducts($category);
-        return count($pending);
+        global $wpdb;
+        
+        if (!$category) {
+            return 0;
+        }
+
+        $categoryPatterns = self::getCategoryPatterns();
+        $patterns = $categoryPatterns[strtolower($category)] ?? [];
+        if (empty($patterns)) {
+            return 0;
+        }
+
+        $statusTable = $wpdb->prefix . 'hp_gmc_product_status';
+        $feedProductsTable = $wpdb->prefix . 'hp_gmc_feed_products';
+
+        // Get products with issues that are not in any feed
+        $products = $wpdb->get_results(
+            "SELECT ps.product_id FROM $statusTable ps 
+             WHERE ps.status IN ('disapproved', 'warning')
+             AND ps.product_id NOT IN (
+                 SELECT fp.product_id FROM $feedProductsTable fp
+             )",
+            ARRAY_A
+        );
+
+        $matchCount = 0;
+        foreach ($products as $row) {
+            $productStatus = $wpdb->get_row($wpdb->prepare(
+                "SELECT issues FROM $statusTable WHERE product_id = %d",
+                $row['product_id']
+            ));
+            
+            if ($productStatus && $productStatus->issues) {
+                $issues = json_decode($productStatus->issues, true) ?: [];
+                foreach ($issues as $issue) {
+                    $desc = $issue['description'] ?? (is_string($issue) ? $issue : '');
+                    foreach ($patterns as $pattern) {
+                        if (preg_match('/' . $pattern . '/i', $desc)) {
+                            $matchCount++;
+                            break 2; // Count product only once
+                        }
+                    }
+                }
+            }
+        }
+
+        return $matchCount;
     }
 
     /**
@@ -676,7 +722,7 @@ class FeedManager
         }
 
         $categoryPatterns = self::getCategoryPatterns();
-        $patterns = $categoryPatterns[$category] ?? [];
+        $patterns = $categoryPatterns[strtolower($category)] ?? [];
         if (empty($patterns)) {
             return [];
         }
