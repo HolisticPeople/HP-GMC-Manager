@@ -2,6 +2,8 @@
 namespace HP_GMC\Abilities;
 
 use HP_GMC\Services\IssueClassifier;
+use HP_GMC\Services\IssueMonitor;
+use HP_GMC\Services\MerchantApiClient;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -222,5 +224,140 @@ class IssueAbilities
         ];
 
         return $alternatives[strtolower($word)] ?? 'wellness-focused';
+    }
+
+    /**
+     * Re-sync WC↔GMC product linkage in tracking table.
+     * Fixes broken links where product_id is 0.
+     */
+    public static function resyncLinkage(array $params): array
+    {
+        $stats = IssueMonitor::resyncProductLinkage();
+
+        return [
+            'success' => true,
+            'message' => sprintf(
+                'Fixed %d of %d orphaned products. %d still orphaned (no WC match). %d already linked.',
+                $stats['fixed'],
+                $stats['total'],
+                $stats['still_orphaned'],
+                $stats['already_linked']
+            ),
+            'stats' => $stats,
+        ];
+    }
+
+    /**
+     * Get list of truly orphaned GMC products (no WC match).
+     * These can be safely deleted from GMC.
+     */
+    public static function getOrphanedProducts(array $params): array
+    {
+        $limit = min((int) ($params['limit'] ?? 100), 500);
+        $orphaned = IssueMonitor::getOrphanedProducts($limit);
+
+        return [
+            'success' => true,
+            'summary' => $orphaned['summary'],
+            'sku_format' => $orphaned['sku_format'],
+            'gla_format' => $orphaned['gla_format'],
+            'instructions' => 'SKU-format orphans are likely duplicates from old sync methods - safe to delete. GLA-format orphans may be deleted WC products - verify before deletion.',
+        ];
+    }
+
+    /**
+     * Delete orphaned products from GMC.
+     * 
+     * @param array $params Contains:
+     *   - offer_ids: Array of GMC offer IDs to delete (format: online:en:US:XXXXX)
+     *   - type: 'sku_format' | 'gla_format' | 'all' - which orphans to delete
+     *   - dry_run: If true, only simulate deletion
+     */
+    public static function deleteOrphanedProducts(array $params): array
+    {
+        $offerIds = $params['offer_ids'] ?? [];
+        $type = $params['type'] ?? null;
+        $dryRun = (bool) ($params['dry_run'] ?? true);
+
+        // If no specific IDs provided, get from type
+        if (empty($offerIds) && $type) {
+            $orphaned = IssueMonitor::getOrphanedProducts(500);
+            
+            if ($type === 'sku_format') {
+                $offerIds = array_column($orphaned['sku_format'], 'gmc_offer_id');
+            } elseif ($type === 'gla_format') {
+                $offerIds = array_column($orphaned['gla_format'], 'gmc_offer_id');
+            } elseif ($type === 'all') {
+                $offerIds = array_merge(
+                    array_column($orphaned['sku_format'], 'gmc_offer_id'),
+                    array_column($orphaned['gla_format'], 'gmc_offer_id')
+                );
+            }
+        }
+
+        if (empty($offerIds)) {
+            return [
+                'success' => false,
+                'error' => 'No offer_ids provided and no orphans found for type: ' . ($type ?? 'none'),
+            ];
+        }
+
+        if ($dryRun) {
+            return [
+                'success' => true,
+                'dry_run' => true,
+                'would_delete' => count($offerIds),
+                'offer_ids' => array_slice($offerIds, 0, 20),
+                'message' => sprintf('Would delete %d products from GMC. Set dry_run=false to execute.', count($offerIds)),
+            ];
+        }
+
+        // Execute deletion
+        $client = new MerchantApiClient();
+        $results = [
+            'success' => true,
+            'deleted' => 0,
+            'failed' => 0,
+            'errors' => [],
+        ];
+
+        foreach ($offerIds as $offerId) {
+            $result = $client->deleteProduct($offerId);
+            if ($result['success']) {
+                $results['deleted']++;
+                
+                // Also remove from local cache
+                self::removeFromLocalCache($offerId);
+            } else {
+                $results['failed']++;
+                $results['errors'][] = [
+                    'offer_id' => $offerId,
+                    'error' => $result['error'] ?? 'Unknown error',
+                ];
+            }
+        }
+
+        $results['message'] = sprintf(
+            'Deleted %d products from GMC. %d failed.',
+            $results['deleted'],
+            $results['failed']
+        );
+
+        return $results;
+    }
+
+    /**
+     * Remove a product from local cache table.
+     */
+    private static function removeFromLocalCache(string $offerId): void
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+
+        // Extract gla_id from offer_id (format: online:en:US:gla_XXXXX)
+        $parts = explode(':', $offerId);
+        $glaId = end($parts);
+
+        $wpdb->delete($table, ['gla_id' => $glaId]);
     }
 }
