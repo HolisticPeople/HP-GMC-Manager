@@ -354,16 +354,27 @@ class IssueAbilities
 
     /**
      * Remove a product from local cache table.
+     * Handles both old format (gla_id with prefix) and new format (core ID only).
      */
     private static function removeFromLocalCache(string $offerId): void
     {
         global $wpdb;
         $table = $wpdb->prefix . 'hp_gmc_product_status';
 
-        // Extract gla_id from offer_id (format: online:en:US:gla_XXXXX)
+        // Try multiple formats to ensure we catch old and new entries
+        // offerId might be: "online:en:US:online:en:US:DH142" or "online:en:US:DH142" or "online:en:US:gla_42212"
+        
+        // 1. Extract core ID (last segment after all colons)
         $parts = explode(':', $offerId);
-        $glaId = end($parts);
-
-        $wpdb->delete($table, ['gla_id' => $glaId]);
+        $coreId = end($parts);
+        
+        // 2. Also try stripping one level of prefix (for double-prefixed IDs)
+        // "online:en:US:online:en:US:DH142" -> "online:en:US:DH142"
+        $singlePrefixId = preg_replace('/^online:[a-z]{2}:[A-Z]{2}:/', '', $offerId);
+        
+        // Delete by all possible gla_id formats
+        $wpdb->delete($table, ['gla_id' => $coreId]);
+        $wpdb->delete($table, ['gla_id' => $singlePrefixId]);
+        $wpdb->delete($table, ['gla_id' => $offerId]);
     }
 }
