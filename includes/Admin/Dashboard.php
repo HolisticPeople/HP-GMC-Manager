@@ -151,12 +151,12 @@ class Dashboard
         $feedStatus = \HP_GMC\Services\ProductDataFeed::getStatus();
         ?>
         <div class="hp-gmc-overview">
-            <!-- Primary Product Feed Card -->
+            <!-- Primary Data Source Card -->
             <div class="hp-gmc-primary-feed-card">
                 <div class="hp-gmc-primary-feed-header">
                     <h3>
-                        <span class="dashicons dashicons-rss"></span>
-                        <?php esc_html_e('Primary Product Feed', 'hp-gmc-manager'); ?>
+                        <span class="dashicons dashicons-database"></span>
+                        <?php esc_html_e('Primary Data Source', 'hp-gmc-manager'); ?>
                     </h3>
                     <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo $feedStatus['product_count'] > 0 ? 'active' : 'draft'; ?>">
                         <?php echo $feedStatus['product_count'] > 0 ? esc_html__('Active', 'hp-gmc-manager') : esc_html__('Not Generated', 'hp-gmc-manager'); ?>
@@ -164,7 +164,7 @@ class Dashboard
                 </div>
                 <div class="hp-gmc-primary-feed-body">
                     <p class="hp-gmc-feed-description">
-                        <?php esc_html_e('This feed provides complete product data to Google Merchant Center, replacing the GLA plugin sync.', 'hp-gmc-manager'); ?>
+                        <?php esc_html_e('This data source provides complete product data to Google Merchant Center, replacing the GLA plugin sync.', 'hp-gmc-manager'); ?>
                     </p>
                     <div class="hp-gmc-feed-stats">
                         <div class="hp-gmc-feed-stat">
@@ -741,23 +741,23 @@ class Dashboard
         ?>
         <div class="hp-gmc-feeds">
             
-            <!-- Primary Product Feed Section -->
+            <!-- Primary Data Source Section -->
             <div class="hp-gmc-primary-feed-section">
                 <div class="hp-gmc-section-header">
                     <h2>
                         <span class="dashicons dashicons-database"></span>
-                        <?php esc_html_e('Primary Product Feed', 'hp-gmc-manager'); ?>
+                        <?php esc_html_e('Primary Data Source', 'hp-gmc-manager'); ?>
                     </h2>
                 </div>
                 
                 <div class="hp-gmc-primary-feed-info-box">
                     <div class="hp-gmc-primary-feed-icon">
-                        <span class="dashicons dashicons-rss" style="font-size: 48px; width: 48px; height: 48px;"></span>
+                        <span class="dashicons dashicons-database" style="font-size: 48px; width: 48px; height: 48px; color: #2271b1;"></span>
                     </div>
                     <div class="hp-gmc-primary-feed-details">
                         <p class="hp-gmc-primary-feed-intro">
-                            <strong><?php esc_html_e('This feed provides complete product data to Google Merchant Center.', 'hp-gmc-manager'); ?></strong><br>
-                            <?php esc_html_e('Unlike supplemental exclusion/redirect feeds below, this is your main product catalog that replaces GLA sync.', 'hp-gmc-manager'); ?>
+                            <strong><?php esc_html_e('This data source provides complete product data to Google Merchant Center.', 'hp-gmc-manager'); ?></strong><br>
+                            <?php esc_html_e('Unlike supplemental sources below, this is your main product catalog that replaces GLA sync.', 'hp-gmc-manager'); ?>
                         </p>
                         
                         <table class="hp-gmc-primary-feed-meta">
@@ -807,10 +807,11 @@ class Dashboard
                         <div class="hp-gmc-primary-feed-help" style="margin-top: 15px; padding: 10px; background: #f0f6fc; border-left: 4px solid #2271b1;">
                             <strong><?php esc_html_e('To register in GMC:', 'hp-gmc-manager'); ?></strong>
                             <ol style="margin: 5px 0 0 20px;">
-                                <li><?php esc_html_e('Go to Google Merchant Center → Products → Feeds', 'hp-gmc-manager'); ?></li>
-                                <li><?php esc_html_e('Click "+ Add primary feed" or "Add supplemental feed"', 'hp-gmc-manager'); ?></li>
-                                <li><?php esc_html_e('Select "Scheduled fetch" and paste the TSV URL above', 'hp-gmc-manager'); ?></li>
-                                <li><?php esc_html_e('Set fetch frequency to Daily', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Go to Google Merchant Center → Settings → Data sources', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Click "Add product source" under Primary sources', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Select "Add products from a file" → "Enter a link to your file"', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Paste the TSV URL above and continue', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Set country/language and fetch schedule (Daily recommended)', 'hp-gmc-manager'); ?></li>
                             </ol>
                         </div>
                     </div>
@@ -819,15 +820,15 @@ class Dashboard
             
             <hr style="margin: 30px 0; border-top: 2px solid #ddd;">
             
-            <!-- Supplemental Feeds Section -->
+            <!-- Supplemental Data Sources Section -->
             <div class="hp-gmc-section-header">
-                <h2><?php esc_html_e('Supplemental Feeds', 'hp-gmc-manager'); ?></h2>
+                <h2><?php esc_html_e('Supplemental Data Sources', 'hp-gmc-manager'); ?></h2>
                 <button type="button" class="button button-primary" id="hp-gmc-create-feed">
-                    <?php esc_html_e('+ New Feed', 'hp-gmc-manager'); ?>
+                    <?php esc_html_e('+ New Source', 'hp-gmc-manager'); ?>
                 </button>
             </div>
             
-            <p><?php esc_html_e('Manage supplemental feeds for GMC. Use exclusion feeds to fix policy violations, redirect feeds to send ad traffic to funnels.', 'hp-gmc-manager'); ?></p>
+            <p><?php esc_html_e('Manage supplemental data sources for GMC. Use exclusion sources to fix policy violations, redirect sources to send ad traffic to funnels.', 'hp-gmc-manager'); ?></p>
             
             <!-- Feed Summary -->
             <div class="hp-gmc-feeds-summary">
