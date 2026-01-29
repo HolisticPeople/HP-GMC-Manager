@@ -5,6 +5,7 @@ use HP_GMC\Admin\Dashboard;
 use HP_GMC\Admin\SettingsPage;
 use HP_GMC\Services\MerchantApiClient;
 use HP_GMC\Services\IssueMonitor;
+use HP_GMC\Rest\ProductFeedEndpoint;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -44,6 +45,9 @@ class Plugin
         // Cron hook for syncing product statuses
         add_action('hp_gmc_sync_status', [IssueMonitor::class, 'sync_product_statuses']);
 
+        // Register REST API endpoints
+        add_action('rest_api_init', [ProductFeedEndpoint::class, 'register']);
+
         // AJAX handlers
         add_action('wp_ajax_hp_gmc_toggle_tool', [self::class, 'ajax_toggle_tool']);
         add_action('wp_ajax_hp_gmc_test_connection', [self::class, 'ajax_test_connection']);
@@ -71,6 +75,10 @@ class Plugin
         add_action('wp_ajax_hp_gmc_analyze_triggers', [self::class, 'ajax_analyze_triggers']);
         add_action('wp_ajax_hp_gmc_mark_as_restriction', [self::class, 'ajax_mark_as_restriction']);
         add_action('wp_ajax_hp_gmc_get_issues_subtab', [self::class, 'ajax_get_issues_subtab']);
+        
+        // Primary feed AJAX handlers
+        add_action('wp_ajax_hp_gmc_regenerate_primary_feed', [self::class, 'ajax_regenerate_primary_feed']);
+        add_action('wp_ajax_hp_gmc_get_primary_feed_status', [self::class, 'ajax_get_primary_feed_status']);
 
         // Plugin action links
         add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
@@ -981,6 +989,28 @@ class Plugin
                 'category' => 'feed',
             ],
 
+            // Primary product feed tools
+            'gmc-primary-feed-status' => [
+                'title' => 'Primary Feed Status',
+                'description' => 'Get status of the primary product data feed (URL, product count, last generated)',
+                'callback' => [Abilities\FeedAbilities::class, 'getPrimaryFeedStatus'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'feed',
+            ],
+            'gmc-primary-feed-regenerate' => [
+                'title' => 'Regenerate Primary Feed',
+                'description' => 'Clear cache and regenerate the primary product data feed',
+                'callback' => [Abilities\FeedAbilities::class, 'regeneratePrimaryFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'feed',
+            ],
+
             // Orphan cleanup tools
             'gmc-resync-linkage' => [
                 'title' => 'Resync WC-GMC Linkage',
@@ -1747,5 +1777,53 @@ class Plugin
         $html = ob_get_clean();
         
         wp_send_json_success(['html' => $html, 'subtab' => $subtab]);
+    }
+
+    /**
+     * AJAX: Regenerate primary product feed.
+     */
+    public static function ajax_regenerate_primary_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        try {
+            // Clear cache and regenerate
+            Services\ProductDataFeed::clearCache();
+            Services\ProductDataFeed::generateFeed('tsv', true);
+            Services\ProductDataFeed::generateFeed('csv', true);
+
+            $status = Services\ProductDataFeed::getStatus();
+
+            wp_send_json_success([
+                'message' => sprintf(
+                    __('Feed regenerated successfully with %d products', 'hp-gmc-manager'),
+                    $status['product_count']
+                ),
+                'status' => $status,
+            ]);
+        } catch (\Exception $e) {
+            wp_send_json_error([
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * AJAX: Get primary feed status.
+     */
+    public static function ajax_get_primary_feed_status(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $status = Services\ProductDataFeed::getStatus();
+        wp_send_json_success($status);
     }
 }

@@ -46,6 +46,9 @@
 
             // Sync now button
             $('#hp-gmc-sync-now').on('click', this.syncNow.bind(this));
+            
+            // Primary feed regenerate buttons
+            $('#hp-gmc-regenerate-primary-feed, #hp-gmc-regenerate-primary-feed-feeds-tab').on('click', this.regeneratePrimaryFeed.bind(this));
 
             // Tool toggles
             $(document).on('change', '.hp-gmc-tool-toggle', this.toggleTool.bind(this));
@@ -243,6 +246,36 @@
                 },
                 error: function() {
                     alert(hpGmcData.strings.error);
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+
+        regeneratePrimaryFeed: function(e) {
+            const $btn = $(e.target);
+            const originalText = $btn.text();
+
+            $btn.prop('disabled', true).text('Regenerating...');
+
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_regenerate_primary_feed',
+                    nonce: hpGmcData.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.data.message || 'Feed regenerated successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + (response.data?.message || 'Failed to regenerate feed'));
+                    }
+                },
+                error: function() {
+                    alert('Network error. Please try again.');
                 },
                 complete: function() {
                     $btn.prop('disabled', false).text(originalText);

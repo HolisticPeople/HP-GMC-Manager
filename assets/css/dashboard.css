@@ -1487,3 +1487,190 @@ a.hp-gmc-pending-count:hover {
         flex-direction: column;
     }
 }
+
+/* Primary Product Feed Card (Overview Tab) */
+.hp-gmc-primary-feed-card {
+    background: linear-gradient(135deg, #f0f6fc 0%, #e8f4f8 100%);
+    border: 1px solid #c3cfd9;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 25px;
+}
+
+.hp-gmc-primary-feed-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+.hp-gmc-primary-feed-header h3 {
+    margin: 0;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.hp-gmc-primary-feed-header h3 .dashicons {
+    color: #2271b1;
+}
+
+.hp-gmc-primary-feed-body {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.hp-gmc-feed-description {
+    margin: 0;
+    color: #50575e;
+    font-size: 14px;
+}
+
+.hp-gmc-feed-stats {
+    display: flex;
+    gap: 30px;
+}
+
+.hp-gmc-feed-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.hp-gmc-feed-stat-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.hp-gmc-feed-stat-label {
+    font-size: 12px;
+    color: #646970;
+    text-transform: uppercase;
+}
+
+.hp-gmc-feed-url-box {
+    background: #fff;
+    padding: 12px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.hp-gmc-feed-url-box label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #646970;
+}
+
+.hp-gmc-feed-url-row {
+    display: flex;
+    gap: 8px;
+}
+
+.hp-gmc-feed-url-input {
+    flex: 1;
+    font-family: monospace;
+    font-size: 13px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f6f7f7;
+}
+
+.hp-gmc-feed-actions {
+    display: flex;
+    gap: 10px;
+}
+
+/* Primary Feed Section (Feeds Tab) */
+.hp-gmc-primary-feed-section {
+    margin-bottom: 20px;
+}
+
+.hp-gmc-primary-feed-info-box {
+    display: flex;
+    gap: 20px;
+    background: #fff;
+    border: 1px solid #c3cfd9;
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 15px;
+}
+
+.hp-gmc-primary-feed-icon {
+    flex-shrink: 0;
+    color: #2271b1;
+}
+
+.hp-gmc-primary-feed-details {
+    flex: 1;
+}
+
+.hp-gmc-primary-feed-intro {
+    margin: 0 0 15px 0;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.hp-gmc-primary-feed-meta {
+    border-collapse: collapse;
+    width: 100%;
+    max-width: 700px;
+}
+
+.hp-gmc-primary-feed-meta th {
+    text-align: left;
+    font-weight: 600;
+    padding: 8px 15px 8px 0;
+    width: 150px;
+    vertical-align: top;
+    color: #50575e;
+}
+
+.hp-gmc-primary-feed-meta td {
+    padding: 8px 0;
+}
+
+.hp-gmc-primary-feed-meta code {
+    background: #f0f0f1;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.hp-gmc-primary-feed-help {
+    font-size: 13px;
+}
+
+.hp-gmc-primary-feed-help ol {
+    padding-left: 20px;
+}
+
+.hp-gmc-primary-feed-help li {
+    margin-bottom: 3px;
+}
+
+/* Responsive adjustments for primary feed */
+@media screen and (max-width: 782px) {
+    .hp-gmc-primary-feed-info-box {
+        flex-direction: column;
+    }
+    
+    .hp-gmc-primary-feed-icon {
+        text-align: center;
+    }
+    
+    .hp-gmc-feed-stats {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    .hp-gmc-feed-url-row {
+        flex-direction: column;
+    }
+}

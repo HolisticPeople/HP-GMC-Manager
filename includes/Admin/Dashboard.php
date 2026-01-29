@@ -146,8 +146,56 @@ class Dashboard
         $warning = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'warning'");
 
         $last_sync = get_option('hp_gmc_last_sync', null);
+        
+        // Get primary feed status
+        $feedStatus = \HP_GMC\Services\ProductDataFeed::getStatus();
         ?>
         <div class="hp-gmc-overview">
+            <!-- Primary Product Feed Card -->
+            <div class="hp-gmc-primary-feed-card">
+                <div class="hp-gmc-primary-feed-header">
+                    <h3>
+                        <span class="dashicons dashicons-rss"></span>
+                        <?php esc_html_e('Primary Product Feed', 'hp-gmc-manager'); ?>
+                    </h3>
+                    <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo $feedStatus['product_count'] > 0 ? 'active' : 'draft'; ?>">
+                        <?php echo $feedStatus['product_count'] > 0 ? esc_html__('Active', 'hp-gmc-manager') : esc_html__('Not Generated', 'hp-gmc-manager'); ?>
+                    </span>
+                </div>
+                <div class="hp-gmc-primary-feed-body">
+                    <p class="hp-gmc-feed-description">
+                        <?php esc_html_e('This feed provides complete product data to Google Merchant Center, replacing the GLA plugin sync.', 'hp-gmc-manager'); ?>
+                    </p>
+                    <div class="hp-gmc-feed-stats">
+                        <div class="hp-gmc-feed-stat">
+                            <span class="hp-gmc-feed-stat-value"><?php echo esc_html(number_format($feedStatus['product_count'])); ?></span>
+                            <span class="hp-gmc-feed-stat-label"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></span>
+                        </div>
+                        <div class="hp-gmc-feed-stat">
+                            <span class="hp-gmc-feed-stat-value"><?php echo esc_html($feedStatus['last_generated_ago'] ?: __('Never', 'hp-gmc-manager')); ?></span>
+                            <span class="hp-gmc-feed-stat-label"><?php esc_html_e('Last Generated', 'hp-gmc-manager'); ?></span>
+                        </div>
+                    </div>
+                    <div class="hp-gmc-feed-url-box">
+                        <label><?php esc_html_e('Feed URL:', 'hp-gmc-manager'); ?></label>
+                        <div class="hp-gmc-feed-url-row">
+                            <input type="text" readonly value="<?php echo esc_url($feedStatus['feed_url']); ?>" class="hp-gmc-feed-url-input" id="hp-gmc-primary-feed-url">
+                            <button type="button" class="button" onclick="navigator.clipboard.writeText(document.getElementById('hp-gmc-primary-feed-url').value); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000);">
+                                <?php esc_html_e('Copy', 'hp-gmc-manager'); ?>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hp-gmc-feed-actions">
+                        <a href="<?php echo esc_url($feedStatus['feed_url']); ?>" class="button" target="_blank">
+                            <?php esc_html_e('Preview Feed', 'hp-gmc-manager'); ?>
+                        </a>
+                        <button type="button" class="button button-primary" id="hp-gmc-regenerate-primary-feed">
+                            <?php esc_html_e('Regenerate', 'hp-gmc-manager'); ?>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <div class="hp-gmc-cards">
                 <div class="hp-gmc-card hp-gmc-card-total">
                     <h3><?php esc_html_e('Total Products', 'hp-gmc-manager'); ?></h3>
@@ -687,8 +735,91 @@ class Dashboard
         $selectedFeedId = isset($_GET['feed_id']) ? (int) $_GET['feed_id'] : 0;
         $selectedFeed = $selectedFeedId ? \HP_GMC\Services\FeedManager::get($selectedFeedId) : null;
         $feedProducts = $selectedFeed ? \HP_GMC\Services\FeedManager::getProducts($selectedFeedId) : [];
+        
+        // Get primary feed status
+        $primaryFeedStatus = \HP_GMC\Services\ProductDataFeed::getStatus();
         ?>
         <div class="hp-gmc-feeds">
+            
+            <!-- Primary Product Feed Section -->
+            <div class="hp-gmc-primary-feed-section">
+                <div class="hp-gmc-section-header">
+                    <h2>
+                        <span class="dashicons dashicons-database"></span>
+                        <?php esc_html_e('Primary Product Feed', 'hp-gmc-manager'); ?>
+                    </h2>
+                </div>
+                
+                <div class="hp-gmc-primary-feed-info-box">
+                    <div class="hp-gmc-primary-feed-icon">
+                        <span class="dashicons dashicons-rss" style="font-size: 48px; width: 48px; height: 48px;"></span>
+                    </div>
+                    <div class="hp-gmc-primary-feed-details">
+                        <p class="hp-gmc-primary-feed-intro">
+                            <strong><?php esc_html_e('This feed provides complete product data to Google Merchant Center.', 'hp-gmc-manager'); ?></strong><br>
+                            <?php esc_html_e('Unlike supplemental exclusion/redirect feeds below, this is your main product catalog that replaces GLA sync.', 'hp-gmc-manager'); ?>
+                        </p>
+                        
+                        <table class="hp-gmc-primary-feed-meta">
+                            <tr>
+                                <th><?php esc_html_e('Feed URL (TSV):', 'hp-gmc-manager'); ?></th>
+                                <td>
+                                    <code id="hp-gmc-primary-feed-url-tsv"><?php echo esc_url($primaryFeedStatus['feed_url']); ?></code>
+                                    <button type="button" class="button button-small" onclick="navigator.clipboard.writeText(document.getElementById('hp-gmc-primary-feed-url-tsv').textContent); this.textContent='✓'; setTimeout(() => this.textContent='Copy', 1500);">
+                                        <?php esc_html_e('Copy', 'hp-gmc-manager'); ?>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Feed URL (CSV):', 'hp-gmc-manager'); ?></th>
+                                <td>
+                                    <code id="hp-gmc-primary-feed-url-csv"><?php echo esc_url($primaryFeedStatus['feed_url_csv']); ?></code>
+                                    <button type="button" class="button button-small" onclick="navigator.clipboard.writeText(document.getElementById('hp-gmc-primary-feed-url-csv').textContent); this.textContent='✓'; setTimeout(() => this.textContent='Copy', 1500);">
+                                        <?php esc_html_e('Copy', 'hp-gmc-manager'); ?>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Products:', 'hp-gmc-manager'); ?></th>
+                                <td><strong><?php echo esc_html(number_format($primaryFeedStatus['product_count'])); ?></strong></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Last Generated:', 'hp-gmc-manager'); ?></th>
+                                <td><?php echo esc_html($primaryFeedStatus['last_generated_ago'] ?: __('Never', 'hp-gmc-manager')); ?></td>
+                            </tr>
+                            <tr>
+                                <th><?php esc_html_e('Cache Duration:', 'hp-gmc-manager'); ?></th>
+                                <td><?php printf(esc_html__('%d minutes', 'hp-gmc-manager'), $primaryFeedStatus['cache_duration_minutes']); ?></td>
+                            </tr>
+                        </table>
+                        
+                        <div class="hp-gmc-primary-feed-actions" style="margin-top: 15px;">
+                            <a href="<?php echo esc_url($primaryFeedStatus['feed_url']); ?>" class="button" target="_blank">
+                                <span class="dashicons dashicons-external" style="vertical-align: text-top;"></span>
+                                <?php esc_html_e('Preview Feed', 'hp-gmc-manager'); ?>
+                            </a>
+                            <button type="button" class="button" id="hp-gmc-regenerate-primary-feed-feeds-tab">
+                                <span class="dashicons dashicons-update" style="vertical-align: text-top;"></span>
+                                <?php esc_html_e('Regenerate Now', 'hp-gmc-manager'); ?>
+                            </button>
+                        </div>
+                        
+                        <div class="hp-gmc-primary-feed-help" style="margin-top: 15px; padding: 10px; background: #f0f6fc; border-left: 4px solid #2271b1;">
+                            <strong><?php esc_html_e('To register in GMC:', 'hp-gmc-manager'); ?></strong>
+                            <ol style="margin: 5px 0 0 20px;">
+                                <li><?php esc_html_e('Go to Google Merchant Center → Products → Feeds', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Click "+ Add primary feed" or "Add supplemental feed"', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Select "Scheduled fetch" and paste the TSV URL above', 'hp-gmc-manager'); ?></li>
+                                <li><?php esc_html_e('Set fetch frequency to Daily', 'hp-gmc-manager'); ?></li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <hr style="margin: 30px 0; border-top: 2px solid #ddd;">
+            
+            <!-- Supplemental Feeds Section -->
             <div class="hp-gmc-section-header">
                 <h2><?php esc_html_e('Supplemental Feeds', 'hp-gmc-manager'); ?></h2>
                 <button type="button" class="button button-primary" id="hp-gmc-create-feed">

@@ -704,4 +704,72 @@ class FeedAbilities
             'message' => "Added {$added} products to feed '{$name}'",
         ];
     }
+
+    /**
+     * Get primary product feed status.
+     * 
+     * @param array $params
+     * @return array
+     */
+    public static function getPrimaryFeedStatus(array $params): array
+    {
+        $status = \HP_GMC\Services\ProductDataFeed::getStatus();
+
+        return [
+            'success' => true,
+            'feed_type' => 'primary_product_feed',
+            'description' => 'Main product data feed for GMC (replaces GLA sync)',
+            'feed_url' => $status['feed_url'],
+            'feed_url_csv' => $status['feed_url_csv'],
+            'product_count' => $status['product_count'],
+            'last_generated' => $status['last_generated'],
+            'last_generated_ago' => $status['last_generated_ago'],
+            'cache_duration_minutes' => $status['cache_duration_minutes'],
+            'instructions' => [
+                'To register in GMC:',
+                '1. Go to Google Merchant Center → Products → Feeds',
+                '2. Click "Add primary feed" or "Add supplemental feed"',
+                '3. Select "Scheduled fetch" and paste the TSV URL',
+                '4. Set fetch frequency to Daily',
+            ],
+        ];
+    }
+
+    /**
+     * Regenerate the primary product feed.
+     * 
+     * @param array $params
+     * @return array
+     */
+    public static function regeneratePrimaryFeed(array $params): array
+    {
+        try {
+            // Clear cache
+            \HP_GMC\Services\ProductDataFeed::clearCache();
+
+            // Regenerate both formats
+            \HP_GMC\Services\ProductDataFeed::generateFeed('tsv', true);
+            \HP_GMC\Services\ProductDataFeed::generateFeed('csv', true);
+
+            $status = \HP_GMC\Services\ProductDataFeed::getStatus();
+
+            AuditLog::log('primary_feed_regenerate', [], [
+                'product_count' => $status['product_count'],
+            ]);
+
+            return [
+                'success' => true,
+                'message' => sprintf('Feed regenerated with %d products', $status['product_count']),
+                'product_count' => $status['product_count'],
+                'last_generated' => $status['last_generated'],
+                'feed_url' => $status['feed_url'],
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
 }
