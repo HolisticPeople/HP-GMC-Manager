@@ -48,13 +48,17 @@ class IssueMonitor
                     $stats['total']++;
                     
                     // Parse product ID from Merchant API v1beta format
-                    // offerId is the product identifier, or extract from name
-                    $glaId = $product['offerId'] ?? '';
-                    if (empty($glaId) && !empty($product['name'])) {
+                    // offerId may be in format "online:en:US:gla_42212" or just "gla_42212"
+                    $rawOfferId = $product['offerId'] ?? '';
+                    if (empty($rawOfferId) && !empty($product['name'])) {
                         // Name format: accounts/{account}/products/{channel}~{language}~{feedLabel}~{offerId}
                         $parts = explode('~', $product['name']);
-                        $glaId = end($parts) ?: '';
+                        $rawOfferId = end($parts) ?: '';
                     }
+                    
+                    // Strip the channel:language:feedLabel prefix if present
+                    // "online:en:US:gla_42212" -> "gla_42212"
+                    $glaId = self::extractCoreOfferId($rawOfferId);
                     
                     // Parse productStatus from Merchant API v1beta
                     $productStatus = $product['productStatus'] ?? [];
@@ -128,6 +132,21 @@ class IssueMonitor
         }
 
         return $stats;
+    }
+
+    /**
+     * Extract core offer ID from potentially prefixed offerId.
+     * "online:en:US:gla_42212" -> "gla_42212"
+     * "gla_42212" -> "gla_42212"
+     * "online:en:US:DH026" -> "DH026"
+     */
+    private static function extractCoreOfferId(string $offerId): string
+    {
+        // If offerId starts with "online:en:" pattern, strip the prefix
+        if (preg_match('/^online:[a-z]{2}:[A-Z]{2}:(.+)$/', $offerId, $matches)) {
+            return $matches[1];
+        }
+        return $offerId;
     }
 
     /**
