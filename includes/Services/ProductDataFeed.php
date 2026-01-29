@@ -123,9 +123,12 @@ class ProductDataFeed
     /**
      * Get the GMC offer ID for a product.
      * Uses existing GLA ID if available for compatibility.
+     * 
+     * IMPORTANT: GMC automatically prepends "online:en:US:" to the ID,
+     * so we must send just the offer ID (e.g., "gla_42156") NOT the full format.
      *
      * @param int $productId WooCommerce product ID
-     * @return string GMC offer ID in format "online:en:US:gla_XXXXX"
+     * @return string GMC offer ID in format "gla_XXXXX" (without channel/language/country prefix)
      */
     public static function getGmcOfferId(int $productId): string
     {
@@ -133,16 +136,17 @@ class ProductDataFeed
         $glaOfferId = get_post_meta($productId, '_wc_gla_mc_offer_id', true);
 
         if (!empty($glaOfferId)) {
-            // GLA stores just the suffix like "gla_12345" or full ID
+            // GLA stores just the suffix like "gla_12345" or sometimes full ID
+            // Strip any "online:en:US:" prefix if present - GMC adds this automatically
             if (strpos($glaOfferId, 'online:') === 0) {
-                return $glaOfferId;
+                // Remove the "online:en:US:" prefix
+                $glaOfferId = preg_replace('/^online:[a-z]{2}:[A-Z]{2}:/', '', $glaOfferId);
             }
-            // Prepend the full format
-            return 'online:en:US:' . $glaOfferId;
+            return $glaOfferId;
         }
 
         // Generate new ID using GLA format for consistency
-        return 'online:en:US:gla_' . $productId;
+        return 'gla_' . $productId;
     }
 
     /**
