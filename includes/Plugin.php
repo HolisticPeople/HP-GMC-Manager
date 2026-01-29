@@ -980,6 +980,60 @@ class Plugin
                 ],
                 'category' => 'feed',
             ],
+
+            // Orphan cleanup tools
+            'gmc-resync-linkage' => [
+                'title' => 'Resync WC-GMC Linkage',
+                'description' => 'Re-sync WooCommerce↔GMC product linkage in tracking table. Fixes broken links where product_id is 0.',
+                'callback' => [Abilities\IssueAbilities::class, 'resyncLinkage'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'maintenance',
+            ],
+            'gmc-get-orphaned-products' => [
+                'title' => 'Get Orphaned Products',
+                'description' => 'Get list of GMC products with no WooCommerce match. These can be safely deleted from GMC.',
+                'callback' => [Abilities\IssueAbilities::class, 'getOrphanedProducts'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'limit' => [
+                            'type' => 'integer',
+                            'description' => 'Maximum products to return',
+                            'default' => 100,
+                        ],
+                    ],
+                ],
+                'category' => 'maintenance',
+            ],
+            'gmc-delete-orphaned-products' => [
+                'title' => 'Delete Orphaned Products',
+                'description' => 'Delete orphaned products from GMC. Use type parameter to delete by category or specify offer_ids directly.',
+                'callback' => [Abilities\IssueAbilities::class, 'deleteOrphanedProducts'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'offer_ids' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Specific GMC offer IDs to delete (format: online:en:US:XXXXX)',
+                        ],
+                        'type' => [
+                            'type' => 'string',
+                            'description' => 'Delete by orphan type: sku_format, gla_format, or all',
+                            'enum' => ['sku_format', 'gla_format', 'all'],
+                        ],
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'If true, only show what would be deleted',
+                            'default' => true,
+                        ],
+                    ],
+                ],
+                'category' => 'maintenance',
+            ],
         ];
     }
 

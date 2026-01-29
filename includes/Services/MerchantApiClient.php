@@ -357,4 +357,60 @@ class MerchantApiClient
     {
         return $this->call('DELETE', "datafeeds/{$feedId}", [], 'content');
     }
+
+    /**
+     * Delete a product from GMC.
+     * 
+     * @param string $offerId The full offer ID (e.g., online:en:US:gla_42304)
+     * @return array Result of deletion
+     */
+    public function deleteProduct(string $offerId): array
+    {
+        // Content API v2.1 uses format: merchantId/products/channel~language~feedLabel~offerId
+        // But we receive offerId in format: online:en:US:gla_42304
+        
+        // Convert colon-separated to tilde-separated for API
+        $productId = str_replace(':', '~', $offerId);
+        
+        // Use Content API v2.1 for product deletion
+        return $this->call('DELETE', "products/{$productId}", [], 'content');
+    }
+
+    /**
+     * Batch delete products from GMC.
+     * 
+     * @param array $offerIds Array of offer IDs to delete
+     * @return array Results with success/failure counts
+     */
+    public function batchDeleteProducts(array $offerIds): array
+    {
+        $results = [
+            'deleted' => 0,
+            'failed' => 0,
+            'errors' => [],
+        ];
+
+        // Content API supports batch operations via custombatch
+        // But for simplicity, we'll do sequential deletes with rate limiting
+        foreach ($offerIds as $index => $offerId) {
+            $result = $this->deleteProduct($offerId);
+            
+            if ($result['success']) {
+                $results['deleted']++;
+            } else {
+                $results['failed']++;
+                $results['errors'][] = [
+                    'offer_id' => $offerId,
+                    'error' => $result['error'] ?? 'Unknown error',
+                ];
+            }
+
+            // Rate limit: pause every 10 deletes
+            if (($index + 1) % 10 === 0) {
+                usleep(500000); // 0.5 second pause
+            }
+        }
+
+        return $results;
+    }
 }

@@ -202,12 +202,15 @@ class IssueMonitor
 
     /**
      * Find WooCommerce product ID from GLA ID.
+     * Handles multiple ID formats:
+     * - gla_XXXXX: WooCommerce product ID format (from GLA plugin)
+     * - SKU format: Legacy sync or manual entries (e.g., DH026, ME-Boron-8)
      */
     private static function findWooCommerceProductId(string $glaId): int
     {
         global $wpdb;
 
-        // GLA IDs are typically in format "gla_12345" where 12345 is the WC product ID
+        // 1. GLA IDs in format "gla_12345" where 12345 is the WC product ID
         if (preg_match('/^gla_(\d+)$/', $glaId, $matches)) {
             $potentialId = (int) $matches[1];
             
@@ -222,13 +225,142 @@ class IssueMonitor
             }
         }
 
-        // Try to find by meta key (GLA stores mapping)
+        // 2. Try to find by _wc_gla_mc_offer_id meta (legacy GLA mapping)
         $productId = $wpdb->get_var($wpdb->prepare(
             "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wc_gla_mc_offer_id' AND meta_value = %s",
             $glaId
         ));
+        if ($productId) {
+            return (int) $productId;
+        }
 
-        return (int) $productId;
+        // 3. Try to find by _wc_gla_google_ids meta (current GLA mapping)
+        // Format: {"US":"online:en:US:gla_XXXXX"} - search for gla_id within JSON
+        $searchPattern = '%' . $wpdb->esc_like($glaId) . '%';
+        $productId = $wpdb->get_var($wpdb->prepare(
+            "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_wc_gla_google_ids' AND meta_value LIKE %s LIMIT 1",
+            $searchPattern
+        ));
+        if ($productId) {
+            return (int) $productId;
+        }
+
+        // 4. If glaId looks like a SKU (not gla_ format), try SKU lookup
+        if (!str_starts_with($glaId, 'gla_')) {
+            $productId = wc_get_product_id_by_sku($glaId);
+            if ($productId) {
+                return (int) $productId;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Re-sync product linkage for all cached GMC products.
+     * Fixes broken WC↔GMC links in the tracking table.
+     * 
+     * @return array Stats about the re-sync operation
+     */
+    public static function resyncProductLinkage(): array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+
+        $stats = [
+            'total' => 0,
+            'fixed' => 0,
+            'still_orphaned' => 0,
+            'already_linked' => 0,
+        ];
+
+        // Get all products with product_id = 0 (broken linkage)
+        $orphaned = $wpdb->get_results(
+            "SELECT id, gla_id FROM $table WHERE product_id = 0 OR product_id IS NULL",
+            ARRAY_A
+        );
+
+        $stats['total'] = count($orphaned);
+
+        foreach ($orphaned as $row) {
+            $glaId = $row['gla_id'];
+            $productId = self::findWooCommerceProductId($glaId);
+
+            if ($productId > 0) {
+                $wpdb->update(
+                    $table,
+                    ['product_id' => $productId],
+                    ['id' => $row['id']]
+                );
+                $stats['fixed']++;
+            } else {
+                $stats['still_orphaned']++;
+            }
+        }
+
+        // Also count already linked products
+        $stats['already_linked'] = (int) $wpdb->get_var(
+            "SELECT COUNT(*) FROM $table WHERE product_id > 0"
+        );
+
+        return $stats;
+    }
+
+    /**
+     * Get list of truly orphaned GMC products (no WC match after resync).
+     * These can be safely deleted from GMC.
+     * 
+     * @param int $limit Max number to return
+     * @return array List of orphaned GMC IDs with metadata
+     */
+    public static function getOrphanedProducts(int $limit = 100): array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+
+        // First resync to ensure linkage is up to date
+        self::resyncProductLinkage();
+
+        // Get products still orphaned after resync
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT gla_id, status, issues, last_updated 
+             FROM $table 
+             WHERE product_id = 0 OR product_id IS NULL 
+             ORDER BY last_updated DESC 
+             LIMIT %d",
+            $limit
+        ), ARRAY_A);
+
+        $orphaned = [
+            'sku_format' => [],
+            'gla_format' => [],
+        ];
+
+        foreach ($results as $row) {
+            $glaId = $row['gla_id'];
+            $entry = [
+                'gmc_offer_id' => 'online:en:US:' . $glaId,
+                'gla_id' => $glaId,
+                'status' => $row['status'],
+                'issues' => json_decode($row['issues'], true) ?: [],
+                'last_updated' => $row['last_updated'],
+            ];
+
+            // Categorize by ID format
+            if (str_starts_with($glaId, 'gla_')) {
+                $orphaned['gla_format'][] = $entry;
+            } else {
+                $orphaned['sku_format'][] = $entry;
+            }
+        }
+
+        $orphaned['summary'] = [
+            'total' => count($results),
+            'sku_format_count' => count($orphaned['sku_format']),
+            'gla_format_count' => count($orphaned['gla_format']),
+        ];
+
+        return $orphaned;
     }
 
     /**
