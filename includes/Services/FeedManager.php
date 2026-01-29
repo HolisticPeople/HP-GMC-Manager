@@ -151,7 +151,7 @@ class FeedManager
         }
 
         $sku = $product->get_sku();
-        $gmcId = get_post_meta($productId, '_wc_gla_mc_id', true) ?: '';
+        $gmcId = self::getGmcIdFromProduct($productId);
 
         // Check if product+attribute already exists in this feed
         $existing = $wpdb->get_var($wpdb->prepare(
@@ -289,7 +289,15 @@ class FeedManager
         // Group products by GMC ID, collecting all their attributes
         $productData = [];
         foreach ($products as $product) {
-            $gmcId = $product['gmc_id'] ?: self::buildGmcId($product['sku']);
+            // Use stored gmc_id, or look up from product meta, or fallback to gla_ID format
+            $gmcId = $product['gmc_id'];
+            if (empty($gmcId) && !empty($product['product_id'])) {
+                $gmcId = self::getGmcIdFromProduct((int) $product['product_id']);
+            }
+            if (empty($gmcId)) {
+                // Last resort: use SKU format (legacy)
+                $gmcId = self::buildGmcId($product['sku']);
+            }
             if (!isset($productData[$gmcId])) {
                 $productData[$gmcId] = [];
             }
@@ -349,11 +357,36 @@ class FeedManager
 
     /**
      * Build a GMC product ID from SKU (fallback if not synced via GLA).
+     * Note: This is a legacy fallback. Prefer getGmcIdFromProduct() which uses gla_ID format.
      */
     private static function buildGmcId(string $sku): string
     {
         // Standard format: online:en:US:SKU
         return 'online:en:US:' . $sku;
+    }
+
+    /**
+     * Get the GMC offer ID for a product.
+     * Uses _wc_gla_google_ids meta (set by Google Listings & Ads plugin).
+     * Falls back to gla_PRODUCT_ID format if not found.
+     *
+     * @param int $productId WooCommerce product ID
+     * @return string GMC offer ID in format online:en:US:gla_XXXXX
+     */
+    private static function getGmcIdFromProduct(int $productId): string
+    {
+        // Try _wc_gla_google_ids first (JSON format from GLA plugin)
+        // Format: {"US":"online:en:US:gla_42687"}
+        $googleIds = get_post_meta($productId, '_wc_gla_google_ids', true);
+        if ($googleIds) {
+            $decoded = is_string($googleIds) ? json_decode($googleIds, true) : $googleIds;
+            if (is_array($decoded) && isset($decoded['US'])) {
+                return $decoded['US'];
+            }
+        }
+        
+        // Fallback: build from product ID using gla_XXXXX format (GLA convention)
+        return 'online:en:US:gla_' . $productId;
     }
 
     /**
@@ -467,8 +500,8 @@ class FeedManager
             $errors = $data['errors'] ?? [];
             $warnings = $data['warnings'] ?? [];
             
-            // Capture last fetch time (GMC uses lastExecutionDate in ISO 8601 format)
-            $lastFetchTime = $data['lastExecutionDate'] ?? null;
+            // Capture last fetch time (GMC uses lastExecutionDate for fetch feeds, lastUploadDate for upload feeds)
+            $lastFetchTime = $data['lastExecutionDate'] ?? $data['lastUploadDate'] ?? null;
             $mysqlCrawlTime = null;
             if ($lastFetchTime) {
                 $mysqlCrawlTime = date('Y-m-d H:i:s', strtotime($lastFetchTime));
