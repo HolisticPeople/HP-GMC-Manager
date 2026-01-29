@@ -323,16 +323,22 @@ class IssueAbilities
 
         foreach ($offerIds as $offerId) {
             $result = $client->deleteProduct($offerId);
+            $error = $result['error'] ?? '';
+            
             if ($result['success']) {
                 $results['deleted']++;
-                
-                // Also remove from local cache
+                // Remove from local cache
+                self::removeFromLocalCache($offerId);
+            } elseif (stripos($error, 'not found') !== false) {
+                // "Not found" means it doesn't exist in GMC - still clean from local cache
+                $results['deleted']++;
+                $results['not_in_gmc'] = ($results['not_in_gmc'] ?? 0) + 1;
                 self::removeFromLocalCache($offerId);
             } else {
                 $results['failed']++;
                 $results['errors'][] = [
                     'offer_id' => $offerId,
-                    'error' => $result['error'] ?? 'Unknown error',
+                    'error' => $error ?: 'Unknown error',
                 ];
             }
         }
