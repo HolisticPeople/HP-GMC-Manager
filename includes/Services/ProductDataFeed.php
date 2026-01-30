@@ -47,6 +47,7 @@ class ProductDataFeed
         $productSync = new ProductSync();
 
         // Build header row
+        // NOTE: shipping_weight uses GMC format (e.g., "0.15 lb") NOT WooCommerce "lbs"
         $headers = [
             'id',
             'title',
@@ -59,6 +60,12 @@ class ProductDataFeed
             'condition',
             'mpn',
             'gtin',
+            'shipping_weight',
+            'google_product_category',
+            'product_type',
+            'color',
+            'age_group',
+            'gender',
         ];
 
         $lines = [];
@@ -94,6 +101,12 @@ class ProductDataFeed
                 self::escapeField('new', $format), // Condition is always new for this store
                 self::escapeField($product->get_sku(), $format),
                 self::escapeField(self::getGtin($product), $format),
+                self::escapeField(self::getShippingWeight($product), $format),
+                self::escapeField(self::getGoogleProductCategory($product), $format),
+                self::escapeField(self::getProductType($product), $format),
+                self::escapeField(self::getColor($product), $format),
+                self::escapeField(self::getAgeGroup($product), $format),
+                self::escapeField(self::getGender($product), $format),
             ];
 
             $lines[] = implode($delimiter, $row);
@@ -301,6 +314,342 @@ class ProductDataFeed
         }
 
         return '';
+    }
+
+    /**
+     * Get shipping weight for GMC in correct format.
+     * 
+     * CRITICAL: GMC requires singular unit names:
+     * - "lb" NOT "lbs"
+     * - "oz" NOT "ozs"
+     * - "kg" NOT "kgs"
+     * - "g" (grams)
+     * 
+     * Format: "{value} {unit}" e.g., "0.15 lb", "2.5 kg"
+     *
+     * @param \WC_Product $product
+     * @return string Weight in GMC format (e.g., "0.15 lb") or empty if no weight
+     */
+    private static function getShippingWeight(\WC_Product $product): string
+    {
+        $weight = $product->get_weight();
+        
+        if (empty($weight) || !is_numeric($weight) || floatval($weight) <= 0) {
+            // Default weight for products without weight set
+            // Using 0.1 lb as a sensible default for supplements/small items
+            return '0.1 lb';
+        }
+
+        // Get WooCommerce weight unit and convert to GMC format
+        $wcUnit = get_option('woocommerce_weight_unit', 'lbs');
+        $gmcUnit = self::convertToGmcWeightUnit($wcUnit);
+
+        // Format weight with proper precision (2 decimal places for lb/kg, 1 for oz/g)
+        $precision = in_array($gmcUnit, ['oz', 'g']) ? 1 : 2;
+        $formattedWeight = number_format(floatval($weight), $precision, '.', '');
+
+        return $formattedWeight . ' ' . $gmcUnit;
+    }
+
+    /**
+     * Convert WooCommerce weight unit to GMC-accepted format.
+     * 
+     * GMC accepts: lb, oz, g, kg (singular only!)
+     * WooCommerce uses: lbs, oz, g, kg, kgs
+     *
+     * @param string $wcUnit WooCommerce weight unit
+     * @return string GMC-compatible weight unit
+     */
+    private static function convertToGmcWeightUnit(string $wcUnit): string
+    {
+        // Map WooCommerce units to GMC units
+        $unitMap = [
+            'lbs' => 'lb',   // WooCommerce "lbs" → GMC "lb"
+            'lb'  => 'lb',
+            'oz'  => 'oz',
+            'ozs' => 'oz',
+            'g'   => 'g',
+            'kg'  => 'kg',
+            'kgs' => 'kg',
+        ];
+
+        $wcUnit = strtolower(trim($wcUnit));
+        
+        return $unitMap[$wcUnit] ?? 'lb'; // Default to lb if unknown
+    }
+
+    /**
+     * Get Google Product Category for a product.
+     * 
+     * Checks:
+     * 1. GLA meta (_wc_gla_google_product_category)
+     * 2. ACF field (google_product_category)
+     * 3. Product meta (google_product_category)
+     *
+     * @param \WC_Product $product
+     * @return string Google Product Category ID or name
+     */
+    private static function getGoogleProductCategory(\WC_Product $product): string
+    {
+        $productId = $product->get_id();
+
+        // Check GLA meta first
+        $glaCategory = get_post_meta($productId, '_wc_gla_google_product_category', true);
+        if (!empty($glaCategory)) {
+            return (string) $glaCategory;
+        }
+
+        // Check ACF field
+        if (function_exists('get_field')) {
+            $acfCategory = get_field('google_product_category', $productId);
+            if (!empty($acfCategory)) {
+                return (string) $acfCategory;
+            }
+        }
+
+        // Check generic meta
+        $metaCategory = get_post_meta($productId, 'google_product_category', true);
+        if (!empty($metaCategory)) {
+            return (string) $metaCategory;
+        }
+
+        // Default category for health/supplement store
+        // 469 = Health & Beauty > Health Care > Vitamins & Supplements
+        return '469';
+    }
+
+    /**
+     * Get product type (category hierarchy) for GMC.
+     * 
+     * Format: "Category > Subcategory > Sub-subcategory"
+     *
+     * @param \WC_Product $product
+     * @return string Category hierarchy
+     */
+    private static function getProductType(\WC_Product $product): string
+    {
+        $productId = $product->get_id();
+        $terms = get_the_terms($productId, 'product_cat');
+
+        if (!$terms || is_wp_error($terms)) {
+            return '';
+        }
+
+        // Find the deepest category (most specific)
+        $deepestTerm = null;
+        $maxDepth = -1;
+
+        foreach ($terms as $term) {
+            $depth = self::getCategoryDepth($term->term_id);
+            if ($depth > $maxDepth) {
+                $maxDepth = $depth;
+                $deepestTerm = $term;
+            }
+        }
+
+        if (!$deepestTerm) {
+            return $terms[0]->name;
+        }
+
+        // Build hierarchy path
+        $hierarchy = [];
+        $currentTerm = $deepestTerm;
+
+        while ($currentTerm) {
+            array_unshift($hierarchy, $currentTerm->name);
+            
+            if ($currentTerm->parent > 0) {
+                $currentTerm = get_term($currentTerm->parent, 'product_cat');
+                if (is_wp_error($currentTerm)) {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        return implode(' > ', $hierarchy);
+    }
+
+    /**
+     * Get the depth of a category in the hierarchy.
+     *
+     * @param int $termId
+     * @return int Depth (0 = root)
+     */
+    private static function getCategoryDepth(int $termId): int
+    {
+        $depth = 0;
+        $term = get_term($termId, 'product_cat');
+
+        while ($term && !is_wp_error($term) && $term->parent > 0) {
+            $depth++;
+            $term = get_term($term->parent, 'product_cat');
+        }
+
+        return $depth;
+    }
+
+    /**
+     * Get color for a product.
+     * 
+     * Checks product attributes, meta, and title for color indicators.
+     * Returns empty for non-apparel products (supplements, etc.)
+     *
+     * @param \WC_Product $product
+     * @return string Color name or empty
+     */
+    private static function getColor(\WC_Product $product): string
+    {
+        $productId = $product->get_id();
+        $productName = strtolower($product->get_name());
+
+        // First check if this is an apparel/wearable product that needs color
+        $needsColor = self::isApparelProduct($product);
+        
+        if (!$needsColor) {
+            return ''; // Don't force color on supplements/vitamins
+        }
+
+        // Check product attributes for color
+        $colorAttr = $product->get_attribute('color');
+        if (!empty($colorAttr)) {
+            return $colorAttr;
+        }
+
+        $colorAttr = $product->get_attribute('pa_color');
+        if (!empty($colorAttr)) {
+            return $colorAttr;
+        }
+
+        // Check product meta
+        $colorMeta = get_post_meta($productId, '_color', true);
+        if (!empty($colorMeta)) {
+            return $colorMeta;
+        }
+
+        // Try to extract color from product name
+        $colors = ['black', 'white', 'gold', 'silver', 'blue', 'red', 'green', 'purple', 
+                   'pink', 'yellow', 'orange', 'brown', 'gray', 'grey', 'beige', 'navy',
+                   'light gold', 'rose gold', 'light'];
+        
+        foreach ($colors as $color) {
+            if (stripos($productName, $color) !== false) {
+                return ucwords($color);
+            }
+        }
+
+        // Default for wearables without explicit color
+        return 'Multicolor';
+    }
+
+    /**
+     * Get age group for a product.
+     * 
+     * GMC accepted values: adult, kids, toddler, infant, newborn
+     * For health products, almost everything is "adult"
+     *
+     * @param \WC_Product $product
+     * @return string Age group or empty
+     */
+    private static function getAgeGroup(\WC_Product $product): string
+    {
+        // Only set for apparel/wearable products
+        if (!self::isApparelProduct($product)) {
+            return '';
+        }
+
+        // Check product name for kids indicators
+        $productName = strtolower($product->get_name());
+        $kidsKeywords = ['kids', 'child', 'children', 'youth', 'junior'];
+        
+        foreach ($kidsKeywords as $keyword) {
+            if (stripos($productName, $keyword) !== false) {
+                return 'kids';
+            }
+        }
+
+        // Default to adult for health products
+        return 'adult';
+    }
+
+    /**
+     * Get gender for a product.
+     * 
+     * GMC accepted values: male, female, unisex
+     * For health products, most items are unisex
+     *
+     * @param \WC_Product $product
+     * @return string Gender or empty
+     */
+    private static function getGender(\WC_Product $product): string
+    {
+        // Only set for apparel/wearable products
+        if (!self::isApparelProduct($product)) {
+            return '';
+        }
+
+        // Check product name for gender indicators
+        $productName = strtolower($product->get_name());
+        
+        $maleKeywords = ['men', 'man', 'male', 'his', 'masculine'];
+        foreach ($maleKeywords as $keyword) {
+            if (preg_match('/\b' . $keyword . '\b/', $productName)) {
+                return 'male';
+            }
+        }
+
+        $femaleKeywords = ['women', 'woman', 'female', 'her', 'feminine', 'ladies'];
+        foreach ($femaleKeywords as $keyword) {
+            if (preg_match('/\b' . $keyword . '\b/', $productName)) {
+                return 'female';
+            }
+        }
+
+        // Default to unisex for health products
+        return 'unisex';
+    }
+
+    /**
+     * Check if a product is in an apparel/wearable category that requires color/gender/age_group.
+     *
+     * @param \WC_Product $product
+     * @return bool
+     */
+    private static function isApparelProduct(\WC_Product $product): bool
+    {
+        $productId = $product->get_id();
+        $productName = strtolower($product->get_name());
+
+        // Check product name for wearable indicators
+        $wearableKeywords = [
+            'pendant', 'necklace', 'bracelet', 'wristband', 'headband',
+            'ring', 'earring', 'jewelry', 'jewellery', 'chain', 'band',
+            'shirt', 'hat', 'cap', 'clothing', 'apparel', 'wear'
+        ];
+
+        foreach ($wearableKeywords as $keyword) {
+            if (stripos($productName, $keyword) !== false) {
+                return true;
+            }
+        }
+
+        // Check categories
+        $terms = get_the_terms($productId, 'product_cat');
+        if ($terms && !is_wp_error($terms)) {
+            $apparelCategories = ['jewelry', 'jewellery', 'accessories', 'apparel', 'clothing', 'wearables', 'tachyon-energy'];
+            
+            foreach ($terms as $term) {
+                $categorySlug = strtolower($term->slug);
+                foreach ($apparelCategories as $apparelCat) {
+                    if (stripos($categorySlug, $apparelCat) !== false) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
