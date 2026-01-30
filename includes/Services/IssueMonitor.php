@@ -474,4 +474,119 @@ class IssueMonitor
 
         return $results;
     }
+
+    /**
+     * Clean up stale entries from the local tracking table.
+     * 
+     * This removes:
+     * 1. Duplicate entries - when same product_id has multiple gla_ids, keep only gla_XXXXX format
+     * 2. Old format entries - where gla_id doesn't match gla_XXXXX pattern
+     *
+     * @param bool $dryRun If true, only report what would be deleted
+     * @return array Cleanup results
+     */
+    public static function cleanup_stale_entries(bool $dryRun = true): array
+    {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hp_gmc_product_status';
+
+        $results = [
+            'dry_run' => $dryRun,
+            'old_format_deleted' => 0,
+            'duplicates_deleted' => 0,
+            'old_format_entries' => [],
+            'duplicate_entries' => [],
+        ];
+
+        // Find entries with old format (not starting with gla_)
+        $oldFormatEntries = $wpdb->get_results(
+            "SELECT id, product_id, gla_id, status, last_updated 
+             FROM $table 
+             WHERE gla_id NOT LIKE 'gla_%'
+             ORDER BY product_id",
+            ARRAY_A
+        );
+
+        foreach ($oldFormatEntries as $entry) {
+            // Check if there's a corresponding gla_XXXXX entry for this product
+            $hasNewFormat = $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM $table 
+                 WHERE product_id = %d AND gla_id LIKE 'gla_%'",
+                $entry['product_id']
+            ));
+
+            if ($hasNewFormat > 0) {
+                // Safe to delete - there's a newer entry
+                $results['old_format_entries'][] = [
+                    'id' => $entry['id'],
+                    'product_id' => $entry['product_id'],
+                    'gla_id' => $entry['gla_id'],
+                    'status' => $entry['status'],
+                    'reason' => 'Old format, newer gla_ entry exists',
+                ];
+
+                if (!$dryRun) {
+                    $wpdb->delete($table, ['id' => $entry['id']]);
+                    $results['old_format_deleted']++;
+                }
+            }
+        }
+
+        // Find duplicate entries (same product_id, multiple gla_ids)
+        $duplicates = $wpdb->get_results(
+            "SELECT product_id, COUNT(*) as cnt, GROUP_CONCAT(gla_id) as gla_ids
+             FROM $table
+             WHERE product_id IS NOT NULL AND product_id > 0
+             GROUP BY product_id
+             HAVING cnt > 1",
+            ARRAY_A
+        );
+
+        foreach ($duplicates as $dup) {
+            // Get all entries for this product
+            $entries = $wpdb->get_results($wpdb->prepare(
+                "SELECT id, gla_id, status, last_updated FROM $table WHERE product_id = %d ORDER BY gla_id",
+                $dup['product_id']
+            ), ARRAY_A);
+
+            // Keep the one with gla_ format, delete others
+            $keepEntry = null;
+            $deleteEntries = [];
+
+            foreach ($entries as $entry) {
+                if (strpos($entry['gla_id'], 'gla_') === 0) {
+                    $keepEntry = $entry;
+                } else {
+                    $deleteEntries[] = $entry;
+                }
+            }
+
+            foreach ($deleteEntries as $entry) {
+                $results['duplicate_entries'][] = [
+                    'id' => $entry['id'],
+                    'product_id' => $dup['product_id'],
+                    'gla_id' => $entry['gla_id'],
+                    'status' => $entry['status'],
+                    'reason' => 'Duplicate, keeping ' . ($keepEntry ? $keepEntry['gla_id'] : 'none'),
+                ];
+
+                if (!$dryRun && $keepEntry) {
+                    $wpdb->delete($table, ['id' => $entry['id']]);
+                    $results['duplicates_deleted']++;
+                }
+            }
+        }
+
+        // Log cleanup event
+        error_log(json_encode([
+            'event' => 'gmc.tracking.cleanup',
+            'dry_run' => $dryRun,
+            'old_format_deleted' => $results['old_format_deleted'],
+            'duplicates_deleted' => $results['duplicates_deleted'],
+            'old_format_found' => count($results['old_format_entries']),
+            'duplicates_found' => count($results['duplicate_entries']),
+        ]));
+
+        return $results;
+    }
 }

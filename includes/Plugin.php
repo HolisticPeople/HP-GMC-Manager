@@ -1064,6 +1064,22 @@ class Plugin
                 ],
                 'category' => 'maintenance',
             ],
+            'gmc-cleanup-stale-entries' => [
+                'title' => 'Cleanup Stale Local Entries',
+                'description' => 'Remove stale/duplicate entries from local tracking table. Cleans up old SKU-format IDs when gla_ format exists.',
+                'callback' => [Abilities\IssueAbilities::class, 'cleanupStaleEntries'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'dry_run' => [
+                            'type' => 'boolean',
+                            'description' => 'If true, only show what would be deleted',
+                            'default' => true,
+                        ],
+                    ],
+                ],
+                'category' => 'maintenance',
+            ],
         ];
     }
 

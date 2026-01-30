@@ -377,4 +377,47 @@ class IssueAbilities
         $wpdb->delete($table, ['gla_id' => $singlePrefixId]);
         $wpdb->delete($table, ['gla_id' => $offerId]);
     }
+
+    /**
+     * Clean up stale entries from local tracking table.
+     * 
+     * Removes duplicate entries where same product_id has multiple gla_ids
+     * (keeps gla_XXXXX format, deletes old SKU-based format).
+     */
+    public static function cleanupStaleEntries(array $params): array
+    {
+        $dryRun = (bool) ($params['dry_run'] ?? true);
+        
+        $results = IssueMonitor::cleanup_stale_entries($dryRun);
+        
+        $summary = [
+            'success' => true,
+            'dry_run' => $dryRun,
+            'old_format_deleted' => $results['old_format_deleted'],
+            'duplicates_deleted' => $results['duplicates_deleted'],
+            'total_cleaned' => $results['old_format_deleted'] + $results['duplicates_deleted'],
+        ];
+        
+        if ($dryRun) {
+            $summary['would_delete'] = count($results['old_format_entries']) + count($results['duplicate_entries']);
+            $summary['sample_entries'] = array_slice(
+                array_merge($results['old_format_entries'], $results['duplicate_entries']),
+                0,
+                10
+            );
+            $summary['message'] = sprintf(
+                'Would delete %d stale entries. Set dry_run=false to execute.',
+                $summary['would_delete']
+            );
+        } else {
+            $summary['message'] = sprintf(
+                'Deleted %d stale entries (%d old format, %d duplicates).',
+                $summary['total_cleaned'],
+                $results['old_format_deleted'],
+                $results['duplicates_deleted']
+            );
+        }
+        
+        return $summary;
+    }
 }
