@@ -81,7 +81,7 @@ class ProductDataFeed
             }
 
             // Skip products that shouldn't be in feed
-            if ($product->get_catalog_visibility() === 'hidden') {
+            if (!self::shouldIncludeInFeed($product)) {
                 continue;
             }
 
@@ -180,6 +180,63 @@ class ProductDataFeed
         ");
 
         return $results ?: [];
+    }
+
+    /**
+     * Check if a product should be included in the GMC feed.
+     * 
+     * Excludes:
+     * - Hidden products (catalog_visibility = 'hidden')
+     * - Products with $0 or empty price
+     * - Non-purchasable products
+     * - Products explicitly excluded from GMC sync
+     * - Draft, private, or pending products (already filtered in query)
+     *
+     * @param \WC_Product $product
+     * @return bool True if product should be included
+     */
+    private static function shouldIncludeInFeed(\WC_Product $product): bool
+    {
+        $productId = $product->get_id();
+        $sku = $product->get_sku();
+
+        // 1. Skip hidden products
+        if ($product->get_catalog_visibility() === 'hidden') {
+            return false;
+        }
+
+        // 2. Skip products with $0 or empty price
+        $price = $product->get_price();
+        if (empty($price) || floatval($price) <= 0) {
+            return false;
+        }
+
+        // 3. Skip non-purchasable products
+        if (!$product->is_purchasable()) {
+            return false;
+        }
+
+        // 4. Skip products explicitly excluded from GMC sync via GLA meta
+        $glaVisibility = get_post_meta($productId, '_wc_gla_visibility', true);
+        if ($glaVisibility === 'dont-sync-and-show') {
+            return false;
+        }
+
+        // 5. Skip products in the GMC exclusion list (our custom feed exclusions)
+        $excluded = get_post_meta($productId, '_hp_gmc_excluded', true);
+        if ($excluded === 'yes') {
+            return false;
+        }
+
+        // 6. Skip variable products without valid variations
+        if ($product->is_type('variable')) {
+            $variations = $product->get_available_variations();
+            if (empty($variations)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
