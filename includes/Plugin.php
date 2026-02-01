@@ -6,6 +6,7 @@ use HP_GMC\Admin\SettingsPage;
 use HP_GMC\Services\MerchantApiClient;
 use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Rest\ProductFeedEndpoint;
+use HP_GMC\Rest\FunnelFeedEndpoint;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -47,6 +48,11 @@ class Plugin
 
         // Register REST API endpoints
         add_action('rest_api_init', [ProductFeedEndpoint::class, 'register']);
+        add_action('rest_api_init', [FunnelFeedEndpoint::class, 'register']);
+
+        // Listen for funnel saves from HP-React-Widgets
+        add_action('hp_funnel_saved', [self::class, 'on_funnel_saved'], 10, 3);
+        add_action('hp_funnel_gmc_settings_updated', [self::class, 'on_funnel_gmc_settings_updated'], 10, 2);
 
         // AJAX handlers
         add_action('wp_ajax_hp_gmc_toggle_tool', [self::class, 'ajax_toggle_tool']);
@@ -79,6 +85,9 @@ class Plugin
         // Primary feed AJAX handlers
         add_action('wp_ajax_hp_gmc_regenerate_primary_feed', [self::class, 'ajax_regenerate_primary_feed']);
         add_action('wp_ajax_hp_gmc_get_primary_feed_status', [self::class, 'ajax_get_primary_feed_status']);
+
+        // Funnel feed AJAX handlers
+        add_action('wp_ajax_hp_gmc_regenerate_funnel_feed', [self::class, 'ajax_regenerate_funnel_feed']);
 
         // Plugin action links
         add_filter('plugin_action_links_' . HP_GMC_BASENAME, [self::class, 'add_action_links']);
@@ -1080,6 +1089,154 @@ class Plugin
                 ],
                 'category' => 'maintenance',
             ],
+
+            // Funnel GMC tools
+            'gmc-funnel-list' => [
+                'title' => 'List GMC Funnels',
+                'description' => 'List all funnels enabled for Google Merchant Center advertising',
+                'callback' => [Abilities\FunnelAbilities::class, 'listFunnels'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-get' => [
+                'title' => 'Get Funnel GMC Data',
+                'description' => 'Get GMC-specific data for a funnel (price, image, category, etc.)',
+                'callback' => [Abilities\FunnelAbilities::class, 'getFunnel'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'funnel_id' => [
+                            'type' => 'integer',
+                            'description' => 'Funnel post ID',
+                        ],
+                    ],
+                    'required' => ['funnel_id'],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-validate' => [
+                'title' => 'Validate Funnel for GMC',
+                'description' => 'Check if a funnel meets GMC requirements (title, description, image, price)',
+                'callback' => [Abilities\FunnelAbilities::class, 'validateFunnel'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'funnel_id' => [
+                            'type' => 'integer',
+                            'description' => 'Funnel post ID',
+                        ],
+                    ],
+                    'required' => ['funnel_id'],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-feed-status' => [
+                'title' => 'Funnel Feed Status',
+                'description' => 'Get status of the funnel data feed (URL, count, last generated)',
+                'callback' => [Abilities\FunnelAbilities::class, 'getFeedStatus'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-feed-regenerate' => [
+                'title' => 'Regenerate Funnel Feed',
+                'description' => 'Clear cache and regenerate the funnel product data feed',
+                'callback' => [Abilities\FunnelAbilities::class, 'regenerateFeed'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-enable' => [
+                'title' => 'Enable Funnel GMC Sync',
+                'description' => 'Enable GMC sync for a funnel so it appears in the funnel feed',
+                'callback' => [Abilities\FunnelAbilities::class, 'enableFunnel'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'funnel_id' => [
+                            'type' => 'integer',
+                            'description' => 'Funnel post ID',
+                        ],
+                    ],
+                    'required' => ['funnel_id'],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-disable' => [
+                'title' => 'Disable Funnel GMC Sync',
+                'description' => 'Disable GMC sync for a funnel',
+                'callback' => [Abilities\FunnelAbilities::class, 'disableFunnel'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'funnel_id' => [
+                            'type' => 'integer',
+                            'description' => 'Funnel post ID',
+                        ],
+                    ],
+                    'required' => ['funnel_id'],
+                ],
+                'category' => 'funnel',
+            ],
+            'gmc-funnel-update-settings' => [
+                'title' => 'Update Funnel GMC Settings',
+                'description' => 'Update GMC-specific settings for a funnel (title override, description, category, labels)',
+                'callback' => [Abilities\FunnelAbilities::class, 'updateSettings'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'funnel_id' => [
+                            'type' => 'integer',
+                            'description' => 'Funnel post ID',
+                        ],
+                        'title_override' => [
+                            'type' => 'string',
+                            'description' => 'Override title for GMC (max 150 chars)',
+                        ],
+                        'description_override' => [
+                            'type' => 'string',
+                            'description' => 'Override description for GMC (max 5000 chars)',
+                        ],
+                        'category' => [
+                            'type' => 'integer',
+                            'description' => 'Google product category ID',
+                        ],
+                        'brand' => [
+                            'type' => 'string',
+                            'description' => 'Brand name override',
+                        ],
+                        'custom_label_0' => [
+                            'type' => 'string',
+                            'description' => 'Custom label 0 for campaign segmentation',
+                        ],
+                        'custom_label_1' => [
+                            'type' => 'string',
+                            'description' => 'Custom label 1 for campaign segmentation',
+                        ],
+                        'custom_label_2' => [
+                            'type' => 'string',
+                            'description' => 'Custom label 2 for campaign segmentation',
+                        ],
+                        'custom_label_3' => [
+                            'type' => 'string',
+                            'description' => 'Custom label 3 for campaign segmentation',
+                        ],
+                        'custom_label_4' => [
+                            'type' => 'string',
+                            'description' => 'Custom label 4 for campaign segmentation',
+                        ],
+                    ],
+                    'required' => ['funnel_id'],
+                ],
+                'category' => 'funnel',
+            ],
         ];
     }
 
@@ -1841,5 +1998,87 @@ class Plugin
 
         $status = Services\ProductDataFeed::getStatus();
         wp_send_json_success($status);
+    }
+
+    /**
+     * AJAX: Regenerate funnel feed.
+     */
+    public static function ajax_regenerate_funnel_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        try {
+            if (!Services\FunnelDataFeed::isAvailable()) {
+                wp_send_json_error([
+                    'message' => __('HP-React-Widgets plugin is not active', 'hp-gmc-manager'),
+                ]);
+            }
+
+            // Clear cache and regenerate
+            Services\FunnelDataFeed::clearCache();
+            Services\FunnelDataFeed::generateFeed('tsv', true);
+            Services\FunnelDataFeed::generateFeed('csv', true);
+
+            $status = Services\FunnelDataFeed::getStatus();
+
+            wp_send_json_success([
+                'message' => sprintf(
+                    __('Funnel feed regenerated successfully with %d funnels', 'hp-gmc-manager'),
+                    $status['funnel_count']
+                ),
+                'status' => $status,
+            ]);
+        } catch (\Exception $e) {
+            wp_send_json_error([
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Handle funnel save event from HP-React-Widgets.
+     *
+     * @param int $post_id Funnel post ID
+     * @param \WP_Post $post Post object
+     * @param bool $update Whether this is an update
+     */
+    public static function on_funnel_saved(int $post_id, \WP_Post $post, bool $update): void
+    {
+        // Clear funnel feed cache when any funnel is saved
+        if (Services\FunnelDataFeed::isAvailable()) {
+            Services\FunnelDataFeed::clearCache();
+
+            error_log(json_encode([
+                'event' => 'funnel_feed.cache_cleared_on_save',
+                'funnel_id' => $post_id,
+                'update' => $update,
+                'timestamp' => current_time('mysql'),
+            ]));
+        }
+    }
+
+    /**
+     * Handle funnel GMC settings update from HP-React-Widgets.
+     *
+     * @param int $funnel_id Funnel post ID
+     * @param bool $gmc_enabled Whether GMC is enabled for this funnel
+     */
+    public static function on_funnel_gmc_settings_updated(int $funnel_id, bool $gmc_enabled): void
+    {
+        // Clear funnel feed cache when GMC settings change
+        if (Services\FunnelDataFeed::isAvailable()) {
+            Services\FunnelDataFeed::clearCache();
+
+            error_log(json_encode([
+                'event' => 'funnel_feed.gmc_settings_updated',
+                'funnel_id' => $funnel_id,
+                'gmc_enabled' => $gmc_enabled,
+                'timestamp' => current_time('mysql'),
+            ]));
+        }
     }
 }
