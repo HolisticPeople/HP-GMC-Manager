@@ -50,6 +50,9 @@
             // Primary feed regenerate button (Feeds tab only)
             $('#hp-gmc-regenerate-primary-feed-feeds-tab').on('click', this.regeneratePrimaryFeed.bind(this));
 
+            // Funnel feed regenerate button
+            $('#hp-gmc-regenerate-funnel-feed').on('click', this.regenerateFunnelFeed.bind(this));
+
             // Tool toggles
             $(document).on('change', '.hp-gmc-tool-toggle', this.toggleTool.bind(this));
 
@@ -272,6 +275,36 @@
                         location.reload();
                     } else {
                         alert('Error: ' + (response.data?.message || 'Failed to regenerate feed'));
+                    }
+                },
+                error: function() {
+                    alert('Network error. Please try again.');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                }
+            });
+        },
+
+        regenerateFunnelFeed: function(e) {
+            const $btn = $(e.target);
+            const originalText = $btn.text();
+
+            $btn.prop('disabled', true).text('Regenerating...');
+
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_regenerate_funnel_feed',
+                    nonce: hpGmcData.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.data.message || 'Funnel feed regenerated successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + (response.data?.message || 'Failed to regenerate funnel feed'));
                     }
                 },
                 error: function() {

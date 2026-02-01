@@ -40,6 +40,9 @@ class Dashboard
                 <a href="#exclusions" class="nav-tab" data-tab="exclusions">
                     <?php esc_html_e('Exclusions', 'hp-gmc-manager'); ?>
                 </a>
+                <a href="#funnels" class="nav-tab" data-tab="funnels">
+                    <?php esc_html_e('Funnels', 'hp-gmc-manager'); ?>
+                </a>
                 <a href="#shipping" class="nav-tab" data-tab="shipping">
                     <?php esc_html_e('Shipping', 'hp-gmc-manager'); ?>
                 </a>
@@ -65,6 +68,9 @@ class Dashboard
                 </div>
                 <div id="tab-exclusions" class="hp-gmc-tab-panel">
                     <?php self::render_exclusions_tab(); ?>
+                </div>
+                <div id="tab-funnels" class="hp-gmc-tab-panel">
+                    <?php self::render_funnels_tab(); ?>
                 </div>
                 <div id="tab-shipping" class="hp-gmc-tab-panel">
                     <?php self::render_shipping_tab(); ?>
@@ -1685,6 +1691,159 @@ class Dashboard
             <p class="description">
                 <?php esc_html_e('Note: Changes take effect immediately. Disabled tools will not appear in Cursor.', 'hp-gmc-manager'); ?>
             </p>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the funnels tab.
+     */
+    private static function render_funnels_tab(): void
+    {
+        $funnelFeedAvailable = \HP_GMC\Services\FunnelDataFeed::isAvailable();
+        $feedStatus = \HP_GMC\Services\FunnelDataFeed::getStatus();
+        $funnels = $funnelFeedAvailable ? \HP_GMC\Services\FunnelDataFeed::getAllFunnels() : [];
+        ?>
+        <div class="hp-gmc-funnels">
+            <div class="hp-gmc-section-header">
+                <h2><?php esc_html_e('Funnel GMC Integration', 'hp-gmc-manager'); ?></h2>
+            </div>
+
+            <?php if (!$funnelFeedAvailable): ?>
+            <div class="notice notice-warning inline">
+                <p>
+                    <strong><?php esc_html_e('HP-React-Widgets Required', 'hp-gmc-manager'); ?></strong><br>
+                    <?php esc_html_e('The Funnel GMC integration requires the HP-React-Widgets plugin to be installed and activated.', 'hp-gmc-manager'); ?>
+                </p>
+            </div>
+            <?php else: ?>
+
+            <!-- Summary Cards -->
+            <div class="hp-gmc-cards" style="margin-bottom: 20px;">
+                <div class="hp-gmc-card">
+                    <div class="hp-gmc-card-header">
+                        <span class="dashicons dashicons-megaphone"></span>
+                        <?php esc_html_e('GMC-Enabled Funnels', 'hp-gmc-manager'); ?>
+                    </div>
+                    <div class="hp-gmc-card-body">
+                        <div class="hp-gmc-stat-value"><?php echo esc_html(count($funnels)); ?></div>
+                        <div class="hp-gmc-stat-label"><?php esc_html_e('Active for advertising', 'hp-gmc-manager'); ?></div>
+                    </div>
+                </div>
+
+                <div class="hp-gmc-card">
+                    <div class="hp-gmc-card-header">
+                        <span class="dashicons dashicons-clock"></span>
+                        <?php esc_html_e('Last Generated', 'hp-gmc-manager'); ?>
+                    </div>
+                    <div class="hp-gmc-card-body">
+                        <div class="hp-gmc-stat-value">
+                            <?php 
+                            if ($feedStatus['last_generated']) {
+                                echo esc_html(human_time_diff(strtotime($feedStatus['last_generated']), current_time('timestamp')) . ' ago');
+                            } else {
+                                esc_html_e('Never', 'hp-gmc-manager');
+                            }
+                            ?>
+                        </div>
+                        <div class="hp-gmc-stat-label"><?php esc_html_e('Feed regeneration', 'hp-gmc-manager'); ?></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feed URLs -->
+            <div class="hp-gmc-primary-feed-card" style="margin-bottom: 20px;">
+                <div class="hp-gmc-card-header">
+                    <span class="dashicons dashicons-rss"></span>
+                    <?php esc_html_e('Funnel Data Source', 'hp-gmc-manager'); ?>
+                </div>
+                <div class="hp-gmc-card-body">
+                    <p><?php esc_html_e('Register this feed in Google Merchant Center as a supplemental or primary data source for funnel products.', 'hp-gmc-manager'); ?></p>
+                    
+                    <table class="form-table" style="margin-bottom: 10px;">
+                        <tr>
+                            <th scope="row"><?php esc_html_e('TSV Feed URL', 'hp-gmc-manager'); ?></th>
+                            <td>
+                                <code id="hp-gmc-funnel-feed-tsv-url"><?php echo esc_url($feedStatus['feed_urls']['tsv'] ?? ''); ?></code>
+                                <button type="button" class="button button-small hp-gmc-copy-url" data-target="hp-gmc-funnel-feed-tsv-url">
+                                    <?php esc_html_e('Copy', 'hp-gmc-manager'); ?>
+                                </button>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e('CSV Feed URL', 'hp-gmc-manager'); ?></th>
+                            <td>
+                                <code id="hp-gmc-funnel-feed-csv-url"><?php echo esc_url($feedStatus['feed_urls']['csv'] ?? ''); ?></code>
+                                <button type="button" class="button button-small hp-gmc-copy-url" data-target="hp-gmc-funnel-feed-csv-url">
+                                    <?php esc_html_e('Copy', 'hp-gmc-manager'); ?>
+                                </button>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <button type="button" class="button button-primary" id="hp-gmc-regenerate-funnel-feed">
+                        <?php esc_html_e('Regenerate Funnel Feed', 'hp-gmc-manager'); ?>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Funnels List -->
+            <h3><?php esc_html_e('GMC-Enabled Funnels', 'hp-gmc-manager'); ?></h3>
+            
+            <?php if (empty($funnels)): ?>
+            <p><?php esc_html_e('No funnels are enabled for GMC sync. Enable GMC sync in the funnel edit screen.', 'hp-gmc-manager'); ?></p>
+            <?php else: ?>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Funnel', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Price', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Brand', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Availability', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Category', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($funnels as $funnel): ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html($funnel['title']); ?></strong>
+                            <br>
+                            <small><code><?php echo esc_html($funnel['slug']); ?></code></small>
+                        </td>
+                        <td>$<?php echo esc_html(number_format($funnel['price'], 2)); ?></td>
+                        <td><?php echo esc_html($funnel['brand']); ?></td>
+                        <td>
+                            <?php
+                            $availColors = [
+                                'in_stock' => '#00a32a',
+                                'out_of_stock' => '#d63638',
+                                'preorder' => '#dba617',
+                            ];
+                            $avail = $funnel['availability'];
+                            $color = $availColors[$avail] ?? '#666';
+                            ?>
+                            <span style="color: <?php echo esc_attr($color); ?>;">
+                                <?php echo esc_html(ucwords(str_replace('_', ' ', $avail))); ?>
+                            </span>
+                        </td>
+                        <td><?php echo esc_html($funnel['google_product_category']); ?></td>
+                        <td>
+                            <a href="<?php echo esc_url(get_edit_post_link($funnel['funnel_id'])); ?>" class="button button-small">
+                                <?php esc_html_e('Edit', 'hp-gmc-manager'); ?>
+                            </a>
+                            <a href="<?php echo esc_url($funnel['link']); ?>" class="button button-small" target="_blank">
+                                <?php esc_html_e('View', 'hp-gmc-manager'); ?>
+                            </a>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php endif; ?>
+
+            <?php endif; ?>
         </div>
         <?php
     }
