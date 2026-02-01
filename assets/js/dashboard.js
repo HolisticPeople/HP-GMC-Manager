@@ -47,8 +47,8 @@
             // Sync now button
             $('#hp-gmc-sync-now').on('click', this.syncNow.bind(this));
             
-            // Primary feed regenerate buttons
-            $('#hp-gmc-regenerate-primary-feed, #hp-gmc-regenerate-primary-feed-feeds-tab').on('click', this.regeneratePrimaryFeed.bind(this));
+            // Primary feed regenerate button (Feeds tab only)
+            $('#hp-gmc-regenerate-primary-feed-feeds-tab').on('click', this.regeneratePrimaryFeed.bind(this));
 
             // Tool toggles
             $(document).on('change', '.hp-gmc-tool-toggle', this.toggleTool.bind(this));

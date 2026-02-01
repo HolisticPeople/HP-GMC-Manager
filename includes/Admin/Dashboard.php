@@ -146,56 +146,8 @@ class Dashboard
         $warning = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'warning'");
 
         $last_sync = get_option('hp_gmc_last_sync', null);
-        
-        // Get primary feed status
-        $feedStatus = \HP_GMC\Services\ProductDataFeed::getStatus();
         ?>
         <div class="hp-gmc-overview">
-            <!-- Primary Data Source Card -->
-            <div class="hp-gmc-primary-feed-card">
-                <div class="hp-gmc-primary-feed-header">
-                    <h3>
-                        <span class="dashicons dashicons-database"></span>
-                        <?php esc_html_e('Primary Data Source', 'hp-gmc-manager'); ?>
-                    </h3>
-                    <span class="hp-gmc-feed-status-badge hp-gmc-feed-status-<?php echo $feedStatus['product_count'] > 0 ? 'active' : 'draft'; ?>">
-                        <?php echo $feedStatus['product_count'] > 0 ? esc_html__('Active', 'hp-gmc-manager') : esc_html__('Not Generated', 'hp-gmc-manager'); ?>
-                    </span>
-                </div>
-                <div class="hp-gmc-primary-feed-body">
-                    <p class="hp-gmc-feed-description">
-                        <?php esc_html_e('This data source provides complete product data to Google Merchant Center, replacing the GLA plugin sync.', 'hp-gmc-manager'); ?>
-                    </p>
-                    <div class="hp-gmc-feed-stats">
-                        <div class="hp-gmc-feed-stat">
-                            <span class="hp-gmc-feed-stat-value"><?php echo esc_html(number_format($feedStatus['product_count'])); ?></span>
-                            <span class="hp-gmc-feed-stat-label"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></span>
-                        </div>
-                        <div class="hp-gmc-feed-stat">
-                            <span class="hp-gmc-feed-stat-value"><?php echo esc_html($feedStatus['last_generated_ago'] ?: __('Never', 'hp-gmc-manager')); ?></span>
-                            <span class="hp-gmc-feed-stat-label"><?php esc_html_e('Last Generated', 'hp-gmc-manager'); ?></span>
-                        </div>
-                    </div>
-                    <div class="hp-gmc-feed-url-box">
-                        <label><?php esc_html_e('Feed URL:', 'hp-gmc-manager'); ?></label>
-                        <div class="hp-gmc-feed-url-row">
-                            <input type="text" readonly value="<?php echo esc_url($feedStatus['feed_url']); ?>" class="hp-gmc-feed-url-input" id="hp-gmc-primary-feed-url">
-                            <button type="button" class="button" onclick="navigator.clipboard.writeText(document.getElementById('hp-gmc-primary-feed-url').value); this.textContent='Copied!'; setTimeout(() => this.textContent='Copy', 2000);">
-                                <?php esc_html_e('Copy', 'hp-gmc-manager'); ?>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="hp-gmc-feed-actions">
-                        <a href="<?php echo esc_url($feedStatus['feed_url']); ?>" class="button" target="_blank">
-                            <?php esc_html_e('Preview Feed', 'hp-gmc-manager'); ?>
-                        </a>
-                        <button type="button" class="button button-primary" id="hp-gmc-regenerate-primary-feed">
-                            <?php esc_html_e('Regenerate', 'hp-gmc-manager'); ?>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
             <div class="hp-gmc-cards">
                 <div class="hp-gmc-card hp-gmc-card-total">
                     <h3><?php esc_html_e('Total Products', 'hp-gmc-manager'); ?></h3>
