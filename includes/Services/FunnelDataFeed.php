@@ -60,6 +60,7 @@ class FunnelDataFeed
         $delimiter = $format === 'csv' ? ',' : "\t";
 
         // Build header row
+        // NOTE: shipping_weight uses GMC format (e.g., "0.5 oz") with singular unit
         $headers = [
             'id',
             'title',
@@ -70,6 +71,7 @@ class FunnelDataFeed
             'availability',
             'brand',
             'condition',
+            'shipping_weight',
             'google_product_category',
             'custom_label_0',
             'custom_label_1',
@@ -103,6 +105,7 @@ class FunnelDataFeed
                 self::escapeField($funnel['availability'], $format),
                 self::escapeField($funnel['brand'], $format),
                 self::escapeField($funnel['condition'], $format),
+                self::escapeField($funnel['shipping_weight_formatted'] ?? '', $format),
                 self::escapeField($funnel['google_product_category'], $format),
                 self::escapeField($funnel['custom_label_0'], $format),
                 self::escapeField($funnel['custom_label_1'], $format),
@@ -147,7 +150,7 @@ class FunnelDataFeed
         $delimiter = $format === 'csv' ? ',' : "\t";
         $headers = [
             'id', 'title', 'description', 'link', 'image_link',
-            'price', 'availability', 'brand', 'condition',
+            'price', 'availability', 'brand', 'condition', 'shipping_weight',
             'google_product_category', 'custom_label_0', 'custom_label_1',
             'custom_label_2', 'custom_label_3', 'custom_label_4', 'item_group_id',
         ];
