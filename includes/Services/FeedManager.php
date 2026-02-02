@@ -291,14 +291,19 @@ class FeedManager
         // Group products by GMC ID, collecting all their attributes
         $productData = [];
         foreach ($products as $product) {
-            // Use stored gmc_id, or look up from product meta, or fallback to gla_ID format
-            $gmcId = $product['gmc_id'];
-            if (empty($gmcId) && !empty($product['product_id'])) {
+            // ALWAYS recalculate GMC ID from product to ensure correct format (no prefix)
+            // This ensures stored gmc_id values with old format are corrected
+            $gmcId = null;
+            if (!empty($product['product_id'])) {
                 $gmcId = self::getGmcIdFromProduct((int) $product['product_id']);
             }
-            if (empty($gmcId)) {
-                // Last resort: use SKU format (legacy)
+            if (empty($gmcId) && !empty($product['sku'])) {
+                // Fallback: use SKU (already no prefix per our fix)
                 $gmcId = self::buildGmcId($product['sku']);
+            }
+            if (empty($gmcId)) {
+                // Skip products without valid ID
+                continue;
             }
             if (!isset($productData[$gmcId])) {
                 $productData[$gmcId] = [];
