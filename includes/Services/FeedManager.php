@@ -93,6 +93,7 @@ class FeedManager
 
     /**
      * Update feed fields.
+     * Supports setting fields to null (e.g., clearing gmc_feed_id when feed is deleted from GMC).
      */
     public static function update(int $feedId, array $data): bool
     {
@@ -104,7 +105,8 @@ class FeedManager
         $updateData = [];
         
         foreach ($allowed as $field) {
-            if (isset($data[$field])) {
+            // Use array_key_exists to allow null values
+            if (array_key_exists($field, $data)) {
                 $updateData[$field] = $data[$field];
             }
         }
@@ -289,14 +291,19 @@ class FeedManager
         // Group products by GMC ID, collecting all their attributes
         $productData = [];
         foreach ($products as $product) {
-            // Use stored gmc_id, or look up from product meta, or fallback to gla_ID format
-            $gmcId = $product['gmc_id'];
-            if (empty($gmcId) && !empty($product['product_id'])) {
+            // ALWAYS recalculate GMC ID from product to ensure correct format (no prefix)
+            // This ensures stored gmc_id values with old format are corrected
+            $gmcId = null;
+            if (!empty($product['product_id'])) {
                 $gmcId = self::getGmcIdFromProduct((int) $product['product_id']);
             }
-            if (empty($gmcId)) {
-                // Last resort: use SKU format (legacy)
+            if (empty($gmcId) && !empty($product['sku'])) {
+                // Fallback: use SKU (already no prefix per our fix)
                 $gmcId = self::buildGmcId($product['sku']);
+            }
+            if (empty($gmcId)) {
+                // Skip products without valid ID
+                continue;
             }
             if (!isset($productData[$gmcId])) {
                 $productData[$gmcId] = [];
@@ -500,6 +507,7 @@ class FeedManager
     /**
      * Check GMC processing status for a feed.
      * Returns full status data including itemsTotal, itemsValid, errors, warnings.
+     * If feed no longer exists in GMC, clears the local gmc_feed_id and status.
      */
     public static function checkGMCStatus(int $feedId): array
     {
@@ -562,6 +570,31 @@ class FeedManager
                 'errors' => array_slice($errors, 0, 5), // First 5 errors
                 'warnings' => array_slice($warnings, 0, 5), // First 5 warnings
             ];
+        } else {
+            // Feed not found in GMC - check if it's a "not found" error
+            $errorMsg = $result['error'] ?? '';
+            $httpCode = $result['http_code'] ?? 0;
+            
+            // If feed doesn't exist in GMC (404 or "not found" in error message)
+            if ($httpCode === 404 || stripos($errorMsg, 'not found') !== false || stripos($errorMsg, 'does not exist') !== false) {
+                // Clear GMC association - feed was deleted from GMC
+                self::update($feedId, [
+                    'gmc_feed_id' => null,
+                    'gmc_status' => null,
+                    'status' => self::STATUS_GENERATED, // Ready to re-upload
+                    'last_crawl_time' => null,
+                ]);
+                
+                $result['feed_removed'] = true;
+                $result['message'] = 'Feed no longer exists in GMC - cleared local association';
+                
+                error_log(json_encode([
+                    'event' => 'feed.gmc_check.not_found',
+                    'feed_id' => $feedId,
+                    'feed_name' => $feed['name'],
+                    'old_gmc_feed_id' => $feed['gmc_feed_id'],
+                ]));
+            }
         }
 
         return $result;

@@ -4,6 +4,7 @@ namespace HP_GMC\Abilities;
 use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Services\MerchantApiClient;
 use HP_GMC\Services\AuditLog;
+use HP_GMC\Services\ProductDataFeed;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -679,13 +680,9 @@ class ProductAbilities
             $exclusions = get_post_meta($productId, '_hp_gmc_excluded_destinations', true);
             if (!is_array($exclusions) || empty($exclusions)) continue;
             
-            // Get the GMC product ID (offer ID)
-            $glaId = get_post_meta($productId, '_wc_gla_mc_offer_id', true);
-            if (empty($glaId)) {
-                // Use standard format: online:en:US:{sku}
-                $sku = $product->get_sku();
-                $glaId = "online:en:US:{$sku}";
-            }
+            // Get the GMC product ID (offer ID) using ProductDataFeed helper
+            // IMPORTANT: Must use same ID format as primary feed (gla_XXXXX, no prefix)
+            $glaId = ProductDataFeed::getGmcOfferId((int) $productId);
             
             // Google expects excluded_destination as comma-separated in feed
             $excludedList = implode(',', $exclusions);
