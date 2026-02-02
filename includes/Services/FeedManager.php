@@ -358,11 +358,13 @@ class FeedManager
     /**
      * Build a GMC product ID from SKU (fallback if not synced via GLA).
      * Note: This is a legacy fallback. Prefer getGmcIdFromProduct() which uses gla_ID format.
+     * 
+     * IMPORTANT: Returns just the SKU without prefix. GMC adds "online:en:US:" automatically.
      */
     private static function buildGmcId(string $sku): string
     {
-        // Standard format: online:en:US:SKU
-        return 'online:en:US:' . $sku;
+        // Return just the SKU - GMC adds "online:en:US:" prefix automatically
+        return $sku;
     }
 
     /**
@@ -370,8 +372,12 @@ class FeedManager
      * Uses _wc_gla_google_ids meta (set by Google Listings & Ads plugin).
      * Falls back to gla_PRODUCT_ID format if not found.
      *
+     * IMPORTANT: Returns just the offer ID (e.g., "gla_42687") WITHOUT the
+     * "online:en:US:" prefix. GMC automatically adds this prefix to feed IDs.
+     * This must match the format used by ProductDataFeed::getGmcOfferId().
+     *
      * @param int $productId WooCommerce product ID
-     * @return string GMC offer ID in format online:en:US:gla_XXXXX
+     * @return string GMC offer ID in format gla_XXXXX (no prefix)
      */
     private static function getGmcIdFromProduct(int $productId): string
     {
@@ -381,12 +387,27 @@ class FeedManager
         if ($googleIds) {
             $decoded = is_string($googleIds) ? json_decode($googleIds, true) : $googleIds;
             if (is_array($decoded) && isset($decoded['US'])) {
-                return $decoded['US'];
+                $fullId = $decoded['US'];
+                // Strip "online:en:US:" prefix - GMC adds this automatically
+                if (strpos($fullId, 'online:') === 0) {
+                    return preg_replace('/^online:[a-z]{2}:[A-Z]{2}:/', '', $fullId);
+                }
+                return $fullId;
             }
         }
         
+        // Try _wc_gla_mc_offer_id (simpler format from GLA)
+        $glaOfferId = get_post_meta($productId, '_wc_gla_mc_offer_id', true);
+        if (!empty($glaOfferId)) {
+            // Strip any prefix if present
+            if (strpos($glaOfferId, 'online:') === 0) {
+                return preg_replace('/^online:[a-z]{2}:[A-Z]{2}:/', '', $glaOfferId);
+            }
+            return $glaOfferId;
+        }
+        
         // Fallback: build from product ID using gla_XXXXX format (GLA convention)
-        return 'online:en:US:gla_' . $productId;
+        return 'gla_' . $productId;
     }
 
     /**
