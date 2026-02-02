@@ -453,12 +453,28 @@ class FeedManager
         }
 
         $client = new MerchantApiClient();
+        $result = null;
+        $needsNewFeed = empty($feed['gmc_feed_id']);
 
         // Check if feed already exists in GMC
         if (!empty($feed['gmc_feed_id'])) {
             // Update existing feed URL and fetch
             $result = $client->uploadFeedContent($feed['gmc_feed_id'], $fileUrl);
-        } else {
+            
+            // Auto-recovery: If feed was deleted from GMC (404), clear association and create new
+            if (!$result['success'] && ($result['http_code'] ?? 0) === 404) {
+                error_log("[HP-GMC] Feed {$feedId} not found in GMC (404), clearing association and creating new feed");
+                self::update($feedId, [
+                    'gmc_feed_id' => null,
+                    'gmc_status' => null,
+                ]);
+                $needsNewFeed = true;
+                $result = null; // Reset to trigger new feed creation
+            }
+        }
+
+        // Create new feed if needed
+        if ($needsNewFeed) {
             // Create new supplemental feed
             $createResult = $client->createSupplementalFeed($feed['name']);
             
