@@ -134,10 +134,8 @@ class ProductAbilities
             ];
         }
 
-        $glaId = get_post_meta($productId, '_wc_gla_mc_offer_id', true);
-        if (empty($glaId)) {
-            $glaId = 'gla_' . $productId;
-        }
+        // Use shared ID function for consistency (strips prefix if present)
+        $glaId = ProductDataFeed::getGmcOfferId($productId);
 
         // Get current exclusions
         $currentExclusions = get_post_meta($productId, '_hp_gmc_excluded_destinations', true);

@@ -215,7 +215,11 @@ class MerchantApiClient
             if ($statusCode >= 400) {
                 $errorMessage = $responseData['error']['message'] ?? 'API request failed with status ' . $statusCode;
                 error_log('[HP-GMC] API Error: ' . $errorMessage . ' | Body: ' . $body . ' | URL: ' . $url);
-                throw new \Exception($errorMessage);
+                return [
+                    'success' => false,
+                    'error' => $errorMessage,
+                    'http_code' => $statusCode,
+                ];
             }
 
             return [
@@ -226,6 +230,7 @@ class MerchantApiClient
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
+                'http_code' => 0,
             ];
         }
     }
