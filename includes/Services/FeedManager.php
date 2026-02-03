@@ -461,15 +461,31 @@ class FeedManager
             // Update existing feed URL and fetch
             $result = $client->uploadFeedContent($feed['gmc_feed_id'], $fileUrl);
             
-            // Auto-recovery: If feed was deleted from GMC (404), clear association and create new
-            if (!$result['success'] && ($result['http_code'] ?? 0) === 404) {
-                error_log("[HP-GMC] Feed {$feedId} not found in GMC (404), clearing association and creating new feed");
-                self::update($feedId, [
-                    'gmc_feed_id' => null,
-                    'gmc_status' => null,
-                ]);
-                $needsNewFeed = true;
-                $result = null; // Reset to trigger new feed creation
+            // Auto-recovery: If feed no longer exists or is inaccessible in GMC
+            if (!$result['success']) {
+                $httpCode = $result['http_code'] ?? 0;
+                $errorMsg = strtolower($result['error'] ?? '');
+                
+                // Detect various "feed doesn't exist" scenarios:
+                // - 404: Not Found
+                // - 400: Bad Request (invalid feed ID)
+                // - 403: Forbidden (no access to this feed)
+                // - Error messages containing "not found", "does not exist", "invalid"
+                $isStaleReference = in_array($httpCode, [400, 403, 404], true)
+                    || strpos($errorMsg, 'not found') !== false
+                    || strpos($errorMsg, 'does not exist') !== false
+                    || strpos($errorMsg, 'invalid') !== false
+                    || strpos($errorMsg, 'resource') !== false;
+                
+                if ($isStaleReference) {
+                    error_log("[HP-GMC] Feed {$feedId} not accessible in GMC (HTTP {$httpCode}: {$errorMsg}), clearing association and creating new feed");
+                    self::update($feedId, [
+                        'gmc_feed_id' => null,
+                        'gmc_status' => null,
+                    ]);
+                    $needsNewFeed = true;
+                    $result = null; // Reset to trigger new feed creation
+                }
             }
         }
 
@@ -587,13 +603,23 @@ class FeedManager
                 'warnings' => array_slice($warnings, 0, 5), // First 5 warnings
             ];
         } else {
-            // Feed not found in GMC - check if it's a "not found" error
-            $errorMsg = $result['error'] ?? '';
+            // Feed not found or inaccessible in GMC
+            $errorMsg = strtolower($result['error'] ?? '');
             $httpCode = $result['http_code'] ?? 0;
             
-            // If feed doesn't exist in GMC (404 or "not found" in error message)
-            if ($httpCode === 404 || stripos($errorMsg, 'not found') !== false || stripos($errorMsg, 'does not exist') !== false) {
-                // Clear GMC association - feed was deleted from GMC
+            // Detect various "feed doesn't exist" scenarios:
+            // - 404: Not Found
+            // - 400: Bad Request (invalid feed ID)
+            // - 403: Forbidden (no access to this feed)
+            // - Error messages containing "not found", "does not exist", "invalid"
+            $isStaleReference = in_array($httpCode, [400, 403, 404], true)
+                || strpos($errorMsg, 'not found') !== false
+                || strpos($errorMsg, 'does not exist') !== false
+                || strpos($errorMsg, 'invalid') !== false
+                || strpos($errorMsg, 'resource') !== false;
+            
+            if ($isStaleReference) {
+                // Clear GMC association - feed no longer accessible
                 self::update($feedId, [
                     'gmc_feed_id' => null,
                     'gmc_status' => null,
@@ -602,13 +628,15 @@ class FeedManager
                 ]);
                 
                 $result['feed_removed'] = true;
-                $result['message'] = 'Feed no longer exists in GMC - cleared local association';
+                $result['message'] = 'Feed no longer accessible in GMC - cleared local association';
                 
                 error_log(json_encode([
-                    'event' => 'feed.gmc_check.not_found',
+                    'event' => 'feed.gmc_check.stale_reference',
                     'feed_id' => $feedId,
                     'feed_name' => $feed['name'],
                     'old_gmc_feed_id' => $feed['gmc_feed_id'],
+                    'http_code' => $httpCode,
+                    'error' => $errorMsg,
                 ]));
             }
         }
