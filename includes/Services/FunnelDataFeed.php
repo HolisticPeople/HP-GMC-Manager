@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
  * 
  * This feed provides funnel data to GMC for Shopping ads,
  * using the lowest offer price as the product price.
- * Requires HP-React-Widgets plugin to be active.
+ * Requires HP-Funnels (preferred) or HP-React-Widgets plugin to be active.
  */
 class FunnelDataFeed
 {
@@ -26,14 +26,70 @@ class FunnelDataFeed
     /** @var string Option key for funnel count */
     private const FUNNEL_COUNT_KEY = 'hp_gmc_funnel_feed_count';
 
+    /** @var string|null Cached resolved FunnelGmcService class name */
+    private static ?string $resolvedGmcServiceClass = null;
+
+    /** @var string|null Cached resolved FunnelConfigLoader class name */
+    private static ?string $resolvedConfigLoaderClass = null;
+
     /**
      * Check if funnel integration is available.
      *
-     * @return bool True if HP-React-Widgets FunnelGmcService is available
+     * Checks HP-Funnels (preferred) then HP-React-Widgets (legacy fallback).
+     *
+     * @return bool True if FunnelGmcService is available from any source
      */
     public static function isAvailable(): bool
     {
-        return class_exists('HP_RW\\Services\\FunnelGmcService');
+        return self::resolveGmcServiceClass() !== null;
+    }
+
+    /**
+     * Resolve the FunnelGmcService class name.
+     *
+     * Prefers HP-Funnels namespace, falls back to HP-React-Widgets.
+     *
+     * @return string|null Fully qualified class name or null
+     */
+    public static function resolveGmcServiceClass(): ?string
+    {
+        if (self::$resolvedGmcServiceClass !== null) {
+            return self::$resolvedGmcServiceClass !== '' ? self::$resolvedGmcServiceClass : null;
+        }
+
+        if (class_exists('HP_Funnels\\Services\\FunnelGmcService')) {
+            self::$resolvedGmcServiceClass = 'HP_Funnels\\Services\\FunnelGmcService';
+        } elseif (class_exists('HP_RW\\Services\\FunnelGmcService')) {
+            self::$resolvedGmcServiceClass = 'HP_RW\\Services\\FunnelGmcService';
+        } else {
+            self::$resolvedGmcServiceClass = '';
+        }
+
+        return self::$resolvedGmcServiceClass !== '' ? self::$resolvedGmcServiceClass : null;
+    }
+
+    /**
+     * Resolve the FunnelConfigLoader class name.
+     *
+     * Prefers HP-Funnels namespace, falls back to HP-React-Widgets.
+     *
+     * @return string|null Fully qualified class name or null
+     */
+    public static function resolveConfigLoaderClass(): ?string
+    {
+        if (self::$resolvedConfigLoaderClass !== null) {
+            return self::$resolvedConfigLoaderClass !== '' ? self::$resolvedConfigLoaderClass : null;
+        }
+
+        if (class_exists('HP_Funnels\\Services\\FunnelConfigLoader')) {
+            self::$resolvedConfigLoaderClass = 'HP_Funnels\\Services\\FunnelConfigLoader';
+        } elseif (class_exists('HP_RW\\Services\\FunnelConfigLoader')) {
+            self::$resolvedConfigLoaderClass = 'HP_RW\\Services\\FunnelConfigLoader';
+        } else {
+            self::$resolvedConfigLoaderClass = '';
+        }
+
+        return self::$resolvedConfigLoaderClass !== '' ? self::$resolvedConfigLoaderClass : null;
     }
 
     /**
@@ -85,7 +141,8 @@ class FunnelDataFeed
         $lines[] = implode($delimiter, $headers);
 
         // Get all GMC-enabled funnels
-        $funnels = \HP_RW\Services\FunnelGmcService::getAllGmcEnabledFunnels();
+        $gmcServiceClass = self::resolveGmcServiceClass();
+        $funnels = $gmcServiceClass::getAllGmcEnabledFunnels();
         $count = 0;
 
         foreach ($funnels as $funnel) {
@@ -227,11 +284,12 @@ class FunnelDataFeed
      */
     public static function getAllFunnels(): array
     {
-        if (!self::isAvailable()) {
+        $gmcServiceClass = self::resolveGmcServiceClass();
+        if (!$gmcServiceClass) {
             return [];
         }
 
-        return \HP_RW\Services\FunnelGmcService::getAllGmcEnabledFunnels();
+        return $gmcServiceClass::getAllGmcEnabledFunnels();
     }
 
     /**
@@ -242,11 +300,12 @@ class FunnelDataFeed
      */
     public static function getFunnel(int $funnelId): ?array
     {
-        if (!self::isAvailable()) {
+        $gmcServiceClass = self::resolveGmcServiceClass();
+        if (!$gmcServiceClass) {
             return null;
         }
 
-        return \HP_RW\Services\FunnelGmcService::getFunnelGmcData($funnelId);
+        return $gmcServiceClass::getFunnelGmcData($funnelId);
     }
 
     /**
@@ -257,10 +316,11 @@ class FunnelDataFeed
      */
     public static function validateFunnel(int $funnelId): array
     {
-        if (!self::isAvailable()) {
-            return ['valid' => false, 'errors' => ['HP-React-Widgets plugin not active']];
+        $gmcServiceClass = self::resolveGmcServiceClass();
+        if (!$gmcServiceClass) {
+            return ['valid' => false, 'errors' => ['HP-Funnels or HP-React-Widgets plugin not active']];
         }
 
-        return \HP_RW\Services\FunnelGmcService::validateForGmc($funnelId);
+        return $gmcServiceClass::validateForGmc($funnelId);
     }
 }

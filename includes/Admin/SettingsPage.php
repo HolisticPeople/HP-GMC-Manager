@@ -159,6 +159,77 @@ class SettingsPage
                     </tr>
                 </table>
 
+                <h2><?php esc_html_e('GA4 Analytics', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_ga4_property_id"><?php esc_html_e('GA4 Property ID', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text"
+                                   id="hp_gmc_ga4_property_id"
+                                   name="hp_gmc_ga4_property_id"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_ga4_property_id', '')); ?>"
+                                   class="regular-text"
+                                   placeholder="123456789">
+                            <p class="description">
+                                <?php esc_html_e('Your GA4 property ID (numeric). Found in GA4 Admin > Property Settings.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h2><?php esc_html_e('Google Ads', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_ads_customer_id"><?php esc_html_e('Customer ID', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text"
+                                   id="hp_gmc_ads_customer_id"
+                                   name="hp_gmc_ads_customer_id"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_ads_customer_id', '')); ?>"
+                                   class="regular-text"
+                                   placeholder="123-456-7890">
+                            <p class="description">
+                                <?php esc_html_e('Your Google Ads account ID (with or without dashes).', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_ads_manager_id"><?php esc_html_e('Manager Account ID', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="text"
+                                   id="hp_gmc_ads_manager_id"
+                                   name="hp_gmc_ads_manager_id"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_ads_manager_id', '')); ?>"
+                                   class="regular-text"
+                                   placeholder="123-456-7890">
+                            <p class="description">
+                                <?php esc_html_e('MCC (manager) account ID, if accessing via a manager account. Leave blank for direct access.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_ads_developer_token"><?php esc_html_e('Developer Token', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="password"
+                                   id="hp_gmc_ads_developer_token"
+                                   name="hp_gmc_ads_developer_token"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_ads_developer_token', '')); ?>"
+                                   class="regular-text">
+                            <p class="description">
+                                <?php esc_html_e('Google Ads API developer token. Found in Google Ads > Tools > API Center.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
                 <h2><?php esc_html_e('Connection Test', 'hp-gmc-manager'); ?></h2>
                 <table class="form-table">
                     <tr>

@@ -134,6 +134,16 @@ class Plugin
             'hp-gmc-settings',
             [SettingsPage::class, 'render']
         );
+
+        // Campaign ROI submenu
+        add_submenu_page(
+            'hp-gmc-manager',
+            __('Campaign ROI', 'hp-gmc-manager'),
+            __('Campaign ROI', 'hp-gmc-manager'),
+            'manage_woocommerce',
+            'hp-gmc-campaign-roi',
+            [Admin\CampaignRoiDashboard::class, 'render']
+        );
     }
 
     /**
@@ -177,6 +187,26 @@ class Plugin
             'sanitize_callback' => function ($value) {
                 return in_array($value, ['', 'production', 'staging', 'local']) ? $value : '';
             },
+        ]);
+
+        // GA4 Analytics settings
+        register_setting('hp_gmc_settings', 'hp_gmc_ga4_property_id', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
+
+        // Google Ads settings
+        register_setting('hp_gmc_settings', 'hp_gmc_ads_customer_id', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_ads_manager_id', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_ads_developer_token', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
         ]);
     }
 
@@ -1220,6 +1250,135 @@ class Plugin
                     'required' => ['funnel_id'],
                 ],
                 'category' => 'funnel',
+            ],
+
+            // =========================================================================
+            // GA4 Analytics Tools
+            // =========================================================================
+            'gmc-ga4-funnel-performance' => [
+                'title' => 'GA4 Funnel Performance',
+                'description' => 'Get GA4 funnel performance metrics (sessions, conversions, revenue) by funnel',
+                'callback' => [Abilities\GA4Analytics::class, 'funnelPerformance'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'date_range' => [
+                            'type' => 'string',
+                            'description' => 'Date range: today, yesterday, last_7_days, last_30_days, last_90_days',
+                            'default' => 'last_30_days',
+                        ],
+                        'funnel_slug' => [
+                            'type' => 'string',
+                            'description' => 'Filter by funnel slug (empty = all funnels)',
+                        ],
+                    ],
+                ],
+                'category' => 'analytics',
+            ],
+            'gmc-ga4-traffic-sources' => [
+                'title' => 'GA4 Traffic Sources',
+                'description' => 'Get traffic source breakdown (source, medium, campaign) for funnel pages',
+                'callback' => [Abilities\GA4Analytics::class, 'trafficSources'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'date_range' => [
+                            'type' => 'string',
+                            'description' => 'Date range: today, yesterday, last_7_days, last_30_days, last_90_days',
+                            'default' => 'last_30_days',
+                        ],
+                        'funnel_slug' => [
+                            'type' => 'string',
+                            'description' => 'Filter by funnel slug (empty = all funnels)',
+                        ],
+                    ],
+                ],
+                'category' => 'analytics',
+            ],
+            'gmc-ga4-realtime' => [
+                'title' => 'GA4 Realtime',
+                'description' => 'Get realtime active users on funnel pages right now',
+                'callback' => [Abilities\GA4Analytics::class, 'realtime'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'funnel_slug' => [
+                            'type' => 'string',
+                            'description' => 'Filter by funnel slug (empty = all pages)',
+                        ],
+                    ],
+                ],
+                'category' => 'analytics',
+            ],
+            'gmc-ga4-conversion-funnel' => [
+                'title' => 'GA4 Conversion Funnel',
+                'description' => 'Get step-by-step conversion funnel with drop-off rates (view_item -> purchase)',
+                'callback' => [Abilities\GA4Analytics::class, 'conversionFunnel'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'date_range' => [
+                            'type' => 'string',
+                            'description' => 'Date range: today, yesterday, last_7_days, last_30_days, last_90_days',
+                            'default' => 'last_30_days',
+                        ],
+                        'funnel_slug' => [
+                            'type' => 'string',
+                            'description' => 'Filter by funnel slug (empty = all funnels)',
+                        ],
+                    ],
+                ],
+                'category' => 'analytics',
+            ],
+
+            // =========================================================================
+            // Google Ads Reporting Tools
+            // =========================================================================
+            'gmc-ads-campaign-performance' => [
+                'title' => 'Google Ads Campaign Performance',
+                'description' => 'Get campaign performance metrics (clicks, impressions, cost, conversions, ROAS)',
+                'callback' => [Abilities\GoogleAdsReporting::class, 'campaignPerformance'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'date_range' => [
+                            'type' => 'string',
+                            'description' => 'Date range: today, yesterday, last_7_days, last_30_days, this_month, last_month',
+                            'default' => 'last_30_days',
+                        ],
+                        'campaign_name' => [
+                            'type' => 'string',
+                            'description' => 'Filter by campaign name (partial match)',
+                        ],
+                    ],
+                ],
+                'category' => 'ads',
+            ],
+            'gmc-ads-funnel-campaign-map' => [
+                'title' => 'Funnel-Campaign Map',
+                'description' => 'Map Google Ads campaigns to funnels based on naming and URL patterns',
+                'callback' => [Abilities\GoogleAdsReporting::class, 'funnelCampaignMap'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'date_range' => [
+                            'type' => 'string',
+                            'description' => 'Date range: today, yesterday, last_7_days, last_30_days',
+                            'default' => 'last_30_days',
+                        ],
+                    ],
+                ],
+                'category' => 'ads',
+            ],
+            'gmc-ads-budget-status' => [
+                'title' => 'Ads Budget Status',
+                'description' => 'Get daily budget, spend, and remaining for all active campaigns',
+                'callback' => [Abilities\GoogleAdsReporting::class, 'budgetStatus'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object)[],
+                ],
+                'category' => 'ads',
             ],
         ];
     }
