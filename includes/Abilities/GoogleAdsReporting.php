@@ -334,14 +334,21 @@ class GoogleAdsReporting
         if ($statusCode >= 400) {
             $errorMsg = $decoded[0]['error']['message']
                 ?? $decoded['error']['message']
-                ?? "HTTP {$statusCode}";
+                ?? null;
+
+            if (!$errorMsg) {
+                // Fallback to raw body if JSON decode failed or no message found
+                // Strip tags in case it's HTML
+                $rawSample = substr(strip_tags($body), 0, 300);
+                $errorMsg = "HTTP {$statusCode}. Response: {$rawSample}";
+            }
             
             // Add context to error
             $context = !empty($managerId) && isset($headers['login-customer-id']) 
                 ? " (via Manager {$managerId})" 
                 : " (Direct access)";
                 
-            throw new \RuntimeException(sprintf('Ads API error (%d)%s: %s', $statusCode, $context, $errorMsg));
+            throw new \RuntimeException(sprintf('Ads API error%s: %s', $context, $errorMsg));
         }
 
         // Flatten results from all stream chunks
