@@ -240,8 +240,8 @@ class GoogleApiClient
             );
         }
 
-        // Strip dashes (format: 123-456-7890 -> 1234567890)
-        return str_replace('-', '', $customerId);
+        // Strip everything except numbers
+        return preg_replace('/[^0-9]/', '', $customerId);
     }
 
     /**
