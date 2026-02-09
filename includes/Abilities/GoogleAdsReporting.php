@@ -329,7 +329,7 @@ class GoogleAdsReporting
         $body = wp_remote_retrieve_body($response);
 
         // #region agent log
-        file_put_contents('c:\DEV\.cursor\debug.log', json_encode([
+        error_log('HP_GMC_DEBUG: ' . json_encode([
             'id' => 'log_' . microtime(true),
             'timestamp' => time() * 1000,
             'location' => 'GoogleAdsReporting.php:executeGaql',
@@ -342,7 +342,7 @@ class GoogleAdsReporting
             ],
             'runId' => 'run1',
             'hypothesisId' => 'A,B,C,D'
-        ]) . "\n", FILE_APPEND);
+        ]));
         // #endregion
 
         // searchStream returns newline-delimited JSON arrays
