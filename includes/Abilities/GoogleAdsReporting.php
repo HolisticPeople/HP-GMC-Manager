@@ -280,27 +280,52 @@ class GoogleAdsReporting
 
         $accessToken = GoogleApiClient::getAccessToken(self::SCOPE);
 
-        $headers = [
+        $baseHeaders = [
             'Authorization'  => 'Bearer ' . $accessToken,
             'Content-Type'   => 'application/json',
             'developer-token' => $devToken,
         ];
 
+        // Function to make the request
+        $makeRequest = function ($headers) use ($url, $gaql) {
+            return wp_remote_post($url, [
+                'headers' => $headers,
+                'body'    => wp_json_encode(['query' => $gaql]),
+                'timeout' => 30,
+            ]);
+        };
+
+        // Attempt 1: With Manager ID if present
+        $headers = $baseHeaders;
         if (!empty($managerId)) {
             $headers['login-customer-id'] = str_replace('-', '', $managerId);
         }
 
-        $response = wp_remote_post($url, [
-            'headers' => $headers,
-            'body'    => wp_json_encode(['query' => $gaql]),
-            'timeout' => 30,
-        ]);
+        $response = $makeRequest($headers);
+        $statusCode = wp_remote_retrieve_response_code($response);
+
+        // Retry logic: If 404/403/401 AND we sent a manager ID, try without it
+        // 404: Customer not found (via that manager)
+        // 403: Not authorized (via that manager)
+        // 401: Unauthorized (token issue, but maybe context issue too)
+        if (!empty($managerId) && ($statusCode === 404 || $statusCode === 403 || $statusCode === 401)) {
+            // Log the retry
+            error_log("Google Ads API: Request failed with Manager ID {$managerId} (HTTP {$statusCode}). Retrying without it.");
+            
+            unset($headers['login-customer-id']);
+            $retryResponse = $makeRequest($headers);
+            
+            // If retry worked (200), use it
+            if (wp_remote_retrieve_response_code($retryResponse) === 200) {
+                $response = $retryResponse;
+                $statusCode = 200;
+            }
+        }
 
         if (is_wp_error($response)) {
             throw new \RuntimeException('Ads API request failed: ' . $response->get_error_message());
         }
 
-        $statusCode = wp_remote_retrieve_response_code($response);
         $body = wp_remote_retrieve_body($response);
 
         // searchStream returns newline-delimited JSON arrays
@@ -310,7 +335,13 @@ class GoogleAdsReporting
             $errorMsg = $decoded[0]['error']['message']
                 ?? $decoded['error']['message']
                 ?? "HTTP {$statusCode}";
-            throw new \RuntimeException(sprintf('Ads API error (%d): %s', $statusCode, $errorMsg));
+            
+            // Add context to error
+            $context = !empty($managerId) && isset($headers['login-customer-id']) 
+                ? " (via Manager {$managerId})" 
+                : " (Direct access)";
+                
+            throw new \RuntimeException(sprintf('Ads API error (%d)%s: %s', $statusCode, $context, $errorMsg));
         }
 
         // Flatten results from all stream chunks

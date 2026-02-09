@@ -251,6 +251,8 @@ class GoogleApiClient
      */
     public static function getAdsManagerId(): string
     {
-        return get_option('hp_gmc_ads_manager_id', '');
+        $managerId = get_option('hp_gmc_ads_manager_id', '');
+        // Strip everything except numbers
+        return preg_replace('/[^0-9]/', '', $managerId);
     }
 }
