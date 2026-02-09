@@ -1712,8 +1712,8 @@ class Dashboard
             <?php if (!$funnelFeedAvailable): ?>
             <div class="notice notice-warning inline">
                 <p>
-                    <strong><?php esc_html_e('HP-React-Widgets Required', 'hp-gmc-manager'); ?></strong><br>
-                    <?php esc_html_e('The Funnel GMC integration requires the HP-React-Widgets plugin to be installed and activated.', 'hp-gmc-manager'); ?>
+                    <strong><?php esc_html_e('HP-Funnels Plugin Required', 'hp-gmc-manager'); ?></strong><br>
+                    <?php esc_html_e('The Funnel GMC integration requires the HP-Funnels plugin (or legacy HP-React-Widgets) to be installed and activated.', 'hp-gmc-manager'); ?>
                 </p>
             </div>
             <?php else: ?>

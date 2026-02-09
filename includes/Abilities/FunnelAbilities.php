@@ -20,7 +20,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -47,7 +47,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -77,7 +77,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -113,7 +113,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -151,7 +151,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -182,7 +182,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -213,7 +213,7 @@ class FunnelAbilities
         if (!FunnelDataFeed::isAvailable()) {
             return [
                 'success' => false,
-                'error' => 'HP-React-Widgets plugin is not active',
+                'error' => 'HP-Funnels (or HP-React-Widgets) plugin is not active',
             ];
         }
 
@@ -242,9 +242,10 @@ class FunnelAbilities
         // Clear cache
         FunnelDataFeed::clearCache();
 
-        // Clear HP-RW cache if available
-        if (class_exists('HP_RW\\Services\\FunnelConfigLoader')) {
-            \HP_RW\Services\FunnelConfigLoader::clearCache($funnelId);
+        // Clear funnel config cache if available (HP-Funnels preferred, HP-RW fallback)
+        $configLoaderClass = FunnelDataFeed::resolveConfigLoaderClass();
+        if ($configLoaderClass) {
+            $configLoaderClass::clearCache($funnelId);
         }
 
         return [
