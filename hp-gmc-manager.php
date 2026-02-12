@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.25.5
+ * Version: 1.25.6
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -11,7 +11,7 @@
  * Requires at least: 6.0
  * Requires PHP: 8.0
  * WC requires at least: 8.0
- * WC tested up to: 9.0
+ * WC tested up to: 10.5
  */
 
 if (!defined('ABSPATH')) {
@@ -19,11 +19,18 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.25.5');
+define('HP_GMC_VERSION', '1.25.6');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
 define('HP_GMC_BASENAME', plugin_basename(__FILE__));
+
+// Declare WooCommerce feature compatibility (HPOS)
+add_action('before_woocommerce_init', function () {
+    if (class_exists(\Automattic\WooCommerce\Utilities\FeaturesUtil::class)) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility('custom_order_tables', __FILE__, true);
+    }
+});
 
 // Composer autoloader
 if (file_exists(HP_GMC_PATH . 'vendor/autoload.php')) {
