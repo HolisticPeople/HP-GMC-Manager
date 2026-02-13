@@ -1200,6 +1200,7 @@ class Dashboard
                 <div class="hp-gmc-modal-body">
                     <p><?php esc_html_e('Google does not allow adding supplemental sources via API. Paste the URL below in GMC:', 'hp-gmc-manager'); ?></p>
                     <p><strong><?php esc_html_e('Settings → Data sources → Supplemental sources → Add supplemental product data', 'hp-gmc-manager'); ?></strong></p>
+                    <p class="description" style="margin: 8px 0;"><?php esc_html_e('After adding the URL, click Edit next to the feed name in GMC and set Column delimiter to Tab (so GMC parses the file correctly).', 'hp-gmc-manager'); ?></p>
                     <p style="margin-bottom: 8px;">
                         <input type="text" id="hp-gmc-supplemental-url-input" class="large-text" readonly style="width:100%;">
                     </p>

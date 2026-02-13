@@ -746,6 +746,45 @@ class Plugin
                 ],
                 'category' => 'feed',
             ],
+            'gmc-feed-consolidate' => [
+                'title' => 'Consolidate Feeds',
+                'description' => 'Merge multiple feeds into one. General-purpose: give source feed IDs and either an existing target_feed_id or target_feed_name + target_feed_type to create a new feed. Product-attribute rows are deduplicated by (product_id, attribute_name); last occurrence wins. Use delete_sources_after to remove source feeds after merge.',
+                'callback' => [Abilities\FeedAbilities::class, 'consolidateFeeds'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'source_feed_ids' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'integer'],
+                            'description' => 'Feed IDs to merge from',
+                        ],
+                        'target_feed_id' => [
+                            'type' => 'integer',
+                            'description' => 'Existing feed ID to merge into (use this OR target_feed_name + target_feed_type)',
+                        ],
+                        'target_feed_name' => [
+                            'type' => 'string',
+                            'description' => 'Name for new target feed (required if not using target_feed_id)',
+                        ],
+                        'target_feed_type' => [
+                            'type' => 'string',
+                            'description' => 'Type for new target feed: exclusion, redirect, or custom',
+                            'enum' => ['exclusion', 'redirect', 'custom'],
+                        ],
+                        'target_feed_category' => [
+                            'type' => 'string',
+                            'description' => 'Optional category for new target feed',
+                        ],
+                        'delete_sources_after' => [
+                            'type' => 'boolean',
+                            'description' => 'Delete source feeds after successful merge',
+                            'default' => false,
+                        ],
+                    ],
+                    'required' => ['source_feed_ids'],
+                ],
+                'category' => 'feed',
+            ],
             'gmc-virtual-product-create' => [
                 'title' => 'Create Virtual Product',
                 'description' => 'Create a GMC-only product for complex funnels (hidden from store)',
