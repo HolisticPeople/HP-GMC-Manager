@@ -789,8 +789,8 @@ class Dashboard
             <p><?php esc_html_e('Manage supplemental data sources for GMC. Use exclusion sources to fix policy violations, redirect sources to send ad traffic to funnels.', 'hp-gmc-manager'); ?></p>
             
             <div class="hp-gmc-supplemental-feed-help" style="margin-bottom: 15px; padding: 10px; background: #f0f6fc; border-left: 4px solid #2271b1;">
-                <strong><?php esc_html_e('Supplemental feeds (do not add as Primary):', 'hp-gmc-manager'); ?></strong>
-                <p style="margin: 5px 0 0 0;"><?php esc_html_e('Click "Upload to GMC" to generate the feed. You will get a stable URL. In GMC go to Settings → Data sources → Supplemental sources → "Add supplemental product data" and paste that URL. Do not add it under Primary sources, or products will show as Not approved.', 'hp-gmc-manager'); ?></p>
+                <strong><?php esc_html_e('Add feeds to GMC Supplemental:', 'hp-gmc-manager'); ?></strong>
+                <p style="margin: 5px 0 0 0;"><?php esc_html_e('Click "Upload to GMC" on a feed. The feed URL is copied to your clipboard and a modal opens with an "Open GMC → Data sources" button. In GMC, add the URL under Supplemental sources (not Primary), then paste and save.', 'hp-gmc-manager'); ?></p>
             </div>
             
             <!-- Feed Summary -->
@@ -1093,19 +1093,11 @@ class Dashboard
                                 <?php esc_html_e('View', 'hp-gmc-manager'); ?>
                             </a>
                             <?php if ((int)$feed['product_count'] > 0): ?>
-                                <?php if (!$feed['file_url'] || !$feed['gmc_feed_id']): ?>
-                                <button type="button" class="button button-small button-primary hp-gmc-feed-publish" 
+                                <button type="button" class="button button-small button-primary hp-gmc-feed-upload" 
                                         data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
-                                        title="<?php esc_attr_e('Generate file and upload to GMC', 'hp-gmc-manager'); ?>">
-                                    <?php esc_html_e('Publish', 'hp-gmc-manager'); ?>
+                                        title="<?php esc_attr_e('Generate feed and get URL for GMC Supplemental sources', 'hp-gmc-manager'); ?>">
+                                    <?php esc_html_e('Upload to GMC', 'hp-gmc-manager'); ?>
                                 </button>
-                                <?php else: ?>
-                                <button type="button" class="button button-small hp-gmc-feed-upload" 
-                                        data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
-                                        title="<?php esc_attr_e('Re-upload to GMC', 'hp-gmc-manager'); ?>">
-                                    <?php esc_html_e('Upload', 'hp-gmc-manager'); ?>
-                                </button>
-                                <?php endif; ?>
                             <?php endif; ?>
                             <?php if ($feed['gmc_feed_id']): ?>
                             <button type="button" class="button button-small hp-gmc-feed-check-status" 
@@ -1194,6 +1186,30 @@ class Dashboard
                 <div class="hp-gmc-modal-footer">
                     <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Cancel', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-primary" id="hp-gmc-create-feed-submit"><?php esc_html_e('Create Feed', 'hp-gmc-manager'); ?></button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Supplemental feed URL modal: copy URL and open GMC -->
+        <div id="hp-gmc-supplemental-url-modal" class="hp-gmc-modal" style="display:none;">
+            <div class="hp-gmc-modal-content">
+                <div class="hp-gmc-modal-header">
+                    <h3><?php esc_html_e('Add this feed to GMC as Supplemental', 'hp-gmc-manager'); ?></h3>
+                    <button type="button" class="hp-gmc-modal-close">&times;</button>
+                </div>
+                <div class="hp-gmc-modal-body">
+                    <p><?php esc_html_e('Google does not allow adding supplemental sources via API. Paste the URL below in GMC:', 'hp-gmc-manager'); ?></p>
+                    <p><strong><?php esc_html_e('Settings → Data sources → Supplemental sources → Add supplemental product data', 'hp-gmc-manager'); ?></strong></p>
+                    <p style="margin-bottom: 8px;">
+                        <input type="text" id="hp-gmc-supplemental-url-input" class="large-text" readonly style="width:100%;">
+                    </p>
+                    <p>
+                        <button type="button" class="button" id="hp-gmc-supplemental-url-copy"><?php esc_html_e('Copy URL', 'hp-gmc-manager'); ?></button>
+                        <a href="https://merchants.google.com/mc/settings/data-sources" target="_blank" rel="noopener" class="button button-primary" id="hp-gmc-supplemental-open-gmc"><?php esc_html_e('Open GMC → Data sources', 'hp-gmc-manager'); ?></a>
+                    </p>
+                </div>
+                <div class="hp-gmc-modal-footer">
+                    <button type="button" class="button button-primary hp-gmc-supplemental-url-close"><?php esc_html_e('Done', 'hp-gmc-manager'); ?></button>
                 </div>
             </div>
         </div>

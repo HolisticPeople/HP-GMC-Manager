@@ -500,6 +500,9 @@
             $('.hp-gmc-modal').on('click', function(e) {
                 if (e.target === this) {
                     $(this).hide();
+                    if (this.id === 'hp-gmc-supplemental-url-modal') {
+                        location.reload();
+                    }
                 }
             });
             
@@ -516,6 +519,12 @@
             $(document).on('click', '.hp-gmc-remove-product', this.removeProductFromFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-publish', this.publishFeed.bind(this));
             $(document).on('click', '.hp-gmc-view-pending', this.viewPendingProducts.bind(this));
+            $('#hp-gmc-supplemental-url-copy').on('click', this.copySupplementalUrl.bind(this));
+            $('#hp-gmc-supplemental-open-gmc').on('click', function() { /* open in new tab via href */ });
+            $('.hp-gmc-supplemental-url-close, #hp-gmc-supplemental-url-modal .hp-gmc-modal-close').on('click', function() {
+                $('#hp-gmc-supplemental-url-modal').hide();
+                location.reload();
+            });
             $('#hp-gmc-add-all-pending').on('click', this.addAllPendingProducts.bind(this));
             
             // Bulk actions
@@ -669,9 +678,10 @@
         },
         
         uploadFeed: function(e) {
-            const feedId = $(e.target).data('feed-id');
-            const $btn = $(e.target);
+            const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
+            const $btn = $(e.target).closest('button');
             const originalText = $btn.text();
+            const that = this;
             
             $btn.prop('disabled', true).text('Uploading...');
             
@@ -686,14 +696,11 @@
                 success: function(response) {
                     if (response.success) {
                         if (response.data?.supplemental_only && response.data?.supplemental_url) {
-                            var msg = (response.data?.message || 'Feed generated. Add this URL in GMC under Supplemental sources (not Primary).') + '\n\n';
-                            msg += 'Supplemental feed URL (copy and add in GMC → Settings → Data sources → Supplemental sources):\n\n';
-                            msg += response.data.supplemental_url;
-                            alert(msg);
+                            that.showSupplementalUrlModal(response.data.supplemental_url);
                         } else {
                             alert('Feed uploaded to GMC!\n\n' + (response.data?.note || response.data?.message || 'Success'));
+                            location.reload();
                         }
-                        location.reload();
                     } else {
                         alert(response.data?.error || 'Failed to upload feed');
                     }
@@ -833,6 +840,7 @@
             const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
             const $btn = $(e.target).closest('button');
             const originalText = $btn.text();
+            const that = this;
             
             $btn.prop('disabled', true).text('Publishing...');
             
@@ -846,7 +854,11 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        location.reload();
+                        if (response.data?.supplemental_url) {
+                            that.showSupplementalUrlModal(response.data.supplemental_url);
+                        } else {
+                            location.reload();
+                        }
                     } else {
                         alert(response.data?.message || 'Failed to publish feed');
                         $btn.prop('disabled', false).text(originalText);
@@ -857,6 +869,33 @@
                     $btn.prop('disabled', false).text(originalText);
                 }
             });
+        },
+        
+        showSupplementalUrlModal: function(url) {
+            var $modal = $('#hp-gmc-supplemental-url-modal');
+            var $input = $('#hp-gmc-supplemental-url-input');
+            $input.val(url);
+            $modal.show();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function() {
+                    $('#hp-gmc-supplemental-url-copy').text('Copied!');
+                    setTimeout(function() {
+                        $('#hp-gmc-supplemental-url-copy').text('Copy URL');
+                    }, 2000);
+                });
+            }
+        },
+        
+        copySupplementalUrl: function() {
+            var url = $('#hp-gmc-supplemental-url-input').val();
+            if (url && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function() {
+                    $('#hp-gmc-supplemental-url-copy').text('Copied!');
+                    setTimeout(function() {
+                        $('#hp-gmc-supplemental-url-copy').text('Copy URL');
+                    }, 2000);
+                });
+            }
         },
         
         refreshAllFeedStatuses: function() {
