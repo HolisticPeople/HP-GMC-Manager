@@ -7,6 +7,7 @@ use HP_GMC\Services\MerchantApiClient;
 use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Rest\ProductFeedEndpoint;
 use HP_GMC\Rest\FunnelFeedEndpoint;
+use HP_GMC\Rest\SupplementalFeedEndpoint;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -49,6 +50,7 @@ class Plugin
         // Register REST API endpoints
         add_action('rest_api_init', [ProductFeedEndpoint::class, 'register']);
         add_action('rest_api_init', [FunnelFeedEndpoint::class, 'register']);
+        add_action('rest_api_init', [SupplementalFeedEndpoint::class, 'register']);
 
         // Listen for funnel saves from HP-React-Widgets
         add_action('hp_funnel_saved', [self::class, 'on_funnel_saved'], 10, 3);
