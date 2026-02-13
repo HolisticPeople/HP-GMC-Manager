@@ -478,42 +478,45 @@ class FeedManager
                     || strpos($errorMsg, 'resource') !== false;
                 
                 if ($isStaleReference) {
-                    error_log("[HP-GMC] Feed {$feedId} not accessible in GMC (HTTP {$httpCode}: {$errorMsg}), clearing association and creating new feed");
+                    error_log("[HP-GMC] Feed {$feedId} not accessible in GMC (HTTP {$httpCode}: {$errorMsg}), clearing association. Use supplemental URL in GMC.");
                     self::update($feedId, [
                         'gmc_feed_id' => null,
                         'gmc_status' => null,
                     ]);
                     $needsNewFeed = true;
-                    $result = null; // Reset to trigger new feed creation
+                    $result = null;
                 }
             }
         }
 
-        // Create new feed if needed
+        // When we have no GMC feed ID (new feed or stale): do NOT create via Content API.
+        // Creating a datafeed via the API causes GMC to list it as a Primary source, which
+        // leads to "Not approved" and "Title pending or missing" for override/exclusion feeds.
+        // Return the stable supplemental feed URL so the merchant can add it in GMC as
+        // Supplemental source only (Settings → Data sources → Supplemental sources).
         if ($needsNewFeed) {
-            // Create new supplemental feed
-            $createResult = $client->createSupplementalFeed($feed['name']);
-            
-            if (!$createResult['success']) {
-                self::update($feedId, ['status' => self::STATUS_ERROR, 'gmc_status' => 'create_failed']);
-                return $createResult;
-            }
+            $supplementalUrl = rest_url('hp-gmc/v1/supplemental-feed/' . $feedId . '?format=tsv');
+            self::update($feedId, [
+                'status' => self::STATUS_GENERATED,
+                'last_uploaded' => current_time('mysql'),
+                'gmc_status' => null,
+            ]);
+            AuditLog::log('feed_upload', [
+                'feed_id' => $feedId,
+                'feed_name' => $feed['name'],
+                'product_count' => $feed['product_count'],
+                'supplemental_url' => $supplementalUrl,
+            ], ['success' => true, 'supplemental_url' => $supplementalUrl]);
 
-            $gmcFeedId = $createResult['data']['id'] ?? $createResult['data']['feedId'] ?? null;
-            
-            if (!$gmcFeedId) {
-                self::update($feedId, ['status' => self::STATUS_ERROR, 'gmc_status' => 'create_failed']);
-                return [
-                    'success' => false,
-                    'error' => 'Failed to get GMC feed ID from create response',
-                    'api_response' => $createResult,
-                ];
-            }
-
-            self::update($feedId, ['gmc_feed_id' => $gmcFeedId]);
-
-            // Update URL and fetch
-            $result = $client->uploadFeedContent($gmcFeedId, $fileUrl);
+            return [
+                'success' => true,
+                'supplemental_only' => true,
+                'supplemental_url' => $supplementalUrl,
+                'message' => __(
+                    'Feed generated. Add this URL in GMC under Settings → Data sources → Supplemental sources (not Primary). Click "Add supplemental product data" and paste the URL.',
+                    'hp-gmc-manager'
+                ),
+            ];
         }
 
         if ($result['success']) {

@@ -788,6 +788,11 @@ class Dashboard
             
             <p><?php esc_html_e('Manage supplemental data sources for GMC. Use exclusion sources to fix policy violations, redirect sources to send ad traffic to funnels.', 'hp-gmc-manager'); ?></p>
             
+            <div class="hp-gmc-supplemental-feed-help" style="margin-bottom: 15px; padding: 10px; background: #f0f6fc; border-left: 4px solid #2271b1;">
+                <strong><?php esc_html_e('Supplemental feeds (do not add as Primary):', 'hp-gmc-manager'); ?></strong>
+                <p style="margin: 5px 0 0 0;"><?php esc_html_e('Click "Upload to GMC" to generate the feed. You will get a stable URL. In GMC go to Settings → Data sources → Supplemental sources → "Add supplemental product data" and paste that URL. Do not add it under Primary sources, or products will show as Not approved.', 'hp-gmc-manager'); ?></p>
+            </div>
+            
             <!-- Feed Summary -->
             <div class="hp-gmc-feeds-summary">
                 <div class="hp-gmc-feed-type-card hp-gmc-feed-type-exclusion">

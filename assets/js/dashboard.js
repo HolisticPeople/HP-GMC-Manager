@@ -685,7 +685,14 @@
                 },
                 success: function(response) {
                     if (response.success) {
-                        alert('Feed uploaded to GMC!\n\n' + (response.data?.note || response.data?.message || 'Success'));
+                        if (response.data?.supplemental_only && response.data?.supplemental_url) {
+                            var msg = (response.data?.message || 'Feed generated. Add this URL in GMC under Supplemental sources (not Primary).') + '\n\n';
+                            msg += 'Supplemental feed URL (copy and add in GMC → Settings → Data sources → Supplemental sources):\n\n';
+                            msg += response.data.supplemental_url;
+                            alert(msg);
+                        } else {
+                            alert('Feed uploaded to GMC!\n\n' + (response.data?.note || response.data?.message || 'Success'));
+                        }
                         location.reload();
                     } else {
                         alert(response.data?.error || 'Failed to upload feed');
