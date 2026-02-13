@@ -879,6 +879,122 @@ class FeedManager
     }
 
     /**
+     * Export feeds to a portable array (for JSON export). Excludes non-portable fields.
+     *
+     * @param array $feedIds Feed IDs to export
+     * @return array{version: int, exported_at: string, feeds: array}
+     */
+    public static function exportFeedsToArray(array $feedIds): array
+    {
+        $feedIds = array_map('intval', array_filter($feedIds));
+        $feedsOut = [];
+
+        foreach ($feedIds as $feedId) {
+            $feed = self::get($feedId);
+            if (!$feed) {
+                continue;
+            }
+            $products = self::getProducts($feedId);
+            $productsOut = [];
+            foreach ($products as $row) {
+                $productsOut[] = [
+                    'sku' => (string) ($row['sku'] ?? ''),
+                    'attribute_name' => (string) ($row['attribute_name'] ?? ''),
+                    'attribute_value' => (string) ($row['attribute_value'] ?? ''),
+                    'reason' => isset($row['reason']) && $row['reason'] !== '' ? (string) $row['reason'] : null,
+                ];
+            }
+            $feedsOut[] = [
+                'name' => (string) $feed['name'],
+                'feed_type' => (string) $feed['feed_type'],
+                'category' => isset($feed['category']) && $feed['category'] !== '' ? (string) $feed['category'] : null,
+                'products' => $productsOut,
+            ];
+        }
+
+        return [
+            'version' => 1,
+            'exported_at' => current_time('c'),
+            'feeds' => $feedsOut,
+        ];
+    }
+
+    /**
+     * Import feeds from a portable array (from JSON). Creates feeds and adds products by SKU.
+     *
+     * @param array $data Must have 'feeds' key (array of feed objects) or be a single feed object
+     * @return array{success: bool, created: array, skipped_products: array, errors: array}
+     */
+    public static function importFeedsFromArray(array $data): array
+    {
+        $feeds = [];
+        if (isset($data['feeds']) && is_array($data['feeds'])) {
+            $feeds = $data['feeds'];
+        } elseif (isset($data['name'], $data['feed_type'])) {
+            $products = isset($data['products']) && is_array($data['products']) ? $data['products'] : [];
+            $feeds = [array_merge($data, ['products' => $products])];
+        }
+
+        $created = [];
+        $skipped_products = [];
+        $errors = [];
+
+        foreach ($feeds as $feedSpec) {
+            $name = isset($feedSpec['name']) ? sanitize_text_field($feedSpec['name']) : '';
+            $feedType = isset($feedSpec['feed_type']) ? sanitize_text_field($feedSpec['feed_type']) : 'custom';
+            $category = isset($feedSpec['category']) && $feedSpec['category'] !== '' ? sanitize_text_field($feedSpec['category']) : null;
+            $products = isset($feedSpec['products']) && is_array($feedSpec['products']) ? $feedSpec['products'] : [];
+
+            if ($name === '') {
+                $errors[] = ['feed' => $feedSpec, 'message' => 'Feed name is required'];
+                continue;
+            }
+            if (!in_array($feedType, ['exclusion', 'redirect', 'custom'], true)) {
+                $errors[] = ['feed' => $name, 'message' => 'Invalid feed_type'];
+                continue;
+            }
+
+            $feedId = self::create($name, $feedType, $category);
+            if (!$feedId) {
+                $errors[] = ['feed' => $name, 'message' => 'Failed to create feed'];
+                continue;
+            }
+
+            $created[] = ['feed_id' => $feedId, 'name' => $name];
+
+            foreach ($products as $row) {
+                $sku = isset($row['sku']) ? sanitize_text_field($row['sku']) : '';
+                $attr = isset($row['attribute_name']) ? sanitize_text_field($row['attribute_name']) : '';
+                $value = isset($row['attribute_value']) ? $row['attribute_value'] : '';
+                $reason = isset($row['reason']) && $row['reason'] !== '' ? sanitize_text_field($row['reason']) : null;
+
+                if ($sku === '' || $attr === '') {
+                    $skipped_products[] = ['feed_name' => $name, 'sku' => $sku ?: '(empty)', 'reason' => 'Missing sku or attribute_name'];
+                    continue;
+                }
+
+                $productId = wc_get_product_id_by_sku($sku);
+                if (!$productId) {
+                    $skipped_products[] = ['feed_name' => $name, 'sku' => $sku, 'reason' => 'Product not found'];
+                    continue;
+                }
+
+                $ok = self::addProduct($feedId, (int) $productId, $attr, (string) $value, $reason);
+                if (!$ok) {
+                    $skipped_products[] = ['feed_name' => $name, 'sku' => $sku, 'reason' => 'Failed to add'];
+                }
+            }
+        }
+
+        return [
+            'success' => count($errors) === 0,
+            'created' => $created,
+            'skipped_products' => $skipped_products,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
      * Get statistics for a feed, including issue types covered and pending products.
      */
     public static function getStatistics(int $feedId): array

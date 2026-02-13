@@ -75,6 +75,9 @@ class Plugin
         add_action('wp_ajax_hp_gmc_refresh_all_feed_statuses', [self::class, 'ajax_refresh_all_feed_statuses']);
         add_action('wp_ajax_hp_gmc_publish_feed', [self::class, 'ajax_publish_feed']);
         add_action('wp_ajax_hp_gmc_bulk_feed_action', [self::class, 'ajax_bulk_feed_action']);
+        add_action('wp_ajax_hp_gmc_export_feeds_json', [self::class, 'ajax_export_feeds_json']);
+        add_action('wp_ajax_hp_gmc_import_feeds_json', [self::class, 'ajax_import_feeds_json']);
+        add_action('wp_ajax_hp_gmc_download_feed_json_template', [self::class, 'ajax_download_feed_json_template']);
         add_action('wp_ajax_hp_gmc_get_pending_products', [self::class, 'ajax_get_pending_products']);
         add_action('wp_ajax_hp_gmc_add_pending_products', [self::class, 'ajax_add_pending_products']);
         add_action('wp_ajax_hp_gmc_remove_from_gmc', [self::class, 'ajax_remove_from_gmc']);
@@ -1788,6 +1791,100 @@ class Plugin
             'success_count' => $successCount,
             'total' => count($feedIds),
         ]);
+    }
+
+    /**
+     * AJAX: Export selected feeds to one JSON file (portable format).
+     */
+    public static function ajax_export_feeds_json(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedIds = array_map('intval', (array) ($_POST['feed_ids'] ?? []));
+        if (empty($feedIds)) {
+            wp_send_json_error(['message' => 'Select at least one feed.']);
+        }
+
+        $data = Services\FeedManager::exportFeedsToArray($feedIds);
+        $json = wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $filename = 'gmc-feeds-export-' . gmdate('Y-m-d-His') . '.json';
+
+        wp_send_json_success(['json' => $json, 'filename' => $filename]);
+    }
+
+    /**
+     * AJAX: Import feeds from uploaded JSON file.
+     */
+    public static function ajax_import_feeds_json(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $raw = '';
+        if (!empty($_FILES['file']['tmp_name']) && is_uploaded_file($_FILES['file']['tmp_name'])) {
+            $raw = file_get_contents($_FILES['file']['tmp_name']);
+        } elseif (!empty($_POST['json'])) {
+            $raw = wp_unslash($_POST['json']);
+        }
+
+        if ($raw === '') {
+            wp_send_json_error(['message' => 'No file or JSON provided.']);
+        }
+
+        $data = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            wp_send_json_error(['message' => 'Invalid JSON: ' . json_last_error_msg()]);
+        }
+
+        if (!is_array($data)) {
+            wp_send_json_error(['message' => 'JSON must be an object or array.']);
+        }
+
+        $result = Services\FeedManager::importFeedsFromArray($data);
+        wp_send_json_success($result);
+    }
+
+    /**
+     * AJAX: Return JSON template for feed import (download as file).
+     */
+    public static function ajax_download_feed_json_template(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $template = [
+            'version' => 1,
+            'exported_at' => gmdate('c'),
+            'feeds' => [
+                [
+                    'name' => 'example-feed',
+                    'feed_type' => 'custom',
+                    'category' => 'example',
+                    'products' => [
+                        [
+                            'sku' => 'YOUR-PRODUCT-SKU',
+                            'attribute_name' => 'gender',
+                            'attribute_value' => 'Unisex',
+                            'reason' => null,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $json = wp_json_encode($template, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $filename = 'gmc-feeds-import-template.json';
+
+        wp_send_json_success(['json' => $json, 'filename' => $filename]);
     }
 
     /**

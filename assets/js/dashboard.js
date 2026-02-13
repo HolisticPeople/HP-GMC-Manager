@@ -531,6 +531,9 @@
             $('#hp-gmc-refresh-all-feeds').on('click', this.refreshAllFeedStatuses.bind(this));
             $('#hp-gmc-select-all-feeds').on('change', this.toggleSelectAllFeeds.bind(this));
             $('#hp-gmc-apply-bulk-action').on('click', this.applyBulkFeedAction.bind(this));
+            $('#hp-gmc-download-json-template').on('click', this.downloadJsonTemplate.bind(this));
+            $('#hp-gmc-import-feeds-json').on('click', function() { $('#hp-gmc-import-json-file').trigger('click'); });
+            $('#hp-gmc-import-json-file').on('change', this.importFeedsFromFile.bind(this));
             
             // Add product
             $('#hp-gmc-add-product-btn').on('click', this.addProductToFeed.bind(this));
@@ -947,6 +950,11 @@
                 return;
             }
             
+            if (action === 'export') {
+                this.exportFeedsAndDownload(feedIds);
+                return;
+            }
+            
             if (action === 'delete' && !confirm('Are you sure you want to delete ' + feedIds.length + ' feed(s)?')) {
                 return;
             }
@@ -978,6 +986,109 @@
                     $btn.prop('disabled', false).text(originalText);
                 }
             });
+        },
+        
+        downloadJsonFile: function(filename, jsonString) {
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        },
+        
+        exportFeedsAndDownload: function(feedIds) {
+            const $btn = $('#hp-gmc-apply-bulk-action');
+            const originalText = $btn.text();
+            $btn.prop('disabled', true).text('Exporting...');
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_export_feeds_json',
+                    nonce: hpGmcData.nonce,
+                    feed_ids: feedIds
+                },
+                success: function(response) {
+                    $btn.prop('disabled', false).text(originalText);
+                    if (response.success && response.data.json && response.data.filename) {
+                        GMCDashboard.downloadJsonFile(response.data.filename, response.data.json);
+                    } else {
+                        alert(response.data?.message || 'Export failed');
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).text(originalText);
+                    alert('Network error');
+                }
+            });
+        },
+        
+        downloadJsonTemplate: function() {
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'hp_gmc_download_feed_json_template',
+                    nonce: hpGmcData.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.json && response.data.filename) {
+                        GMCDashboard.downloadJsonFile(response.data.filename, response.data.json);
+                    } else {
+                        alert(response.data?.message || 'Failed to get template');
+                    }
+                },
+                error: function() {
+                    alert('Network error');
+                }
+            });
+        },
+        
+        importFeedsFromFile: function(e) {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            e.target.value = '';
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const raw = ev.target && ev.target.result;
+                if (!raw) return;
+                const formData = new FormData();
+                formData.append('action', 'hp_gmc_import_feeds_json');
+                formData.append('nonce', hpGmcData.nonce);
+                formData.append('json', raw);
+                $.ajax({
+                    url: hpGmcData.ajaxUrl,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success && response.data) {
+                            const d = response.data;
+                            let msg = 'Import complete. Created ' + (d.created && d.created.length ? d.created.length : 0) + ' feed(s).';
+                            if (d.skipped_products && d.skipped_products.length) {
+                                msg += ' Skipped ' + d.skipped_products.length + ' product row(s) (missing SKU or product not found).';
+                            }
+                            if (d.errors && d.errors.length) {
+                                msg += ' Errors: ' + d.errors.length;
+                            }
+                            alert(msg);
+                            location.reload();
+                        } else {
+                            alert(response.data?.message || 'Import failed');
+                        }
+                    },
+                    error: function(xhr) {
+                        const msg = xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message
+                            ? xhr.responseJSON.data.message : 'Network error';
+                        alert(msg);
+                    }
+                });
+            };
+            reader.readAsText(file);
         },
         
         viewPendingProducts: function(e) {

@@ -948,11 +948,19 @@ class Dashboard
                         <option value=""><?php esc_html_e('Bulk Actions', 'hp-gmc-manager'); ?></option>
                         <option value="refresh"><?php esc_html_e('Refresh Status', 'hp-gmc-manager'); ?></option>
                         <option value="upload"><?php esc_html_e('Upload to GMC', 'hp-gmc-manager'); ?></option>
+                        <option value="export"><?php esc_html_e('Export to JSON', 'hp-gmc-manager'); ?></option>
                         <option value="delete"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></option>
                     </select>
                     <button type="button" class="button" id="hp-gmc-apply-bulk-action"><?php esc_html_e('Apply', 'hp-gmc-manager'); ?></button>
                 </div>
                 <div class="hp-gmc-feeds-toolbar-right">
+                    <button type="button" class="button" id="hp-gmc-download-json-template" title="<?php esc_attr_e('Download a JSON template for importing feeds', 'hp-gmc-manager'); ?>">
+                        <span class="dashicons dashicons-download"></span> <?php esc_html_e('Download JSON template', 'hp-gmc-manager'); ?>
+                    </button>
+                    <button type="button" class="button" id="hp-gmc-import-feeds-json" title="<?php esc_attr_e('Import feeds from a JSON file', 'hp-gmc-manager'); ?>">
+                        <span class="dashicons dashicons-upload"></span> <?php esc_html_e('Import from JSON', 'hp-gmc-manager'); ?>
+                    </button>
+                    <input type="file" id="hp-gmc-import-json-file" accept=".json,application/json" style="display:none;">
                     <button type="button" class="button" id="hp-gmc-refresh-all-feeds" title="<?php esc_attr_e('Refresh GMC status for all uploaded feeds', 'hp-gmc-manager'); ?>">
                         <span class="dashicons dashicons-update"></span> <?php esc_html_e('Refresh All', 'hp-gmc-manager'); ?>
                     </button>
