@@ -1676,11 +1676,16 @@ class Plugin
             ]);
         }
 
-        wp_send_json_success([
-            'message' => 'Feed published successfully',
+        $payload = [
+            'message' => $uploadResult['message'] ?? 'Feed published successfully',
             'file_url' => $generateResult['file_url'] ?? null,
             'gmc_feed_id' => $uploadResult['gmc_feed_id'] ?? null,
-        ]);
+        ];
+        if (!empty($uploadResult['supplemental_only']) && !empty($uploadResult['supplemental_url'])) {
+            $payload['supplemental_only'] = true;
+            $payload['supplemental_url'] = $uploadResult['supplemental_url'];
+        }
+        wp_send_json_success($payload);
     }
 
     /**
