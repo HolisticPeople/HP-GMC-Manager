@@ -533,8 +533,6 @@
             
             // Bulk actions
             $('#hp-gmc-refresh-all-feeds').on('click', this.refreshAllFeedStatuses.bind(this));
-            $('#hp-gmc-refresh-debug-reload').on('click', function() { location.reload(); });
-            $('#hp-gmc-refresh-debug-close').on('click', function() { $('#hp-gmc-refresh-debug').slideUp(); });
             $('#hp-gmc-select-all-feeds').on('change', this.toggleSelectAllFeeds.bind(this));
             $('#hp-gmc-apply-bulk-action').on('click', this.applyBulkFeedAction.bind(this));
             $('#hp-gmc-download-json-template').on('click', this.downloadJsonTemplate.bind(this));
@@ -910,11 +908,8 @@
         refreshAllFeedStatuses: function() {
             const $btn = $('#hp-gmc-refresh-all-feeds');
             const originalHtml = $btn.html();
-            const $debug = $('#hp-gmc-refresh-debug');
-            const $content = $('#hp-gmc-refresh-debug-content');
             const self = this;
 
-            $debug.hide();
             $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Refreshing...');
 
             $.ajax({
@@ -926,37 +921,31 @@
                 },
                 success: function(response) {
                     $btn.prop('disabled', false).html(originalHtml);
-                    try {
-                        $content.text(JSON.stringify(response.data || response, null, 2));
-                        $debug.slideDown();
-                    } catch (e) {
-                        $content.text((response.data && String(response.data)) || 'No data');
-                        $debug.slideDown();
-                    }
                     if (response.success && response.data) {
                         self.updateGmcStatusFromRefreshResponse(response.data);
+                    } else if (!response.success) {
+                        alert(response.data && response.data.message ? response.data.message : 'Failed to refresh statuses');
                     }
                 },
                 error: function(xhr, status, err) {
                     $btn.prop('disabled', false).html(originalHtml);
-                    $content.text('Error: ' + status + '\n' + (err || '') + '\nResponse: ' + (xhr && xhr.responseText ? xhr.responseText.substring(0, 2000) : ''));
-                    $debug.slideDown();
+                    alert('Network error');
                 }
             });
         },
 
         /**
-         * Update GMC status cells in the table from Refresh All response (no reload).
+         * Update GMC status and health dot from Refresh All response (no reload).
          */
         updateGmcStatusFromRefreshResponse: function(data) {
             const results = data.results || (data.debug && data.debug.per_feed_results) || {};
             const statusToDisplay = function(processingStatus) {
                 const s = (processingStatus || '').toLowerCase();
-                if (s === 'linked') return { label: 'Linked', class: 'linked' };
-                if (s === 'success' || s === 'active' || s === 'completed') return { label: 'Live', class: 'active' };
-                if (s === 'failed' || s === 'error' || s === 'failure') return { label: 'Error', class: 'error' };
-                if (s === 'processing' || s === 'in progress' || s === 'in_progress') return { label: 'Uploaded', class: 'processing' };
-                return { label: (processingStatus && processingStatus.length) ? processingStatus : 'Unknown', class: s || 'unknown' };
+                if (s === 'linked') return { label: 'Linked', class: 'linked', health: 'success' };
+                if (s === 'success' || s === 'active' || s === 'completed') return { label: 'Live', class: 'active', health: 'success' };
+                if (s === 'failed' || s === 'error' || s === 'failure') return { label: 'Error', class: 'error', health: 'error' };
+                if (s === 'processing' || s === 'in progress' || s === 'in_progress') return { label: 'Uploaded', class: 'processing', health: 'processing' };
+                return { label: (processingStatus && processingStatus.length) ? processingStatus : 'Unknown', class: s || 'unknown', health: 'neutral' };
             };
             Object.keys(results).forEach(function(feedId) {
                 const r = results[feedId];
@@ -965,9 +954,14 @@
                 const processingStatus = summary && (summary.processing_status != null ? summary.processing_status : (summary.processingStatus != null ? summary.processingStatus : null));
                 const d = statusToDisplay(processingStatus);
                 const $row = $('.hp-gmc-feeds-table tbody tr[data-feed-id="' + feedId + '"]');
-                const $cell = $row.find('td:nth-child(6)');
-                if ($cell.length) {
-                    $cell.html('<span class="hp-gmc-gmc-status hp-gmc-gmc-status-' + d.class + '">' + (d.label || 'Unknown') + '</span>');
+                const $gmcCell = $row.find('td:nth-child(6)');
+                if ($gmcCell.length) {
+                    $gmcCell.html('<span class="hp-gmc-gmc-status hp-gmc-gmc-status-' + d.class + '">' + (d.label || 'Unknown') + '</span>');
+                }
+                var $healthCell = $row.find('td:nth-child(2) .hp-gmc-health-indicator');
+                if ($healthCell.length && d.health) {
+                    $healthCell.removeClass('hp-gmc-health-neutral hp-gmc-health-success hp-gmc-health-warning hp-gmc-health-error hp-gmc-health-processing hp-gmc-health-ready').addClass('hp-gmc-health-' + d.health);
+                    $healthCell.attr('title', d.health === 'success' ? 'Feed active, all products covered' : (d.health === 'error' ? 'Feed has errors' : ''));
                 }
             });
         },
