@@ -311,14 +311,31 @@ class FeedManager
             $productData[$gmcId][$product['attribute_name']] = $product['attribute_value'];
         }
 
+        // Escape a cell for TSV/CSV: quote if contains delimiter, newline, or quote; escape quotes by doubling
+        $escapeCell = function ($value, string $del): string {
+            $value = (string) $value;
+            if ($value === '') {
+                return '';
+            }
+            $needsQuotes = strpos($value, $del) !== false || strpos($value, "\n") !== false
+                || strpos($value, "\r") !== false || strpos($value, '"') !== false;
+            if ($needsQuotes) {
+                return '"' . str_replace('"', '""', $value) . '"';
+            }
+            return $value;
+        };
+
         // Build header with all attribute columns
-        $lines[] = implode($delimiter, array_merge(['id'], $attributeNames));
+        $headerCells = array_merge(['id'], $attributeNames);
+        $lines[] = implode($delimiter, array_map(function ($h) use ($escapeCell, $delimiter) {
+            return $escapeCell($h, $delimiter);
+        }, $headerCells));
 
         // Build data rows with all columns
         foreach ($productData as $gmcId => $attrs) {
-            $row = [$gmcId];
+            $row = [$escapeCell($gmcId, $delimiter)];
             foreach ($attributeNames as $attrName) {
-                $row[] = $attrs[$attrName] ?? '';
+                $row[] = $escapeCell($attrs[$attrName] ?? '', $delimiter);
             }
             $lines[] = implode($delimiter, $row);
         }
@@ -755,6 +772,224 @@ class FeedManager
             'success' => $failed === 0,
             'added' => $added,
             'failed' => $failed,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Consolidate multiple feeds into one (general merge for any future consolidation).
+     * Collects all product-attribute rows from source feeds, deduplicates by (product_id, attribute_name)
+     * (last occurrence wins), and adds them to the target feed. Optionally deletes source feeds after merge.
+     *
+     * @param array<int> $sourceFeedIds Feed IDs to merge from
+     * @param int|array $targetFeedIdOrNew Either an existing feed ID, or array with name, type, and optional category to create a new feed
+     * @param bool $deleteSourcesAfter If true, delete source feeds after successful merge
+     * @return array{success: bool, target_feed_id?: int, target_feed_name?: string, rows_merged?: int, sources_deleted?: int, error?: string}
+     */
+    public static function consolidateFeeds(array $sourceFeedIds, $targetFeedIdOrNew, bool $deleteSourcesAfter = false): array
+    {
+        $targetFeedId = null;
+
+        if (is_array($targetFeedIdOrNew)) {
+            $name = $targetFeedIdOrNew['name'] ?? '';
+            $type = $targetFeedIdOrNew['type'] ?? 'custom';
+            $category = $targetFeedIdOrNew['category'] ?? null;
+            if (empty($name) || !in_array($type, ['exclusion', 'redirect', 'custom'], true)) {
+                return ['success' => false, 'error' => 'Target feed must specify name and type (exclusion, redirect, or custom).'];
+            }
+            $targetFeedId = self::create($name, $type, $category);
+            if (!$targetFeedId) {
+                return ['success' => false, 'error' => 'Failed to create target feed.'];
+            }
+        } elseif (is_numeric($targetFeedIdOrNew)) {
+            $targetFeedId = (int) $targetFeedIdOrNew;
+            $feed = self::get($targetFeedId);
+            if (!$feed) {
+                return ['success' => false, 'error' => 'Target feed not found.'];
+            }
+        } else {
+            return ['success' => false, 'error' => 'Target must be an existing feed ID or array with name and type to create a new feed.'];
+        }
+
+        $targetFeed = self::get($targetFeedId);
+        if (!$targetFeed) {
+            return ['success' => false, 'error' => 'Target feed not found after resolve.'];
+        }
+        $sourceFeedIds = array_map('intval', array_filter($sourceFeedIds));
+        $sourceFeedIds = array_values(array_unique($sourceFeedIds));
+
+        if (in_array($targetFeedId, $sourceFeedIds, true)) {
+            return ['success' => false, 'error' => 'Target feed cannot be in the source list.'];
+        }
+
+        if (empty($sourceFeedIds)) {
+            return ['success' => false, 'error' => 'At least one source feed ID is required.'];
+        }
+
+        // Collect all rows from source feeds; dedupe by (product_id, attribute_name), last wins
+        $merged = [];
+        foreach ($sourceFeedIds as $sid) {
+            $products = self::getProducts($sid);
+            foreach ($products as $row) {
+                $key = (int) $row['product_id'] . '|' . (string) $row['attribute_name'];
+                $merged[$key] = [
+                    'product_id' => (int) $row['product_id'],
+                    'attribute_name' => (string) $row['attribute_name'],
+                    'attribute_value' => (string) $row['attribute_value'],
+                    'reason' => isset($row['reason']) ? (string) $row['reason'] : null,
+                ];
+            }
+        }
+
+        $added = 0;
+        $failed = 0;
+        foreach ($merged as $row) {
+            $ok = self::addProduct(
+                $targetFeedId,
+                $row['product_id'],
+                $row['attribute_name'],
+                $row['attribute_value'],
+                $row['reason']
+            );
+            if ($ok) {
+                $added++;
+            } else {
+                $failed++;
+            }
+        }
+
+        $sourcesDeleted = 0;
+        if ($deleteSourcesAfter && $failed === 0) {
+            foreach ($sourceFeedIds as $sid) {
+                if (self::delete($sid)) {
+                    $sourcesDeleted++;
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'target_feed_id' => $targetFeedId,
+            'target_feed_name' => $targetFeed['name'] ?? null,
+            'rows_merged' => count($merged),
+            'added' => $added,
+            'failed' => $failed,
+            'sources_deleted' => $sourcesDeleted,
+        ];
+    }
+
+    /**
+     * Export feeds to a portable array (for JSON export). Excludes non-portable fields.
+     *
+     * @param array $feedIds Feed IDs to export
+     * @return array{version: int, exported_at: string, feeds: array}
+     */
+    public static function exportFeedsToArray(array $feedIds): array
+    {
+        $feedIds = array_map('intval', array_filter($feedIds));
+        $feedsOut = [];
+
+        foreach ($feedIds as $feedId) {
+            $feed = self::get($feedId);
+            if (!$feed) {
+                continue;
+            }
+            $products = self::getProducts($feedId);
+            $productsOut = [];
+            foreach ($products as $row) {
+                $productsOut[] = [
+                    'sku' => (string) ($row['sku'] ?? ''),
+                    'attribute_name' => (string) ($row['attribute_name'] ?? ''),
+                    'attribute_value' => (string) ($row['attribute_value'] ?? ''),
+                    'reason' => isset($row['reason']) && $row['reason'] !== '' ? (string) $row['reason'] : null,
+                ];
+            }
+            $feedsOut[] = [
+                'name' => (string) $feed['name'],
+                'feed_type' => (string) $feed['feed_type'],
+                'category' => isset($feed['category']) && $feed['category'] !== '' ? (string) $feed['category'] : null,
+                'products' => $productsOut,
+            ];
+        }
+
+        return [
+            'version' => 1,
+            'exported_at' => current_time('c'),
+            'feeds' => $feedsOut,
+        ];
+    }
+
+    /**
+     * Import feeds from a portable array (from JSON). Creates feeds and adds products by SKU.
+     *
+     * @param array $data Must have 'feeds' key (array of feed objects) or be a single feed object
+     * @return array{success: bool, created: array, skipped_products: array, errors: array}
+     */
+    public static function importFeedsFromArray(array $data): array
+    {
+        $feeds = [];
+        if (isset($data['feeds']) && is_array($data['feeds'])) {
+            $feeds = $data['feeds'];
+        } elseif (isset($data['name'], $data['feed_type'])) {
+            $products = isset($data['products']) && is_array($data['products']) ? $data['products'] : [];
+            $feeds = [array_merge($data, ['products' => $products])];
+        }
+
+        $created = [];
+        $skipped_products = [];
+        $errors = [];
+
+        foreach ($feeds as $feedSpec) {
+            $name = isset($feedSpec['name']) ? sanitize_text_field($feedSpec['name']) : '';
+            $feedType = isset($feedSpec['feed_type']) ? sanitize_text_field($feedSpec['feed_type']) : 'custom';
+            $category = isset($feedSpec['category']) && $feedSpec['category'] !== '' ? sanitize_text_field($feedSpec['category']) : null;
+            $products = isset($feedSpec['products']) && is_array($feedSpec['products']) ? $feedSpec['products'] : [];
+
+            if ($name === '') {
+                $errors[] = ['feed' => $feedSpec, 'message' => 'Feed name is required'];
+                continue;
+            }
+            if (!in_array($feedType, ['exclusion', 'redirect', 'custom'], true)) {
+                $errors[] = ['feed' => $name, 'message' => 'Invalid feed_type'];
+                continue;
+            }
+
+            $feedId = self::create($name, $feedType, $category);
+            if (!$feedId) {
+                $errors[] = ['feed' => $name, 'message' => 'Failed to create feed'];
+                continue;
+            }
+
+            $created[] = ['feed_id' => $feedId, 'name' => $name];
+
+            foreach ($products as $row) {
+                $sku = isset($row['sku']) ? sanitize_text_field($row['sku']) : '';
+                $attr = isset($row['attribute_name']) ? sanitize_text_field($row['attribute_name']) : '';
+                $value = isset($row['attribute_value']) ? $row['attribute_value'] : '';
+                $reason = isset($row['reason']) && $row['reason'] !== '' ? sanitize_text_field($row['reason']) : null;
+
+                if ($sku === '' || $attr === '') {
+                    $skipped_products[] = ['feed_name' => $name, 'sku' => $sku ?: '(empty)', 'reason' => 'Missing sku or attribute_name'];
+                    continue;
+                }
+
+                $productId = wc_get_product_id_by_sku($sku);
+                if (!$productId) {
+                    $skipped_products[] = ['feed_name' => $name, 'sku' => $sku, 'reason' => 'Product not found'];
+                    continue;
+                }
+
+                $ok = self::addProduct($feedId, (int) $productId, $attr, (string) $value, $reason);
+                if (!$ok) {
+                    $skipped_products[] = ['feed_name' => $name, 'sku' => $sku, 'reason' => 'Failed to add'];
+                }
+            }
+        }
+
+        return [
+            'success' => count($errors) === 0,
+            'created' => $created,
+            'skipped_products' => $skipped_products,
             'errors' => $errors,
         ];
     }

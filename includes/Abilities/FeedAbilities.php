@@ -306,6 +306,62 @@ class FeedAbilities
     }
 
     /**
+     * Consolidate multiple feeds into one (general-purpose merge).
+     * Use either an existing target feed (target_feed_id) or create a new one (target_feed_name + target_feed_type).
+     * Deduplicates by product_id + attribute_name (last occurrence wins). Optionally deletes source feeds after merge.
+     *
+     * @param array $params source_feed_ids (required), target_feed_id OR (target_feed_name + target_feed_type), delete_sources_after (optional)
+     * @return array
+     */
+    public static function consolidateFeeds(array $params): array
+    {
+        $sourceFeedIds = $params['source_feed_ids'] ?? [];
+        if (!is_array($sourceFeedIds)) {
+            $sourceFeedIds = array_filter([$sourceFeedIds]);
+        }
+        $sourceFeedIds = array_map('intval', array_filter($sourceFeedIds));
+
+        $targetFeedId = isset($params['target_feed_id']) ? (int) $params['target_feed_id'] : null;
+        $targetName = $params['target_feed_name'] ?? '';
+        $targetType = $params['target_feed_type'] ?? 'custom';
+        $targetCategory = $params['target_feed_category'] ?? null;
+        $deleteSourcesAfter = (bool) ($params['delete_sources_after'] ?? false);
+
+        if (empty($sourceFeedIds)) {
+            return ['success' => false, 'error' => 'At least one source feed ID is required (source_feed_ids).'];
+        }
+
+        $targetSpec = null;
+        if ($targetFeedId > 0) {
+            $targetSpec = $targetFeedId;
+        } elseif (!empty($targetName) && in_array($targetType, ['exclusion', 'redirect', 'custom'], true)) {
+            $targetSpec = [
+                'name' => $targetName,
+                'type' => $targetType,
+                'category' => $targetCategory,
+            ];
+        } else {
+            return [
+                'success' => false,
+                'error' => 'Provide either target_feed_id (existing feed) or both target_feed_name and target_feed_type (to create a new feed).',
+            ];
+        }
+
+        $result = FeedManager::consolidateFeeds($sourceFeedIds, $targetSpec, $deleteSourcesAfter);
+
+        if ($result['success']) {
+            AuditLog::log('feed_consolidate', [
+                'source_feed_ids' => $sourceFeedIds,
+                'target_feed_id' => $result['target_feed_id'],
+                'rows_merged' => $result['rows_merged'],
+                'sources_deleted' => $result['sources_deleted'] ?? 0,
+            ], $result);
+        }
+
+        return $result;
+    }
+
+    /**
      * Create a virtual product for GMC/funnels.
      */
     public static function createVirtualProduct(array $params): array
