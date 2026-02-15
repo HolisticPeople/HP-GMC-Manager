@@ -1255,7 +1255,8 @@ a.hp-gmc-pending-count:hover {
 
 .hp-gmc-gmc-status-success,
 .hp-gmc-gmc-status-active,
-.hp-gmc-gmc-status-completed {
+.hp-gmc-gmc-status-completed,
+.hp-gmc-gmc-status-linked {
     background: #d4edda;
     color: #155724;
 }
