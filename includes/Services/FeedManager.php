@@ -676,6 +676,17 @@ class FeedManager
         $client = new MerchantApiClient();
         $listResult = $client->listDatafeeds();
 
+        // #region agent log
+        $datafeeds = $listResult['datafeeds'] ?? [];
+        $sampleUrls = array_slice(array_column($datafeeds, 'fetch_url'), 0, 3);
+        \HP_GMC\Plugin::debugLog('list_result', [
+            'success' => $listResult['success'],
+            'error' => $listResult['error'] ?? null,
+            'datafeeds_count' => count($datafeeds),
+            'sample_fetch_urls' => $sampleUrls,
+        ], $listResult['success'] ? 'H1' : 'H2');
+        // #endregion
+
         if (!$listResult['success']) {
             return [
                 'success' => false,
@@ -691,11 +702,19 @@ class FeedManager
             return !empty($f['file_url']) && empty($f['gmc_feed_id']);
         });
 
+        // #region agent log
+        \HP_GMC\Plugin::debugLog('sync_feeds_needing_id', ['count' => count($feedsNeedingId), 'feed_ids' => array_column($feedsNeedingId, 'id')], 'H1');
+        // #endregion
+
         $updated = [];
         foreach ($feedsNeedingId as $feed) {
             $feedId = (int) $feed['id'];
             $expectedUrl = rest_url('hp-gmc/v1/supplemental-feed/' . $feedId . '?format=tsv');
             $expectedNormalized = self::normalizeFeedUrlForMatch($expectedUrl);
+
+            // #region agent log
+            \HP_GMC\Plugin::debugLog('match_attempt', ['feed_id' => $feedId, 'expected_url_normalized' => $expectedNormalized, 'datafeeds_count' => count($datafeeds)], 'H4');
+            // #endregion
 
             foreach ($datafeeds as $gmc) {
                 $gmcNormalized = self::normalizeFeedUrlForMatch($gmc['fetch_url'] ?? '');
@@ -709,6 +728,10 @@ class FeedManager
                 }
             }
         }
+
+        // #region agent log
+        \HP_GMC\Plugin::debugLog('sync_done', ['matched' => count($updated), 'updated' => $updated], 'H1');
+        // #endregion
 
         return [
             'success' => true,
