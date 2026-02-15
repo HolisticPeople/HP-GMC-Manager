@@ -987,7 +987,6 @@ class Dashboard
                         <th style="width:9%" title="<?php esc_attr_e('Google Merchant Center processing state', 'hp-gmc-manager'); ?>"><?php esc_html_e('GMC', 'hp-gmc-manager'); ?></th>
                         <th style="width:13%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
                         <th style="width:10%" title="<?php esc_attr_e('When the feed file was last generated (or when you last used Upload to GMC). Not when GMC fetched the URL.', 'hp-gmc-manager'); ?>"><?php esc_html_e('Last generated', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%" title="<?php esc_attr_e('When GMC last fetched this feed. For supplemental feeds, GMC does not expose this in the API, so it may show Never.', 'hp-gmc-manager'); ?>"><?php esc_html_e('Last Crawl', 'hp-gmc-manager'); ?></th>
                         <th style="width:28%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
                     </tr>
                 </thead>
@@ -1092,18 +1091,6 @@ class Dashboard
                                 echo esc_html(human_time_diff(strtotime($feed['last_uploaded']), current_time('timestamp')) . ' ago');
                             } else {
                                 echo '<span class="hp-gmc-not-uploaded">' . esc_html__('Never', 'hp-gmc-manager') . '</span>';
-                            }
-                            ?>
-                        </td>
-                        <td>
-                            <?php 
-                            if (!empty($feed['last_crawl_time'])) {
-                                // last_crawl_time is stored from GMC API (ISO 8601) which is UTC
-                                // But FeedManager.php converted it using date('Y-m-d H:i:s', strtotime($lastFetchTime))
-                                // which uses the server's default timezone (usually UTC).
-                                echo esc_html(human_time_diff(strtotime($feed['last_crawl_time']), time()) . ' ago');
-                            } else {
-                                echo '<span class="hp-gmc-not-crawled">' . esc_html__('Never', 'hp-gmc-manager') . '</span>';
                             }
                             ?>
                         </td>

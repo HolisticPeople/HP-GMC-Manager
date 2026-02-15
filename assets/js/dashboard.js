@@ -740,7 +740,7 @@
                     if (response.success && response.data && response.data.message) {
                         alert(response.data.message);
                     } else if (response.success) {
-                        alert('Crawl triggered. See response below; refresh status to check for Last Crawl.');
+                        alert('Crawl triggered. See response below; use Check status to refresh.');
                     } else {
                         alert('Failed to trigger crawl: ' + (response.data && response.data.error ? response.data.error : 'Unknown error'));
                     }
