@@ -475,7 +475,16 @@ class FeedManager
 
         // Check if feed already exists in GMC
         if (!empty($feed['gmc_feed_id'])) {
-            // Update existing feed URL and fetch
+            // Supplemental feeds (ds_*) are managed in GMC UI; we don't update URL via API.
+            if (strpos($feed['gmc_feed_id'], 'ds_') === 0) {
+                self::update($feedId, ['last_uploaded' => current_time('mysql')]);
+                return [
+                    'success' => true,
+                    'gmc_feed_id' => $feed['gmc_feed_id'],
+                    'message' => 'Supplemental feed is linked in GMC. Update the feed URL in GMC if needed.',
+                ];
+            }
+            // Update existing feed URL and fetch (Content API primary feeds only)
             $result = $client->uploadFeedContent($feed['gmc_feed_id'], $fileUrl);
             
             // Auto-recovery: If feed no longer exists or is inaccessible in GMC
@@ -569,7 +578,50 @@ class FeedManager
         }
 
         $client = new MerchantApiClient();
-        $result = $client->getDatafeedStatus($feed['gmc_feed_id']);
+        $gmcId = $feed['gmc_feed_id'];
+
+        // Supplemental feeds are stored as ds_{dataSourceId} and use Merchant API Data Sources.
+        if (strpos($gmcId, 'ds_') === 0) {
+            $dataSourceId = substr($gmcId, 3);
+            $result = $client->getDataSource($dataSourceId);
+            if ($result['success']) {
+                $updateData = [
+                    'status' => self::STATUS_ACTIVE,
+                    'gmc_status' => 'linked',
+                ];
+                self::update($feedId, $updateData);
+                $result['status_summary'] = [
+                    'processing_status' => 'linked',
+                    'items_total' => 0,
+                    'items_valid' => 0,
+                    'last_crawl_time' => null,
+                    'error_count' => 0,
+                    'warning_count' => 0,
+                    'errors' => [],
+                    'warnings' => [],
+                ];
+            } else {
+                $errorMsg = strtolower($result['error'] ?? '');
+                $httpCode = $result['http_code'] ?? 0;
+                $isStaleReference = in_array($httpCode, [400, 403, 404], true)
+                    || strpos($errorMsg, 'not found') !== false
+                    || strpos($errorMsg, 'does not exist') !== false
+                    || strpos($errorMsg, 'invalid') !== false;
+                if ($isStaleReference) {
+                    self::update($feedId, [
+                        'gmc_feed_id' => null,
+                        'gmc_status' => null,
+                        'status' => self::STATUS_GENERATED,
+                        'last_crawl_time' => null,
+                    ]);
+                    $result['feed_removed'] = true;
+                    $result['message'] = 'Supplemental data source no longer accessible in GMC - cleared local association';
+                }
+            }
+            return $result;
+        }
+
+        $result = $client->getDatafeedStatus($gmcId);
 
         if ($result['success']) {
             $data = $result['data'] ?? [];
@@ -736,6 +788,33 @@ class FeedManager
             }
         }
 
+        // Fallback: Merchant API lists supplemental data sources (Content API only lists primary feeds).
+        $dsResult = $client->listDataSources();
+        $dsFeeds = $dsResult['success'] ? ($dsResult['datafeeds'] ?? []) : [];
+        $dsFetchUrlsSample = array_slice(array_column($dsFeeds, 'fetch_url'), 0, 15);
+
+        foreach ($feedsNeedingId as $feed) {
+            $feedId = (int) $feed['id'];
+            if (isset($updated[$feedId])) {
+                continue;
+            }
+            $expectedUrl = rest_url('hp-gmc/v1/supplemental-feed/' . $feedId . '?format=tsv');
+            $expectedNormalized = self::normalizeFeedUrlForMatch($expectedUrl);
+
+            foreach ($dsFeeds as $gmc) {
+                $gmcNormalized = self::normalizeFeedUrlForMatch($gmc['fetch_url'] ?? '');
+                if ($gmcNormalized !== '' && $expectedNormalized !== '' && $gmcNormalized === $expectedNormalized) {
+                    $storedId = 'ds_' . $gmc['id'];
+                    self::update($feedId, [
+                        'gmc_feed_id' => $storedId,
+                        'gmc_status' => null,
+                    ]);
+                    $updated[$feedId] = $storedId;
+                    break;
+                }
+            }
+        }
+
         // #region agent log
         \HP_GMC\Plugin::debugLog('sync_done', ['matched' => count($updated), 'updated' => $updated], 'H1');
         // #endregion
@@ -749,6 +828,9 @@ class FeedManager
                 'list_error' => null,
                 'datafeeds_count' => count($datafeeds),
                 'datafeed_fetch_urls_sample' => $fetchUrlsSample,
+                'datasources_success' => $dsResult['success'],
+                'datasources_count' => count($dsFeeds),
+                'datasource_fetch_urls_sample' => $dsFetchUrlsSample,
             ],
         ];
     }
@@ -783,7 +865,12 @@ class FeedManager
         }
 
         $client = new MerchantApiClient();
-        $result = $client->deleteDatafeed($feed['gmc_feed_id']);
+        $gmcId = $feed['gmc_feed_id'];
+        if (strpos($gmcId, 'ds_') === 0) {
+            $result = $client->deleteDataSource(substr($gmcId, 3));
+        } else {
+            $result = $client->deleteDatafeed($gmcId);
+        }
 
         if ($result['success']) {
             self::update($feedId, [

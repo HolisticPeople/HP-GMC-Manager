@@ -183,6 +183,8 @@ class MerchantApiClient
             // Build the API URL
             if ($apiType === 'content') {
                 $baseUrl = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/";
+            } elseif ($apiType === 'datasources') {
+                $baseUrl = "https://merchantapi.googleapis.com/datasources/v1beta/";
             } elseif (strpos($endpoint, 'products') !== false || strpos($endpoint, 'productStatuses') !== false) {
                 $baseUrl = "https://merchantapi.googleapis.com/products/v1beta/";
             } else {
@@ -397,6 +399,72 @@ class MerchantApiClient
             'success' => true,
             'datafeeds' => $all,
         ];
+    }
+
+    /**
+     * List data sources via Merchant API (includes supplemental file feeds).
+     * Content API datafeeds.list only returns primary feeds; this returns all including supplemental.
+     *
+     * @return array{success: bool, datafeeds?: array<array{id: string, name: string, fetch_url: string}>, error?: string}
+     */
+    public function listDataSources(): array
+    {
+        $all = [];
+        $pageToken = null;
+        $parent = 'accounts/' . $this->merchantId . '/dataSources';
+
+        do {
+            $params = ['pageSize' => 100];
+            if ($pageToken) {
+                $params['pageToken'] = $pageToken;
+            }
+            $result = $this->call('GET', $parent, $params, 'datasources');
+
+            if (!$result['success']) {
+                return $result;
+            }
+
+            $data = $result['data'] ?? [];
+            $sources = $data['dataSources'] ?? [];
+            foreach ($sources as $ds) {
+                $input = $ds['input'] ?? '';
+                $fileInput = $ds['fileInput'] ?? [];
+                $fetchUri = $fileInput['fetchSettings']['fetchUri'] ?? '';
+                $hasSupplemental = !empty($ds['supplementalProductDataSource']);
+                $dataSourceId = isset($ds['dataSourceId']) ? (string) $ds['dataSourceId'] : '';
+                if ($dataSourceId !== '' && $fetchUri !== '' && $hasSupplemental) {
+                    $all[] = [
+                        'id' => $dataSourceId,
+                        'name' => $ds['displayName'] ?? $dataSourceId,
+                        'fetch_url' => $fetchUri,
+                    ];
+                }
+            }
+            $pageToken = $data['nextPageToken'] ?? null;
+        } while ($pageToken);
+
+        return [
+            'success' => true,
+            'datafeeds' => $all,
+        ];
+    }
+
+    /**
+     * Get a single data source by ID (Merchant API). Use for supplemental feeds stored as ds_{id}.
+     */
+    public function getDataSource(string $dataSourceId): array
+    {
+        $parent = 'accounts/' . $this->merchantId . '/dataSources/' . $dataSourceId;
+        return $this->call('GET', $parent, [], 'datasources');
+    }
+
+    /**
+     * Delete a data source (Merchant API). Use for supplemental feeds stored as ds_{id}.
+     */
+    public function deleteDataSource(string $dataSourceId): array
+    {
+        $parent = 'accounts/' . $this->merchantId . '/dataSources/' . $dataSourceId;
+        return $this->call('DELETE', $parent, [], 'datasources');
     }
 
     /**
