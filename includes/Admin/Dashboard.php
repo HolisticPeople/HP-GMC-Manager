@@ -968,7 +968,7 @@ class Dashboard
             </div>
 
             <div id="hp-gmc-last-response" class="hp-gmc-last-response" style="display:none; margin:1em 0; padding:1em; background:#f0f0f1; border:1px solid #c3c4c7; border-radius:4px;">
-                <strong><?php esc_html_e('Last response (Force crawl / Check status)', 'hp-gmc-manager'); ?></strong>
+                <strong><?php esc_html_e('Last response (Refresh All / Force crawl / Check status)', 'hp-gmc-manager'); ?></strong>
                 <pre id="hp-gmc-last-response-content" style="margin:0.5em 0 0; padding:0.75em; background:#fff; border:1px solid #dcdcde; overflow:auto; max-height:320px; white-space:pre-wrap; word-break:break-all; font-size:12px;"></pre>
                 <p style="margin:0.5em 0 0;">
                     <button type="button" class="button button-small" id="hp-gmc-last-response-close"><?php esc_html_e('Close', 'hp-gmc-manager'); ?></button>

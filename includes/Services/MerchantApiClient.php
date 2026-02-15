@@ -429,7 +429,8 @@ class MerchantApiClient
             foreach ($sources as $ds) {
                 $input = $ds['input'] ?? '';
                 $fileInput = $ds['fileInput'] ?? [];
-                $fetchUri = $fileInput['fetchSettings']['fetchUri'] ?? '';
+                $fetchSettings = $fileInput['fetchSettings'] ?? [];
+                $fetchUri = $fetchSettings['fetchUri'] ?? $fetchSettings['fetch_uri'] ?? '';
                 $hasSupplemental = !empty($ds['supplementalProductDataSource']);
                 $dataSourceId = isset($ds['dataSourceId']) ? (string) $ds['dataSourceId'] : '';
                 if ($dataSourceId !== '' && $fetchUri !== '' && $hasSupplemental) {
