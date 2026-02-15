@@ -1741,6 +1741,8 @@ class Plugin
             'sync_datasources_success' => $syncResult['debug']['datasources_success'] ?? null,
             'sync_datasources_count' => $syncResult['debug']['datasources_count'] ?? null,
             'sync_datasource_fetch_urls_sample' => $syncResult['debug']['datasource_fetch_urls_sample'] ?? [],
+            'sync_debug_expected_by_feed' => $syncResult['debug']['sync_debug_expected_by_feed'] ?? [],
+            'sync_debug_gmc_supplemental_urls' => $syncResult['debug']['sync_debug_gmc_supplemental_urls'] ?? [],
             'feeds_with_gmc_id' => array_values(array_filter(array_map(function ($f) {
                 return $f['id'] . ':' . ($f['gmc_feed_id'] ?? '');
             }, $feeds))),

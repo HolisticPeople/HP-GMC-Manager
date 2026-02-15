@@ -943,6 +943,7 @@
                     $btn.prop('disabled', false).html(originalHtml);
                     if (response.success && response.data) {
                         self.updateGmcStatusFromRefreshResponse(response.data);
+                        self.showLastResponse('Refresh All', response.data);
                     } else if (!response.success) {
                         alert(response.data && response.data.message ? response.data.message : 'Failed to refresh statuses');
                     }

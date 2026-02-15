@@ -797,17 +797,18 @@ class FeedManager
 
         $datafeeds = $listResult['datafeeds'] ?? [];
         $fetchUrlsSample = array_slice(array_column($datafeeds, 'fetch_url'), 0, 15);
-        $feedsNeedingId = self::getAll();
-        $feedsNeedingId = array_filter($feedsNeedingId, function ($f) {
-            return !empty($f['file_url']) && empty($f['gmc_feed_id']);
+        // Consider ALL feeds with file_url so we re-match by URL (fixes overrides not linking after GMC re-link).
+        $feedsToMatch = self::getAll();
+        $feedsToMatch = array_filter($feedsToMatch, function ($f) {
+            return !empty($f['file_url']);
         });
 
         // #region agent log
-        \HP_GMC\Plugin::debugLog('sync_feeds_needing_id', ['count' => count($feedsNeedingId), 'feed_ids' => array_column($feedsNeedingId, 'id')], 'H1');
+        \HP_GMC\Plugin::debugLog('sync_feeds_to_match', ['count' => count($feedsToMatch), 'feed_ids' => array_column($feedsToMatch, 'id')], 'H1');
         // #endregion
 
         $updated = [];
-        foreach ($feedsNeedingId as $feed) {
+        foreach ($feedsToMatch as $feed) {
             $feedId = (int) $feed['id'];
             $expectedUrl = rest_url('hp-gmc/v1/supplemental-feed/' . $feedId . '?format=tsv');
             $expectedNormalized = self::normalizeFeedUrlForMatch($expectedUrl);
@@ -834,7 +835,7 @@ class FeedManager
         $dsFeeds = $dsResult['success'] ? ($dsResult['datafeeds'] ?? []) : [];
         $dsFetchUrlsSample = array_slice(array_column($dsFeeds, 'fetch_url'), 0, 15);
 
-        foreach ($feedsNeedingId as $feed) {
+        foreach ($feedsToMatch as $feed) {
             $feedId = (int) $feed['id'];
             if (isset($updated[$feedId])) {
                 continue;
@@ -856,6 +857,29 @@ class FeedManager
             }
         }
 
+        // Build debug: expected vs GMC URLs so we can see why a feed didn't match.
+        $expectedByFeed = [];
+        foreach ($feedsToMatch as $feed) {
+            $feedId = (int) $feed['id'];
+            $expectedUrl = rest_url('hp-gmc/v1/supplemental-feed/' . $feedId . '?format=tsv');
+            $expectedByFeed[] = [
+                'feed_id' => $feedId,
+                'name' => $feed['name'] ?? '',
+                'expected_url' => $expectedUrl,
+                'expected_normalized' => self::normalizeFeedUrlForMatch($expectedUrl),
+                'matched_gmc_id' => $updated[$feedId] ?? null,
+            ];
+        }
+        $gmcSupplementalsDebug = [];
+        foreach ($dsFeeds as $gmc) {
+            $gmcSupplementalsDebug[] = [
+                'id' => $gmc['id'] ?? '',
+                'name' => $gmc['name'] ?? '',
+                'fetch_url' => $gmc['fetch_url'] ?? '',
+                'fetch_url_normalized' => self::normalizeFeedUrlForMatch($gmc['fetch_url'] ?? ''),
+            ];
+        }
+
         // #region agent log
         \HP_GMC\Plugin::debugLog('sync_done', ['matched' => count($updated), 'updated' => $updated], 'H1');
         // #endregion
@@ -872,6 +896,8 @@ class FeedManager
                 'datasources_success' => $dsResult['success'],
                 'datasources_count' => count($dsFeeds),
                 'datasource_fetch_urls_sample' => $dsFetchUrlsSample,
+                'sync_debug_expected_by_feed' => $expectedByFeed,
+                'sync_debug_gmc_supplemental_urls' => $gmcSupplementalsDebug,
             ],
         ];
     }
