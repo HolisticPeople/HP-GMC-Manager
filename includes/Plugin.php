@@ -19,6 +19,34 @@ if (!defined('ABSPATH')) {
 class Plugin
 {
     /**
+     * Append one NDJSON line for debug (GMC sync/status).
+     * Set HP_GMC_DEBUG_LOG in wp-config.php to a writable path on production/staging
+     * (e.g. WP_CONTENT_DIR . '/uploads/hp-gmc-debug.log') to capture logs there.
+     * Default: on Windows c:\DEV\.cursor\debug.log; elsewhere sys_get_temp_dir()/hp-gmc-debug.log.
+     *
+     * @param string $message Short label
+     * @param array  $data    Key-value data (no secrets)
+     * @param string $hypothesisId Optional (e.g. H1, H2)
+     */
+    public static function debugLog(string $message, array $data = [], string $hypothesisId = ''): void
+    {
+        $path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (DIRECTORY_SEPARATOR === '\\' ? 'c:\\DEV\\.cursor\\debug.log' : sys_get_temp_dir() . '/hp-gmc-debug.log');
+        $payload = array_filter([
+            'id' => 'hp-gmc-' . uniqid('', true),
+            'timestamp' => (int) round(microtime(true) * 1000),
+            'location' => 'Plugin::debugLog',
+            'message' => $message,
+            'data' => $data,
+            'hypothesisId' => $hypothesisId ?: null,
+        ]);
+        $line = wp_json_encode($payload) . "\n";
+        $written = ($path !== '' && @file_put_contents($path, $line, FILE_APPEND | LOCK_EX));
+        if (!$written) {
+            error_log('[HP-GMC-DBG] ' . trim($line));
+        }
+    }
+
+    /**
      * Initialize the plugin.
      */
     public static function init(): void

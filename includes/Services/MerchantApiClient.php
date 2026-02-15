@@ -347,6 +347,10 @@ class MerchantApiClient
      */
     public function listDatafeeds(): array
     {
+        // #region agent log
+        \HP_GMC\Plugin::debugLog('listDatafeeds_call', ['merchant_id' => $this->merchantId, 'api' => 'content_v2.1_datafeeds'], 'H2');
+        // #endregion
+
         $all = [];
         $pageToken = null;
 
@@ -356,6 +360,12 @@ class MerchantApiClient
                 $params['pageToken'] = $pageToken;
             }
             $result = $this->call('GET', 'datafeeds', $params, 'content');
+
+            // #region agent log
+            if (!$result['success']) {
+                \HP_GMC\Plugin::debugLog('listDatafeeds_error', ['error' => $result['error'] ?? null, 'http_code' => $result['http_code'] ?? null], 'H2');
+            }
+            // #endregion
 
             if (!$result['success']) {
                 return $result;
@@ -377,6 +387,11 @@ class MerchantApiClient
             }
             $pageToken = $data['nextPageToken'] ?? null;
         } while ($pageToken);
+
+        // #region agent log
+        $first = $all[0] ?? null;
+        \HP_GMC\Plugin::debugLog('listDatafeeds_ok', ['total' => count($all), 'first_fetch_url' => $first['fetch_url'] ?? null, 'first_id' => $first['id'] ?? null], 'H3');
+        // #endregion
 
         return [
             'success' => true,
