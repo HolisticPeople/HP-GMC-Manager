@@ -1650,6 +1650,7 @@ class Plugin
 
     /**
      * AJAX: Refresh all feed statuses from GMC.
+     * First syncs feeds that were added manually in GMC (match by URL), then refreshes status for all with gmc_feed_id.
      */
     public static function ajax_refresh_all_feed_statuses(): void
     {
@@ -1658,6 +1659,9 @@ class Plugin
         if (!current_user_can('manage_woocommerce')) {
             wp_send_json_error(['message' => 'Unauthorized']);
         }
+
+        // Sync GMC feed IDs for feeds that have URL but no id (added manually in GMC)
+        $syncResult = Services\FeedManager::syncGmcFeedIdsFromList();
 
         $feeds = Services\FeedManager::getAll();
         $results = [];
@@ -1677,6 +1681,8 @@ class Plugin
             'results' => $results,
             'refreshed' => $refreshed,
             'total' => count($feeds),
+            'sync_matched' => $syncResult['matched'] ?? 0,
+            'sync_updated' => $syncResult['updated'] ?? [],
         ]);
     }
 
@@ -1867,14 +1873,39 @@ class Plugin
             'exported_at' => gmdate('c'),
             'feeds' => [
                 [
-                    'name' => 'example-feed',
+                    'name' => 'example-feed-one',
                     'feed_type' => 'custom',
                     'category' => 'example',
                     'products' => [
                         [
-                            'sku' => 'YOUR-PRODUCT-SKU',
+                            'sku' => 'YOUR-PRODUCT-SKU-1',
                             'attribute_name' => 'gender',
                             'attribute_value' => 'Unisex',
+                            'reason' => null,
+                        ],
+                        [
+                            'sku' => 'YOUR-PRODUCT-SKU-2',
+                            'attribute_name' => 'age_group',
+                            'attribute_value' => 'adult',
+                            'reason' => null,
+                        ],
+                    ],
+                ],
+                [
+                    'name' => 'example-feed-two',
+                    'feed_type' => 'exclusion',
+                    'category' => 'example',
+                    'products' => [
+                        [
+                            'sku' => 'YOUR-PRODUCT-SKU-3',
+                            'attribute_name' => 'excluded_destination',
+                            'attribute_value' => 'Display_ads',
+                            'reason' => null,
+                        ],
+                        [
+                            'sku' => 'YOUR-PRODUCT-SKU-4',
+                            'attribute_name' => 'excluded_destination',
+                            'attribute_value' => 'Video_ads',
                             'reason' => null,
                         ],
                     ],

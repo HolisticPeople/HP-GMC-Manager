@@ -340,6 +340,51 @@ class MerchantApiClient
     }
 
     /**
+     * List all datafeeds in the Merchant Center account (Content API v2.1).
+     * Returns datafeeds with id, name, and fetchSchedule.fetchUrl for matching.
+     *
+     * @return array{success: bool, datafeeds?: array<array{id: string, name: string, fetch_url: string}>, error?: string}
+     */
+    public function listDatafeeds(): array
+    {
+        $all = [];
+        $pageToken = null;
+
+        do {
+            $params = ['maxResults' => 100];
+            if ($pageToken) {
+                $params['pageToken'] = $pageToken;
+            }
+            $result = $this->call('GET', 'datafeeds', $params, 'content');
+
+            if (!$result['success']) {
+                return $result;
+            }
+
+            $data = $result['data'] ?? [];
+            $resources = $data['resources'] ?? [];
+            foreach ($resources as $feed) {
+                $id = isset($feed['id']) ? (string) $feed['id'] : '';
+                $name = $feed['name'] ?? '';
+                $fetchUrl = $feed['fetchSchedule']['fetchUrl'] ?? '';
+                if ($id !== '') {
+                    $all[] = [
+                        'id' => $id,
+                        'name' => $name,
+                        'fetch_url' => $fetchUrl,
+                    ];
+                }
+            }
+            $pageToken = $data['nextPageToken'] ?? null;
+        } while ($pageToken);
+
+        return [
+            'success' => true,
+            'datafeeds' => $all,
+        ];
+    }
+
+    /**
      * Get datafeed configuration.
      */
     public function getDatafeed(string $feedId): array

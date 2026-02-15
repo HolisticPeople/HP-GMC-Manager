@@ -665,6 +665,78 @@ class FeedManager
     }
 
     /**
+     * Sync local feed records with GMC by matching supplemental feed URLs.
+     * Calls Content API datafeeds.list, matches fetchSchedule.fetchUrl to our feed URLs,
+     * and sets gmc_feed_id so status can be tracked. Run this after adding feeds manually in GMC.
+     *
+     * @return array{success: bool, matched: int, updated: array<int, string>, error?: string}
+     */
+    public static function syncGmcFeedIdsFromList(): array
+    {
+        $client = new MerchantApiClient();
+        $listResult = $client->listDatafeeds();
+
+        if (!$listResult['success']) {
+            return [
+                'success' => false,
+                'matched' => 0,
+                'updated' => [],
+                'error' => $listResult['error'] ?? 'Failed to list GMC datafeeds',
+            ];
+        }
+
+        $datafeeds = $listResult['datafeeds'] ?? [];
+        $feedsNeedingId = self::getAll();
+        $feedsNeedingId = array_filter($feedsNeedingId, function ($f) {
+            return !empty($f['file_url']) && empty($f['gmc_feed_id']);
+        });
+
+        $updated = [];
+        foreach ($feedsNeedingId as $feed) {
+            $feedId = (int) $feed['id'];
+            $expectedUrl = rest_url('hp-gmc/v1/supplemental-feed/' . $feedId . '?format=tsv');
+            $expectedNormalized = self::normalizeFeedUrlForMatch($expectedUrl);
+
+            foreach ($datafeeds as $gmc) {
+                $gmcNormalized = self::normalizeFeedUrlForMatch($gmc['fetch_url'] ?? '');
+                if ($gmcNormalized !== '' && $expectedNormalized !== '' && $gmcNormalized === $expectedNormalized) {
+                    self::update($feedId, [
+                        'gmc_feed_id' => $gmc['id'],
+                        'gmc_status' => null,
+                    ]);
+                    $updated[$feedId] = $gmc['id'];
+                    break;
+                }
+            }
+        }
+
+        return [
+            'success' => true,
+            'matched' => count($updated),
+            'updated' => $updated,
+        ];
+    }
+
+    /**
+     * Normalize a feed URL for matching (scheme + host + path; query sorted).
+     */
+    private static function normalizeFeedUrlForMatch(string $url): string
+    {
+        if ($url === '') {
+            return '';
+        }
+        $parsed = parse_url($url);
+        $scheme = isset($parsed['scheme']) ? strtolower($parsed['scheme']) : '';
+        $host = isset($parsed['host']) ? strtolower($parsed['host']) : '';
+        $path = isset($parsed['path']) ? trim($parsed['path'], '/') : '';
+        $query = isset($parsed['query']) ? $parsed['query'] : '';
+        parse_str($query, $q);
+        ksort($q);
+        $queryNorm = http_build_query($q);
+        return $scheme . '://' . $host . '/' . $path . ($queryNorm !== '' ? '?' . $queryNorm : '');
+    }
+
+    /**
      * Delete feed from GMC.
      */
     public static function deleteFromGMC(int $feedId): array
