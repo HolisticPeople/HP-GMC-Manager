@@ -861,7 +861,7 @@ class Dashboard
                         <strong><?php esc_html_e('Products:', 'hp-gmc-manager'); ?></strong> <?php echo esc_html($selectedFeed['product_count']); ?>
                         <?php if ($selectedFeed['last_uploaded']): ?>
                         &nbsp;|&nbsp;
-                        <strong><?php esc_html_e('Last Upload:', 'hp-gmc-manager'); ?></strong> <?php echo esc_html($selectedFeed['last_uploaded']); ?>
+                        <strong><?php esc_html_e('Last generated:', 'hp-gmc-manager'); ?></strong> <?php echo esc_html($selectedFeed['last_uploaded']); ?>
                         <?php endif; ?>
                         <?php if ($selectedFeed['gmc_feed_id']): ?>
                         &nbsp;|&nbsp;
@@ -978,7 +978,7 @@ class Dashboard
                         <th style="width:8%" title="<?php esc_attr_e('Local feed state (Draft/Ready/Uploaded/Live)', 'hp-gmc-manager'); ?>"><?php esc_html_e('Local', 'hp-gmc-manager'); ?></th>
                         <th style="width:9%" title="<?php esc_attr_e('Google Merchant Center processing state', 'hp-gmc-manager'); ?>"><?php esc_html_e('GMC', 'hp-gmc-manager'); ?></th>
                         <th style="width:13%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%"><?php esc_html_e('Last Upload', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%" title="<?php esc_attr_e('When the feed file was last generated (or when you last used Upload to GMC). Not when GMC fetched the URL.', 'hp-gmc-manager'); ?>"><?php esc_html_e('Last generated', 'hp-gmc-manager'); ?></th>
                         <th style="width:10%"><?php esc_html_e('Last Crawl', 'hp-gmc-manager'); ?></th>
                         <th style="width:28%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
                     </tr>
@@ -1055,6 +1055,8 @@ class Dashboard
                             <span class="hp-gmc-gmc-status hp-gmc-gmc-status-<?php echo esc_attr($feed['gmc_status']); ?>">
                                 <?php echo esc_html(ucfirst($feed['gmc_status'])); ?>
                             </span>
+                            <?php elseif ($feed['file_url']): ?>
+                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-url" title="<?php esc_attr_e('You added this feed URL in GMC. Plugin does not track status for manually added supplemental feeds.', 'hp-gmc-manager'); ?>"><?php esc_html_e('URL in GMC', 'hp-gmc-manager'); ?></span>
                             <?php else: ?>
                             <span class="hp-gmc-gmc-status hp-gmc-gmc-status-none"><?php esc_html_e('Not uploaded', 'hp-gmc-manager'); ?></span>
                             <?php endif; ?>
