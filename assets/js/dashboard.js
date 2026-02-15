@@ -533,6 +533,8 @@
             
             // Bulk actions
             $('#hp-gmc-refresh-all-feeds').on('click', this.refreshAllFeedStatuses.bind(this));
+            $('#hp-gmc-refresh-debug-reload').on('click', function() { location.reload(); });
+            $('#hp-gmc-refresh-debug-close').on('click', function() { $('#hp-gmc-refresh-debug').slideUp(); });
             $('#hp-gmc-select-all-feeds').on('change', this.toggleSelectAllFeeds.bind(this));
             $('#hp-gmc-apply-bulk-action').on('click', this.applyBulkFeedAction.bind(this));
             $('#hp-gmc-download-json-template').on('click', this.downloadJsonTemplate.bind(this));
@@ -908,9 +910,12 @@
         refreshAllFeedStatuses: function() {
             const $btn = $('#hp-gmc-refresh-all-feeds');
             const originalHtml = $btn.html();
-            
+            const $debug = $('#hp-gmc-refresh-debug');
+            const $content = $('#hp-gmc-refresh-debug-content');
+
+            $debug.hide();
             $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Refreshing...');
-            
+
             $.ajax({
                 url: hpGmcData.ajaxUrl,
                 type: 'POST',
@@ -919,16 +924,23 @@
                     nonce: hpGmcData.nonce
                 },
                 success: function(response) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    try {
+                        $content.text(JSON.stringify(response.data || response, null, 2));
+                        $debug.slideDown();
+                    } catch (e) {
+                        $content.text((response.data && String(response.data)) || 'No data');
+                        $debug.slideDown();
+                    }
                     if (response.success) {
-                        location.reload();
-                    } else {
-                        alert('Failed to refresh statuses');
-                        $btn.prop('disabled', false).html(originalHtml);
+                        // Optional: uncomment next line to also reload after showing debug
+                        // setTimeout(function() { location.reload(); }, 500);
                     }
                 },
-                error: function() {
-                    alert('Network error');
+                error: function(xhr, status, err) {
                     $btn.prop('disabled', false).html(originalHtml);
+                    $content.text('Error: ' + status + '\n' + (err || '') + '\nResponse: ' + (xhr && xhr.responseText ? xhr.responseText.substring(0, 2000) : ''));
+                    $debug.slideDown();
                 }
             });
         },
