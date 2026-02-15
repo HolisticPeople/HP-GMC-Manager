@@ -566,6 +566,38 @@ class FeedManager
     }
 
     /**
+     * Trigger GMC to fetch the feed file immediately (force crawl).
+     * Supplemental feeds (ds_*): Merchant API dataSources:fetch. Primary feeds: Content API datafeeds fetchNow.
+     *
+     * @return array{success: bool, message?: string, error?: string}
+     */
+    public static function triggerGmcFetch(int $feedId): array
+    {
+        $feed = self::get($feedId);
+        if (!$feed || empty($feed['gmc_feed_id'])) {
+            return ['success' => false, 'error' => 'Feed not found or not linked to GMC'];
+        }
+
+        $client = new MerchantApiClient();
+        $gmcId = $feed['gmc_feed_id'];
+
+        if (strpos($gmcId, 'ds_') === 0) {
+            $result = $client->fetchDataSource(substr($gmcId, 3));
+        } else {
+            $result = $client->fetchDatafeedNow($gmcId);
+        }
+
+        if ($result['success']) {
+            return ['success' => true, 'message' => __('Crawl triggered. GMC will fetch the feed shortly; refresh status to see Last Crawl update.', 'hp-gmc-manager')];
+        }
+
+        return [
+            'success' => false,
+            'error' => $result['error'] ?? __('Failed to trigger fetch', 'hp-gmc-manager'),
+        ];
+    }
+
+    /**
      * Check GMC processing status for a feed.
      * Returns full status data including itemsTotal, itemsValid, errors, warnings.
      * If feed no longer exists in GMC, clears the local gmc_feed_id and status.

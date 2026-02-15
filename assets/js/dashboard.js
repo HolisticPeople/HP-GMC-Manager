@@ -517,6 +517,7 @@
             $(document).on('click', '.hp-gmc-feed-generate', this.generateFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-upload', this.uploadFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-check-status', this.checkFeedStatus.bind(this));
+            $(document).on('click', '.hp-gmc-feed-force-crawl', this.forceCrawlFeed.bind(this));
             $(document).on('click', '.hp-gmc-feed-debug', this.showFeedDebug.bind(this));
             $(document).on('click', '.hp-gmc-feed-remove-gmc', this.removeFromGMC.bind(this));
             $(document).on('click', '.hp-gmc-feed-delete', this.deleteFeed.bind(this));
@@ -721,6 +722,33 @@
             });
         },
         
+        forceCrawlFeed: function(e) {
+            const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
+            const $btn = $(e.target).closest('button');
+            if (!feedId) return;
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
+            $.ajax({
+                url: hpGmcData.ajaxUrl,
+                type: 'POST',
+                data: { action: 'hp_gmc_force_crawl_feed', nonce: hpGmcData.nonce, feed_id: feedId },
+                success: function(response) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    if (response.success && response.data && response.data.message) {
+                        alert(response.data.message);
+                    } else if (response.success) {
+                        alert('Crawl triggered. Refresh status later to see Last Crawl update.');
+                    } else {
+                        alert('Failed to trigger crawl: ' + (response.data && response.data.error ? response.data.error : 'Unknown error'));
+                    }
+                },
+                error: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    alert('Network error');
+                }
+            });
+        },
+
         checkFeedStatus: function(e) {
             const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
             const $btn = $(e.target).closest('button');
