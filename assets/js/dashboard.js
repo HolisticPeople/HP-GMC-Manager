@@ -912,6 +912,7 @@
             const originalHtml = $btn.html();
             const $debug = $('#hp-gmc-refresh-debug');
             const $content = $('#hp-gmc-refresh-debug-content');
+            const self = this;
 
             $debug.hide();
             $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Refreshing...');
@@ -932,15 +933,41 @@
                         $content.text((response.data && String(response.data)) || 'No data');
                         $debug.slideDown();
                     }
-                    if (response.success) {
-                        // Optional: uncomment next line to also reload after showing debug
-                        // setTimeout(function() { location.reload(); }, 500);
+                    if (response.success && response.data) {
+                        self.updateGmcStatusFromRefreshResponse(response.data);
                     }
                 },
                 error: function(xhr, status, err) {
                     $btn.prop('disabled', false).html(originalHtml);
                     $content.text('Error: ' + status + '\n' + (err || '') + '\nResponse: ' + (xhr && xhr.responseText ? xhr.responseText.substring(0, 2000) : ''));
                     $debug.slideDown();
+                }
+            });
+        },
+
+        /**
+         * Update GMC status cells in the table from Refresh All response (no reload).
+         */
+        updateGmcStatusFromRefreshResponse: function(data) {
+            const results = data.results || (data.debug && data.debug.per_feed_results) || {};
+            const statusToDisplay = function(processingStatus) {
+                const s = (processingStatus || '').toLowerCase();
+                if (s === 'linked') return { label: 'Linked', class: 'linked' };
+                if (s === 'success' || s === 'active' || s === 'completed') return { label: 'Live', class: 'active' };
+                if (s === 'failed' || s === 'error' || s === 'failure') return { label: 'Error', class: 'error' };
+                if (s === 'processing' || s === 'in progress' || s === 'in_progress') return { label: 'Uploaded', class: 'processing' };
+                return { label: (processingStatus && processingStatus.length) ? processingStatus : 'Unknown', class: s || 'unknown' };
+            };
+            Object.keys(results).forEach(function(feedId) {
+                const r = results[feedId];
+                if (!r || !r.success) return;
+                const summary = r.status_summary || r.data;
+                const processingStatus = summary && (summary.processing_status != null ? summary.processing_status : (summary.processingStatus != null ? summary.processingStatus : null));
+                const d = statusToDisplay(processingStatus);
+                const $row = $('.hp-gmc-feeds-table tbody tr[data-feed-id="' + feedId + '"]');
+                const $cell = $row.find('td:nth-child(6)');
+                if ($cell.length) {
+                    $cell.html('<span class="hp-gmc-gmc-status hp-gmc-gmc-status-' + d.class + '">' + (d.label || 'Unknown') + '</span>');
                 }
             });
         },
