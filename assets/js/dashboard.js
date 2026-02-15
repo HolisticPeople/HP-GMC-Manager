@@ -778,13 +778,13 @@
                 success: function(response) {
                     self.showLastResponse('Check status (feed ' + feedId + ')', response.data || response);
                     if (response.success) {
+                        self.updateGmcStatusFromRefreshResponse({ results: { [feedId]: response.data } });
                         const summary = response.data?.status_summary;
                         let msg = 'GMC Status updated. See "Last response" panel below for full API response.';
                         if (summary) {
                             msg += '\n\nProcessing: ' + (summary.processing_status || 'unknown') + ', Items: ' + (summary.items_total || 0) + ' total, ' + (summary.items_valid || 0) + ' valid.';
                         }
                         alert(msg);
-                        location.reload();
                     } else {
                         alert('Failed to check status. See "Last response" panel below.');
                     }
