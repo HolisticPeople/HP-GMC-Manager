@@ -693,10 +693,17 @@ class FeedManager
                 'matched' => 0,
                 'updated' => [],
                 'error' => $listResult['error'] ?? 'Failed to list GMC datafeeds',
+                'debug' => [
+                    'list_success' => false,
+                    'list_error' => $listResult['error'] ?? null,
+                    'datafeeds_count' => 0,
+                    'datafeed_fetch_urls_sample' => [],
+                ],
             ];
         }
 
         $datafeeds = $listResult['datafeeds'] ?? [];
+        $fetchUrlsSample = array_slice(array_column($datafeeds, 'fetch_url'), 0, 15);
         $feedsNeedingId = self::getAll();
         $feedsNeedingId = array_filter($feedsNeedingId, function ($f) {
             return !empty($f['file_url']) && empty($f['gmc_feed_id']);
@@ -737,6 +744,12 @@ class FeedManager
             'success' => true,
             'matched' => count($updated),
             'updated' => $updated,
+            'debug' => [
+                'list_success' => true,
+                'list_error' => null,
+                'datafeeds_count' => count($datafeeds),
+                'datafeed_fetch_urls_sample' => $fetchUrlsSample,
+            ],
         ];
     }
 

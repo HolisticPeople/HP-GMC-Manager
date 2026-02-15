@@ -966,6 +966,15 @@ class Dashboard
                     </button>
                 </div>
             </div>
+
+            <div id="hp-gmc-refresh-debug" class="hp-gmc-refresh-debug" style="display:none; margin:1em 0; padding:1em; background:#f0f0f1; border:1px solid #c3c4c7; border-radius:4px;">
+                <strong><?php esc_html_e('Refresh All – returned data (debug)', 'hp-gmc-manager'); ?></strong>
+                <pre id="hp-gmc-refresh-debug-content" style="margin:0.5em 0 0; padding:0.75em; background:#fff; border:1px solid #dcdcde; overflow:auto; max-height:360px; white-space:pre-wrap; word-break:break-all;"></pre>
+                <p style="margin:0.5em 0 0;">
+                    <button type="button" class="button" id="hp-gmc-refresh-debug-reload"><?php esc_html_e('Reload page', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-link" id="hp-gmc-refresh-debug-close"><?php esc_html_e('Close', 'hp-gmc-manager'); ?></button>
+                </p>
+            </div>
             
             <h3><?php esc_html_e('All Feeds', 'hp-gmc-manager'); ?></h3>
             <table class="wp-list-table widefat fixed striped hp-gmc-feeds-table">

@@ -1705,12 +1705,27 @@ class Plugin
             }
         }
 
+        $debug = [
+            'sync_matched' => $syncResult['matched'] ?? 0,
+            'sync_updated' => $syncResult['updated'] ?? [],
+            'sync_list_success' => $syncResult['debug']['list_success'] ?? null,
+            'sync_list_error' => $syncResult['debug']['list_error'] ?? null,
+            'sync_datafeeds_count' => $syncResult['debug']['datafeeds_count'] ?? null,
+            'sync_datafeed_fetch_urls_sample' => $syncResult['debug']['datafeed_fetch_urls_sample'] ?? [],
+            'feeds_with_gmc_id' => array_values(array_filter(array_map(function ($f) {
+                return $f['id'] . ':' . ($f['gmc_feed_id'] ?? '');
+            }, $feeds))),
+            'refreshed_count' => $refreshed,
+            'per_feed_results' => $results,
+        ];
+
         wp_send_json_success([
             'results' => $results,
             'refreshed' => $refreshed,
             'total' => count($feeds),
             'sync_matched' => $syncResult['matched'] ?? 0,
             'sync_updated' => $syncResult['updated'] ?? [],
+            'debug' => $debug,
         ]);
     }
 
