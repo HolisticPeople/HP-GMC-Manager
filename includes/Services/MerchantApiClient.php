@@ -468,6 +468,24 @@ class MerchantApiClient
     }
 
     /**
+     * Trigger immediate fetch of a data source (Merchant API). Use for supplemental feeds (ds_{id}).
+     * GMC will fetch the file from the configured fetchUri. Suitable for infrequent use (e.g. less than daily).
+     */
+    public function fetchDataSource(string $dataSourceId): array
+    {
+        $resource = 'accounts/' . $this->merchantId . '/dataSources/' . $dataSourceId . ':fetch';
+        return $this->call('POST', $resource, [], 'datasources');
+    }
+
+    /**
+     * Trigger immediate fetch of a Content API datafeed (primary feeds).
+     */
+    public function fetchDatafeedNow(string $feedId): array
+    {
+        return $this->call('POST', "datafeeds/{$feedId}/fetchNow", [], 'content');
+    }
+
+    /**
      * Get datafeed configuration.
      */
     public function getDatafeed(string $feedId): array

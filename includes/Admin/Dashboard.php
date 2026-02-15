@@ -1116,6 +1116,11 @@ class Dashboard
                                     title="<?php esc_attr_e('Refresh GMC status', 'hp-gmc-manager'); ?>">
                                 <span class="dashicons dashicons-update-alt"></span>
                             </button>
+                            <button type="button" class="button button-small hp-gmc-feed-force-crawl" 
+                                    data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
+                                    title="<?php esc_attr_e('Force crawl: tell GMC to fetch this feed now', 'hp-gmc-manager'); ?>">
+                                <span class="dashicons dashicons-controls-play"></span>
+                            </button>
                             <button type="button" class="button button-small hp-gmc-feed-debug" 
                                     data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
                                     title="<?php esc_attr_e('View raw GMC response', 'hp-gmc-manager'); ?>">

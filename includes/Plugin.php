@@ -96,6 +96,7 @@ class Plugin
         add_action('wp_ajax_hp_gmc_generate_feed', [self::class, 'ajax_generate_feed']);
         add_action('wp_ajax_hp_gmc_upload_feed', [self::class, 'ajax_upload_feed']);
         add_action('wp_ajax_hp_gmc_check_feed_status', [self::class, 'ajax_check_feed_status']);
+        add_action('wp_ajax_hp_gmc_force_crawl_feed', [self::class, 'ajax_force_crawl_feed']);
         add_action('wp_ajax_hp_gmc_add_product_to_feed', [self::class, 'ajax_add_product_to_feed']);
         add_action('wp_ajax_hp_gmc_remove_product_from_feed', [self::class, 'ajax_remove_product_from_feed']);
         add_action('wp_ajax_hp_gmc_search_products', [self::class, 'ajax_search_products']);
@@ -1669,6 +1670,31 @@ class Plugin
 
         $result = Services\FeedManager::checkGMCStatus($feedId);
         
+        if ($result['success']) {
+            wp_send_json_success($result);
+        } else {
+            wp_send_json_error($result);
+        }
+    }
+
+    /**
+     * AJAX: Force GMC to crawl the feed now (trigger immediate fetch).
+     */
+    public static function ajax_force_crawl_feed(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $feedId = (int) ($_POST['feed_id'] ?? 0);
+        if (!$feedId) {
+            wp_send_json_error(['message' => 'Feed ID is required']);
+        }
+
+        $result = Services\FeedManager::triggerGmcFetch($feedId);
+
         if ($result['success']) {
             wp_send_json_success($result);
         } else {
