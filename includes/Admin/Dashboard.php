@@ -987,7 +987,7 @@ class Dashboard
                         <th style="width:9%" title="<?php esc_attr_e('Google Merchant Center processing state', 'hp-gmc-manager'); ?>"><?php esc_html_e('GMC', 'hp-gmc-manager'); ?></th>
                         <th style="width:13%"><?php esc_html_e('Products', 'hp-gmc-manager'); ?></th>
                         <th style="width:10%" title="<?php esc_attr_e('When the feed file was last generated (or when you last used Upload to GMC). Not when GMC fetched the URL.', 'hp-gmc-manager'); ?>"><?php esc_html_e('Last generated', 'hp-gmc-manager'); ?></th>
-                        <th style="width:10%"><?php esc_html_e('Last Crawl', 'hp-gmc-manager'); ?></th>
+                        <th style="width:10%" title="<?php esc_attr_e('When GMC last fetched this feed. For supplemental feeds, GMC does not expose this in the API, so it may show Never.', 'hp-gmc-manager'); ?>"><?php esc_html_e('Last Crawl', 'hp-gmc-manager'); ?></th>
                         <th style="width:28%"><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
                     </tr>
                 </thead>
