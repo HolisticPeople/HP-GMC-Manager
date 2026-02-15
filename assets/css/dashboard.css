@@ -1277,6 +1277,11 @@ a.hp-gmc-pending-count:hover {
     color: #0d47a1;
 }
 
+.hp-gmc-gmc-status-unknown {
+    background: #f0f0f0;
+    color: #666;
+}
+
 /* Feed Health Indicators */
 .hp-gmc-health-column {
     text-align: center;

@@ -166,7 +166,9 @@
                     const $content = $('.hp-gmc-issues-content');
                     $content.html(self.subtabCache[subtab]);
                     $content.css('opacity', '1'); // Ensure opacity is reset
-                    GMCDashboard.initIssuesEvents();
+                    if (window.GMCDashboard && typeof window.GMCDashboard.initIssuesEvents === 'function') {
+                        window.GMCDashboard.initIssuesEvents();
+                    }
                     return;
                 }
                 
@@ -197,7 +199,7 @@
                     nonce: hpGmcData.nonce,
                     subtab: subtab
                 },
-                success: function(response) {
+                    success: function(response) {
                     if (response.success && response.data.html) {
                         $content.html(response.data.html);
                         $content.css('opacity', '1'); // Reset opacity immediately after loading
@@ -205,7 +207,9 @@
                         self.subtabCache = self.subtabCache || {};
                         self.subtabCache[subtab] = response.data.html;
                         // Re-initialize any event handlers for the new content
-                        GMCDashboard.initIssuesEvents();
+                        if (window.GMCDashboard && typeof window.GMCDashboard.initIssuesEvents === 'function') {
+                            window.GMCDashboard.initIssuesEvents();
+                        }
                     } else {
                         // Fallback: reload the page with the subtab parameter (with hash preserved)
                         const url = new URL(window.location.href);
@@ -1300,10 +1304,16 @@
         }
     };
 
+    // Expose so second script block can extend with initIssuesEvents
+    window.GMCDashboard = GMCDashboard;
+
     $(document).ready(function() {
-        GMCDashboard.init();
-        GMCDashboard.initFeedEvents();
-        GMCDashboard.initIssuesEvents();
+        const Dashboard = window.GMCDashboard;
+        Dashboard.init();
+        Dashboard.initFeedEvents();
+        if (typeof Dashboard.initIssuesEvents === 'function') {
+            Dashboard.initIssuesEvents();
+        }
     });
 
 })(jQuery);
