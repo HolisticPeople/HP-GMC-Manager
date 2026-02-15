@@ -1056,7 +1056,7 @@ class Dashboard
                                 <?php echo esc_html(ucfirst($feed['gmc_status'])); ?>
                             </span>
                             <?php elseif ($feed['file_url']): ?>
-                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-url" title="<?php esc_attr_e('You added this feed URL in GMC. Plugin does not track status for manually added supplemental feeds.', 'hp-gmc-manager'); ?>"><?php esc_html_e('URL in GMC', 'hp-gmc-manager'); ?></span>
+                            <span class="hp-gmc-gmc-status hp-gmc-gmc-status-unknown" title="<?php esc_attr_e('GMC status unknown. Use Refresh All to try linking this feed if you added it in GMC.', 'hp-gmc-manager'); ?>"><?php esc_html_e('Unknown', 'hp-gmc-manager'); ?></span>
                             <?php else: ?>
                             <span class="hp-gmc-gmc-status hp-gmc-gmc-status-none"><?php esc_html_e('Not uploaded', 'hp-gmc-manager'); ?></span>
                             <?php endif; ?>
