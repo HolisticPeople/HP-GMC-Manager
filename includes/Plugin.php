@@ -1712,6 +1712,9 @@ class Plugin
             'sync_list_error' => $syncResult['debug']['list_error'] ?? null,
             'sync_datafeeds_count' => $syncResult['debug']['datafeeds_count'] ?? null,
             'sync_datafeed_fetch_urls_sample' => $syncResult['debug']['datafeed_fetch_urls_sample'] ?? [],
+            'sync_datasources_success' => $syncResult['debug']['datasources_success'] ?? null,
+            'sync_datasources_count' => $syncResult['debug']['datasources_count'] ?? null,
+            'sync_datasource_fetch_urls_sample' => $syncResult['debug']['datasource_fetch_urls_sample'] ?? [],
             'feeds_with_gmc_id' => array_values(array_filter(array_map(function ($f) {
                 return $f['id'] . ':' . ($f['gmc_feed_id'] ?? '');
             }, $feeds))),
