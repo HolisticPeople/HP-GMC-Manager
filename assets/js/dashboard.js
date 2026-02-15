@@ -534,6 +534,7 @@
             
             // Bulk actions
             $('#hp-gmc-refresh-all-feeds').on('click', this.refreshAllFeedStatuses.bind(this));
+            $('#hp-gmc-last-response-close').on('click', function() { $('#hp-gmc-last-response').slideUp(); });
             $('#hp-gmc-select-all-feeds').on('change', this.toggleSelectAllFeeds.bind(this));
             $('#hp-gmc-apply-bulk-action').on('click', this.applyBulkFeedAction.bind(this));
             $('#hp-gmc-download-json-template').on('click', this.downloadJsonTemplate.bind(this));
@@ -725,6 +726,7 @@
         forceCrawlFeed: function(e) {
             const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
             const $btn = $(e.target).closest('button');
+            const self = this;
             if (!feedId) return;
             const originalHtml = $btn.html();
             $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
@@ -734,25 +736,34 @@
                 data: { action: 'hp_gmc_force_crawl_feed', nonce: hpGmcData.nonce, feed_id: feedId },
                 success: function(response) {
                     $btn.prop('disabled', false).html(originalHtml);
+                    self.showLastResponse('Force crawl (feed ' + feedId + ')', response.data || response);
                     if (response.success && response.data && response.data.message) {
                         alert(response.data.message);
                     } else if (response.success) {
-                        alert('Crawl triggered. Refresh status later to see Last Crawl update.');
+                        alert('Crawl triggered. See response below; refresh status to check for Last Crawl.');
                     } else {
                         alert('Failed to trigger crawl: ' + (response.data && response.data.error ? response.data.error : 'Unknown error'));
                     }
                 },
-                error: function() {
+                error: function(xhr, status, err) {
                     $btn.prop('disabled', false).html(originalHtml);
+                    self.showLastResponse('Force crawl (feed ' + feedId + ') – network error', { error: status, responseText: (xhr && xhr.responseText) ? xhr.responseText.substring(0, 500) : '' });
                     alert('Network error');
                 }
             });
+        },
+
+        showLastResponse: function(label, data) {
+            var payload = { action: label, response: data };
+            $('#hp-gmc-last-response-content').text(JSON.stringify(payload, null, 2));
+            $('#hp-gmc-last-response').slideDown();
         },
 
         checkFeedStatus: function(e) {
             const feedId = $(e.target).closest('button').data('feed-id') || $(e.target).data('feed-id');
             const $btn = $(e.target).closest('button');
             const originalHtml = $btn.html();
+            const self = this;
             
             $btn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
             
@@ -765,36 +776,17 @@
                     feed_id: feedId
                 },
                 success: function(response) {
+                    self.showLastResponse('Check status (feed ' + feedId + ')', response.data || response);
                     if (response.success) {
-                        // Show status summary before reload
                         const summary = response.data?.status_summary;
-                        const rawData = response.data?.data;
-                        
-                        let msg = 'GMC Status Updated\n\n';
-                        
+                        let msg = 'GMC Status updated. See "Last response" panel below for full API response.';
                         if (summary) {
-                            msg += 'Processing Status: ' + (summary.processing_status || 'unknown') + '\n';
-                            msg += 'Items Total: ' + (summary.items_total || 0) + '\n';
-                            msg += 'Items Valid: ' + (summary.items_valid || 0) + '\n';
-                            msg += 'Errors: ' + (summary.error_count || 0) + '\n';
-                            msg += 'Warnings: ' + (summary.warning_count || 0) + '\n';
-                            
-                            if (summary.errors && summary.errors.length > 0) {
-                                msg += '\nFirst Errors:\n';
-                                summary.errors.forEach(function(err, i) {
-                                    msg += (i+1) + '. ' + (err.message || JSON.stringify(err)) + '\n';
-                                });
-                            }
-                        } else if (rawData) {
-                            msg += 'Raw Response:\n' + JSON.stringify(rawData, null, 2);
-                        } else {
-                            msg += 'Raw Response:\n' + JSON.stringify(response.data, null, 2);
+                            msg += '\n\nProcessing: ' + (summary.processing_status || 'unknown') + ', Items: ' + (summary.items_total || 0) + ' total, ' + (summary.items_valid || 0) + ' valid.';
                         }
-                        
                         alert(msg);
                         location.reload();
                     } else {
-                        alert('Failed to check status:\n\n' + JSON.stringify(response.data, null, 2));
+                        alert('Failed to check status. See "Last response" panel below.');
                     }
                 },
                 error: function(xhr, status, error) {

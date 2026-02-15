@@ -588,12 +588,21 @@ class FeedManager
         }
 
         if ($result['success']) {
-            return ['success' => true, 'message' => __('Crawl triggered. GMC will fetch the feed shortly; refresh status to see Last Crawl update.', 'hp-gmc-manager')];
+            return [
+                'success' => true,
+                'message' => __('Crawl triggered. GMC will fetch the feed shortly; refresh status to see Last Crawl update.', 'hp-gmc-manager'),
+                'api_response' => $result,
+                'feed_id' => $feedId,
+                'gmc_id' => $gmcId,
+            ];
         }
 
         return [
             'success' => false,
             'error' => $result['error'] ?? __('Failed to trigger fetch', 'hp-gmc-manager'),
+            'api_response' => $result,
+            'feed_id' => $feedId,
+            'gmc_id' => $gmcId,
         ];
     }
 
