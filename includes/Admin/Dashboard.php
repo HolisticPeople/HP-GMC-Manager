@@ -1684,12 +1684,21 @@ class Dashboard
             <?php endif; ?>
 
             <div class="hp-gmc-audiences-help" style="margin: 1em 0; padding: 0.75em; background: #f0f0f1; border-left: 4px solid #2271b1;">
-                <strong><?php esc_html_e('How to build a segment', 'hp-gmc-manager'); ?></strong>
-                <?php esc_html_e('Add filters (dimension, operator, value) and combine them with AND or OR. Use "Include" to keep matching users and "Exclude" to remove them. Run to see the count, then Save as to create a saved segment. Export CSV downloads in Google Customer Match format (Email, Phone, First name, Last name, Country, Zip).', 'hp-gmc-manager'); ?>
+                <strong><?php esc_html_e('Segment', 'hp-gmc-manager'); ?></strong>
+                <?php esc_html_e('Users who match the conditions below (e.g. location, purchase history, funnel).', 'hp-gmc-manager'); ?>
                 <br>
                 <strong><?php esc_html_e('Append vs Replace', 'hp-gmc-manager'); ?></strong>
                 <?php esc_html_e('When uploading to Google Ads: Append adds the current run to the existing list; Replace clears the list and adds only the current run.', 'hp-gmc-manager'); ?>
             </div>
+            <?php
+            $audience_countries = [];
+            if (function_exists('WC') && WC()->countries) {
+                $audience_countries = WC()->countries->get_countries();
+            }
+            if (empty($audience_countries)) {
+                $audience_countries = ['US' => 'United States', 'CA' => 'Canada', 'GB' => 'United Kingdom', 'AU' => 'Australia'];
+            }
+            ?>
 
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
             <table class="wp-list-table widefat fixed striped">
@@ -1742,22 +1751,23 @@ class Dashboard
             </table>
 
             <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
+            <p><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></p>
             <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
             <p>
                 <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
                 <button type="button" class="button hp-gmc-audience-template" data-template="high_ltv"><?php esc_html_e('High LTV (≥ $100)', 'hp-gmc-manager'); ?></button>
                 <button type="button" class="button hp-gmc-audience-template" data-template="lapsed"><?php esc_html_e('Lapsed (no order in 90 days)', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="abandoned_cart"><?php esc_html_e('Abandoned cart (last 7 days)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="last_7_days"><?php esc_html_e('Buyers in last 7 days', 'hp-gmc-manager'); ?></button>
             </p>
             <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
-                <label><?php esc_html_e('Combine filters:', 'hp-gmc-manager'); ?></label>
+                <label><?php esc_html_e('Combine conditions:', 'hp-gmc-manager'); ?></label>
                 <select id="hp-gmc-audience-logic">
                     <option value="and">AND</option>
                     <option value="or">OR</option>
                 </select>
                 <div id="hp-gmc-audience-conditions"></div>
                 <p style="margin-top: 0.5em;">
-                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add filter', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
                     <span id="hp-gmc-audience-preview-result"></span>
                 </p>
@@ -1776,21 +1786,90 @@ class Dashboard
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
-                var templates = {
-                    past_90: { logic: 'and', conditions: [{ dimension: 'order_date_from', operator: 'gte', value: new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10), include: true }] },
-                    high_ltv: { logic: 'and', conditions: [{ dimension: 'ltv_min', operator: 'gte', value: 100, include: true }] },
-                    lapsed: { logic: 'and', conditions: [{ dimension: 'last_purchase_before', operator: 'lte', value: new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10), include: true }] },
-                    abandoned_cart: { logic: 'and', conditions: [{ dimension: 'abandoned_cart_days', operator: 'gte', value: 7, include: true }] }
+                var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
+                var conditionTypeLabels = {
+                    location: 'Location',
+                    purchase_product: 'Purchase history: Bought product',
+                    purchase_spend: 'Purchase history: Total spend',
+                    purchase_orders: 'Purchase history: Number of orders',
+                    purchase_last_order: 'Purchase history: Last order',
+                    funnel: 'Funnel'
                 };
+                var templates = {
+                    past_90: { logic: 'and', conditions: [{ type: 'purchase_orders', order_count_min: 1, last_days: 90, include: true }] },
+                    high_ltv: { logic: 'and', conditions: [{ type: 'purchase_spend', ltv_min: 100, include: true }] },
+                    lapsed: { logic: 'and', conditions: [{ type: 'purchase_last_order', when: 'before', date: new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10), include: true }] },
+                    last_7_days: { logic: 'and', conditions: [{ type: 'purchase_orders', order_count_min: 1, last_days: 7, include: true }] }
+                };
+                function buildConditionFields(type, c) {
+                    c = c || {};
+                    var esc = function(v) { return String(v === null || v === undefined ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+                    if (type === 'location') {
+                        var countryOpts = Object.keys(audienceCountries).map(function(code) {
+                            var sel = (c.country === code) ? ' selected' : '';
+                            return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
+                        }).join('');
+                        return '<select class="cond-country" data-param="country"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
+                    }
+                    if (type === 'purchase_product') {
+                        return 'SKU <input type="text" class="cond-sku" data-param="sku" placeholder="e.g. ABC-123" value="' + esc(c.sku) + '" style="width:120px"> ' +
+                            'At least <input type="number" class="cond-min-quantity" data-param="min_quantity" min="1" value="' + (c.min_quantity || 1) + '" style="width:50px"> units ' +
+                            'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
+                    }
+                    if (type === 'purchase_spend') {
+                        return 'At least $<input type="number" class="cond-ltv-min" data-param="ltv_min" min="0" step="0.01" value="' + esc(c.ltv_min) + '" style="width:80px"> ' +
+                            'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
+                    }
+                    if (type === 'purchase_orders') {
+                        return 'At least <input type="number" class="cond-order-count-min" data-param="order_count_min" min="0" value="' + (c.order_count_min !== undefined ? c.order_count_min : '') + '" style="width:50px"> orders ' +
+                            'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
+                    }
+                    if (type === 'purchase_last_order') {
+                        var beforeChecked = (c.when !== 'after') ? ' checked' : '';
+                        var afterChecked = (c.when === 'after') ? ' checked' : '';
+                        return '<label><input type="radio" class="cond-when" data-param="when" name="when_' + Math.random().toString(36).slice(2) + '" value="before"' + beforeChecked + '> Before</label> ' +
+                            '<label><input type="radio" class="cond-when" data-param="when" value="after"' + afterChecked + '> After</label> ' +
+                            ' <input type="date" class="cond-date" data-param="date" value="' + esc(c.date) + '">';
+                    }
+                    if (type === 'funnel') {
+                        return 'Funnel slug <input type="text" class="cond-funnel-slug" data-param="funnel_slug" placeholder="e.g. my-funnel" value="' + esc(c.funnel_slug) + '" style="width:140px"> ' +
+                            'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
+                    }
+                    return '';
+                }
+                function getConditionFromRow(row) {
+                    var type = row.querySelector('.cond-type').value;
+                    if (!type) return null;
+                    var cond = { type: type, include: row.querySelector('.cond-include').checked };
+                    var fields = row.querySelectorAll('.cond-fields [data-param]');
+                    fields.forEach(function(el) {
+                        var param = el.getAttribute('data-param');
+                        var val;
+                        if (el.type === 'number') {
+                            if (el.value === '') val = null;
+                            else val = (param === 'min_quantity' || param === 'order_count_min' || param === 'order_count_max' || param === 'last_days') ? parseInt(el.value, 10) : parseFloat(el.value);
+                        } else if (el.type === 'radio') {
+                            if (el.checked) val = el.value;
+                            else return;
+                        } else {
+                            val = el.value.trim();
+                        }
+                        if (val !== '' && val !== null && val !== undefined) cond[param] = val;
+                    });
+                    if (type === 'location' && cond.country) return cond;
+                    if (type === 'purchase_product' && cond.sku) return cond;
+                    if (type === 'purchase_spend' && (cond.ltv_min != null || cond.ltv_max != null)) return cond;
+                    if (type === 'purchase_orders' && (cond.order_count_min != null || cond.order_count_max != null)) return cond;
+                    if (type === 'purchase_last_order' && cond.date) { if (!cond.when) cond.when = row.querySelector('.cond-when:checked') ? row.querySelector('.cond-when:checked').value : 'before'; return cond; }
+                    if (type === 'funnel' && cond.funnel_slug) return cond;
+                    return null;
+                }
                 function getDefinition() {
                     var logic = document.getElementById('hp-gmc-audience-logic').value;
                     var conditions = [];
                     document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition').forEach(function(row) {
-                        var dim = row.querySelector('.cond-dimension').value;
-                        var op = row.querySelector('.cond-operator').value;
-                        var val = row.querySelector('.cond-value').value;
-                        var inc = row.querySelector('.cond-include').checked;
-                        if (dim && val) conditions.push({ dimension: dim, operator: op, value: val, include: inc });
+                        var c = getConditionFromRow(row);
+                        if (c) conditions.push(c);
                     });
                     return { logic: logic, conditions: conditions };
                 }
@@ -1802,13 +1881,22 @@ class Dashboard
                 }
                 function addConditionRow(c) {
                     c = c || {};
+                    var type = c.type || 'location';
                     var row = document.createElement('div');
                     row.className = 'hp-gmc-condition';
-                    row.innerHTML = '<select class="cond-dimension"><option value="country">Country</option><option value="product_sku">Product SKU</option><option value="order_date_from">Order date from</option><option value="order_date_to">Order date to</option><option value="ltv_min">LTV min</option><option value="ltv_max">LTV max</option><option value="order_count_min">Order count min</option><option value="order_count_max">Order count max</option><option value="funnel_slug">Funnel slug</option><option value="last_purchase_before">Last purchase before</option><option value="last_purchase_after">Last purchase after</option></select> <select class="cond-operator"><option value="equals">equals</option><option value="not_equals">not equals</option><option value="gte">≥</option><option value="lte">≤</option></select> <input type="text" class="cond-value" placeholder="Value" value="' + (c.value || '') + '" style="width:140px"> <label><input type="checkbox" class="cond-include" ' + (c.include !== false ? 'checked' : '') + '> Include</label>';
+                    var typeOpts = Object.keys(conditionTypeLabels).map(function(t) {
+                        return '<option value="' + t + '"' + (t === type ? ' selected' : '') + '>' + conditionTypeLabels[t] + '</option>';
+                    }).join('');
+                    row.innerHTML = '<select class="cond-type">' + typeOpts + '</select> <span class="cond-fields">' + buildConditionFields(type, c) + '</span> <label><input type="checkbox" class="cond-include" ' + (c.include !== false ? 'checked' : '') + '> Include</label>';
                     document.getElementById('hp-gmc-audience-conditions').appendChild(row);
+                    row.querySelector('.cond-type').addEventListener('change', function() {
+                        var newType = this.value;
+                        row.querySelector('.cond-fields').innerHTML = buildConditionFields(newType, {});
+                    });
                 }
                 document.getElementById('hp-gmc-audience-add-condition').addEventListener('click', function() { addConditionRow({}); });
                 if (editDefinition) setDefinition(editDefinition);
+                else addConditionRow({});
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
