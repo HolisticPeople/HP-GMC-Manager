@@ -1812,23 +1812,9 @@ class Dashboard
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
                 var productSearchAjaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
-                <?php
-                $edit_def_json = 'null';
-                if ($edit_segment && !empty($edit_segment['filter_definition'])) {
-                    $edit_def = json_decode($edit_segment['filter_definition'], true);
-                    if (is_array($edit_def) && !empty($edit_def['conditions'])) {
-                        foreach ($edit_def['conditions'] as &$c) {
-                            if (isset($c['type']) && $c['type'] === 'location') {
-                                $c['type'] = 'billing_address';
-                            }
-                        }
-                        unset($c);
-                    }
-                    $edit_def_json = wp_json_encode($edit_def);
-                }
-                ?>
-                var editDefinition = <?php echo $edit_def_json; ?>;
+                var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
+                var noSegmentsMsg = <?php echo wp_json_encode(__('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager')); ?>;
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
@@ -2026,15 +2012,8 @@ class Dashboard
                         if (tr) tr.remove();
                     });
                 });
-                function applyEditDefinition() {
-                    if (editDefinition) setDefinition(editDefinition);
-                    else addConditionRow({});
-                }
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', applyEditDefinition);
-                } else {
-                    applyEditDefinition();
-                }
+                if (editDefinition) setDefinition(editDefinition);
+                else addConditionRow({});
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
@@ -2105,7 +2084,7 @@ class Dashboard
                                     var tbody = row.closest('tbody');
                                     if (tbody && tbody.querySelectorAll('tr').length === 0) {
                                         var empty = document.createElement('tr');
-                                        empty.innerHTML = '<td colspan="5"><?php echo esc_js(__('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager')); ?></td>';
+                                        empty.innerHTML = '<td colspan="5">' + (typeof noSegmentsMsg !== 'undefined' ? noSegmentsMsg : 'No saved segments yet. Use the builder below and "Save as".') + '</td>';
                                         tbody.appendChild(empty);
                                     }
                                 } else { alert(data.message || 'Delete failed'); }
