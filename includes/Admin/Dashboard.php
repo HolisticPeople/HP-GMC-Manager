@@ -2046,9 +2046,16 @@ class Dashboard
                             addConditionRow({});
                         }
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
+                            .then(function(r) {
+                                if (!r.ok) {
+                                    location.reload();
+                                    return null;
+                                }
+                                return r.json();
+                            })
                             .then(function(seg) {
                                 if (!seg || !seg.filter_definition) return;
+                                if (seg.code && seg.message) return;
                                 var def;
                                 try {
                                     def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
@@ -2056,7 +2063,7 @@ class Dashboard
                                 if (def && (def.conditions || def.logic)) setDefinition(def);
                                 applySegmentToForm(seg);
                             })
-                            .catch(function() {});
+                            .catch(function() { location.reload(); });
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
                     } else {
