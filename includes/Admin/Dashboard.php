@@ -46,6 +46,9 @@ class Dashboard
                 <a href="#shipping" class="nav-tab" data-tab="shipping">
                     <?php esc_html_e('Shipping', 'hp-gmc-manager'); ?>
                 </a>
+                <a href="#audiences" class="nav-tab" data-tab="audiences">
+                    <?php esc_html_e('Audiences', 'hp-gmc-manager'); ?>
+                </a>
                 <a href="#tools" class="nav-tab" data-tab="tools">
                     <?php esc_html_e('MCP Tools', 'hp-gmc-manager'); ?>
                 </a>
@@ -74,6 +77,9 @@ class Dashboard
                 </div>
                 <div id="tab-shipping" class="hp-gmc-tab-panel">
                     <?php self::render_shipping_tab(); ?>
+                </div>
+                <div id="tab-audiences" class="hp-gmc-tab-panel">
+                    <?php self::render_audiences_tab(); ?>
                 </div>
                 <div id="tab-tools" class="hp-gmc-tab-panel">
                     <?php self::render_tools_tab(); ?>
@@ -1648,6 +1654,247 @@ class Dashboard
                     </div>
                 </div>
             </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Render the Audiences tab (saved segments, segment builder, templates, export, upload).
+     */
+    private static function render_audiences_tab(): void
+    {
+        $repo = new \HP_GMC\Services\SavedSegmentsRepository();
+        $segments = $repo->list_all();
+        $upload_disabled = (bool) get_option('hp_gmc_audience_upload_disabled', false);
+        $rest_base = rest_url('hp-gmc/v1/audiences/segments');
+        $nonce = wp_create_nonce('wp_rest');
+        $edit_id = isset($_GET['edit']) ? absint($_GET['edit']) : 0;
+        $edit_segment = $edit_id ? $repo->get($edit_id) : null;
+        ?>
+        <div class="hp-gmc-audiences">
+            <h2><?php esc_html_e('Audiences', 'hp-gmc-manager'); ?></h2>
+            <p class="description">
+                <?php esc_html_e('Build segments from your WooCommerce data and export them as CSV for Google Ads Customer Match, or upload via API (production).', 'hp-gmc-manager'); ?>
+            </p>
+
+            <?php if ($upload_disabled): ?>
+            <p class="notice notice-warning inline">
+                <?php esc_html_e('Upload to Google Ads is currently disabled in Settings (Schema & Audiences).', 'hp-gmc-manager'); ?>
+            </p>
+            <?php endif; ?>
+
+            <div class="hp-gmc-audiences-help" style="margin: 1em 0; padding: 0.75em; background: #f0f0f1; border-left: 4px solid #2271b1;">
+                <strong><?php esc_html_e('How to build a segment', 'hp-gmc-manager'); ?></strong>
+                <?php esc_html_e('Add filters (dimension, operator, value) and combine them with AND or OR. Use "Include" to keep matching users and "Exclude" to remove them. Run to see the count, then Save as to create a saved segment. Export CSV downloads in Google Customer Match format (Email, Phone, First name, Last name, Country, Zip).', 'hp-gmc-manager'); ?>
+                <br>
+                <strong><?php esc_html_e('Append vs Replace', 'hp-gmc-manager'); ?></strong>
+                <?php esc_html_e('When uploading to Google Ads: Append adds the current run to the existing list; Replace clears the list and adds only the current run.', 'hp-gmc-manager'); ?>
+            </div>
+
+            <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th><?php esc_html_e('Name', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Last run', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Count', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Last upload', 'hp-gmc-manager'); ?></th>
+                        <th><?php esc_html_e('Actions', 'hp-gmc-manager'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($segments)): ?>
+                    <tr><td colspan="5"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
+                    <?php else: ?>
+                    <?php foreach ($segments as $seg): ?>
+                    <tr data-segment-id="<?php echo esc_attr($seg['id']); ?>">
+                        <td><strong><?php echo esc_html($seg['name']); ?></strong></td>
+                        <td><?php echo $seg['last_run_at'] ? esc_html($seg['last_run_at']) : '—'; ?></td>
+                        <td><?php echo $seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : '—'; ?></td>
+                        <td class="hp-gmc-audience-upload-status" data-segment-id="<?php echo esc_attr($seg['id']); ?>">
+                            <?php
+                            if (!empty($seg['last_upload_status'])):
+                                echo esc_html(ucfirst($seg['last_upload_status']));
+                                if (!empty($seg['last_upload_job_id'])):
+                                    echo ' <span class="hp-gmc-job-id" title="' . esc_attr($seg['last_upload_job_id']) . '">(' . esc_html(__('job', 'hp-gmc-manager')) . ')</span>';
+                                endif;
+                                if (!empty($seg['last_upload_at'])):
+                                    echo ' ' . esc_html($seg['last_upload_at']);
+                                endif;
+                            else:
+                                echo '—';
+                            endif;
+                            ?>
+                        </td>
+                        <td>
+                            <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
+                            <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc&edit=' . (int) $seg['id']) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
+                            <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
+                            <?php if (!$upload_disabled): ?>
+                            <button type="button" class="button button-small button-secondary hp-gmc-audience-upload" data-id="<?php echo esc_attr($seg['id']); ?>" data-count="<?php echo esc_attr($seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : ''); ?>"><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></button>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
+            <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
+            <p>
+                <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="high_ltv"><?php esc_html_e('High LTV (≥ $100)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="lapsed"><?php esc_html_e('Lapsed (no order in 90 days)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="abandoned_cart"><?php esc_html_e('Abandoned cart (last 7 days)', 'hp-gmc-manager'); ?></button>
+            </p>
+            <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
+                <label><?php esc_html_e('Combine filters:', 'hp-gmc-manager'); ?></label>
+                <select id="hp-gmc-audience-logic">
+                    <option value="and">AND</option>
+                    <option value="or">OR</option>
+                </select>
+                <div id="hp-gmc-audience-conditions"></div>
+                <p style="margin-top: 0.5em;">
+                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add filter', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
+                    <span id="hp-gmc-audience-preview-result"></span>
+                </p>
+                <p>
+                    <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
+                    <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
+                    <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
+                    <?php if ($edit_segment): ?>
+                    <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
+                    <?php endif; ?>
+                </p>
+            </div>
+            <script>
+            (function() {
+                var restBase = <?php echo wp_json_encode($rest_base); ?>;
+                var nonce = <?php echo wp_json_encode($nonce); ?>;
+                var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
+                var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
+                var templates = {
+                    past_90: { logic: 'and', conditions: [{ dimension: 'order_date_from', operator: 'gte', value: new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10), include: true }] },
+                    high_ltv: { logic: 'and', conditions: [{ dimension: 'ltv_min', operator: 'gte', value: 100, include: true }] },
+                    lapsed: { logic: 'and', conditions: [{ dimension: 'last_purchase_before', operator: 'lte', value: new Date(Date.now() - 90*24*60*60*1000).toISOString().slice(0,10), include: true }] },
+                    abandoned_cart: { logic: 'and', conditions: [{ dimension: 'abandoned_cart_days', operator: 'gte', value: 7, include: true }] }
+                };
+                function getDefinition() {
+                    var logic = document.getElementById('hp-gmc-audience-logic').value;
+                    var conditions = [];
+                    document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition').forEach(function(row) {
+                        var dim = row.querySelector('.cond-dimension').value;
+                        var op = row.querySelector('.cond-operator').value;
+                        var val = row.querySelector('.cond-value').value;
+                        var inc = row.querySelector('.cond-include').checked;
+                        if (dim && val) conditions.push({ dimension: dim, operator: op, value: val, include: inc });
+                    });
+                    return { logic: logic, conditions: conditions };
+                }
+                function setDefinition(def) {
+                    document.getElementById('hp-gmc-audience-logic').value = def.logic || 'and';
+                    var cont = document.getElementById('hp-gmc-audience-conditions');
+                    cont.innerHTML = '';
+                    (def.conditions || []).forEach(function(c) { addConditionRow(c); });
+                }
+                function addConditionRow(c) {
+                    c = c || {};
+                    var row = document.createElement('div');
+                    row.className = 'hp-gmc-condition';
+                    row.innerHTML = '<select class="cond-dimension"><option value="country">Country</option><option value="product_sku">Product SKU</option><option value="order_date_from">Order date from</option><option value="order_date_to">Order date to</option><option value="ltv_min">LTV min</option><option value="ltv_max">LTV max</option><option value="order_count_min">Order count min</option><option value="order_count_max">Order count max</option><option value="funnel_slug">Funnel slug</option><option value="last_purchase_before">Last purchase before</option><option value="last_purchase_after">Last purchase after</option></select> <select class="cond-operator"><option value="equals">equals</option><option value="not_equals">not equals</option><option value="gte">≥</option><option value="lte">≤</option></select> <input type="text" class="cond-value" placeholder="Value" value="' + (c.value || '') + '" style="width:140px"> <label><input type="checkbox" class="cond-include" ' + (c.include !== false ? 'checked' : '') + '> Include</label>';
+                    document.getElementById('hp-gmc-audience-conditions').appendChild(row);
+                }
+                document.getElementById('hp-gmc-audience-add-condition').addEventListener('click', function() { addConditionRow({}); });
+                if (editDefinition) setDefinition(editDefinition);
+                document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
+                    btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
+                });
+                document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
+                    var resultEl = document.getElementById('hp-gmc-audience-preview-result');
+                    resultEl.textContent = '…';
+                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: getDefinition() }) })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) { resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error'); })
+                        .catch(function() { resultEl.textContent = 'Error'; });
+                });
+                document.getElementById('hp-gmc-audience-save-as').addEventListener('click', function() {
+                    var name = document.getElementById('hp-gmc-audience-save-name').value.trim();
+                    if (!name) { alert('Enter a segment name'); return; }
+                    var payload = { name: name, filter_definition: JSON.stringify(getDefinition()) };
+                    var url = restBase, method = 'POST';
+                    if (editId) { url = restBase + '/' + editId; method = 'PUT'; }
+                    fetch(url, { method: method, headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(payload) })
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) { if (data.id || data.name) { location.href = location.pathname + '?page=hp-gmc&tab=audiences'; } else { alert(data.message || 'Failed'); } })
+                        .catch(function() { alert('Failed'); });
+                });
+                document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var id = this.dataset.id;
+                        fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'X-WP-Nonce': nonce } })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) { if (data.count !== undefined) location.reload(); else alert(data.message || 'Error'); })
+                            .catch(function() { alert('Error'); });
+                    });
+                });
+                document.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) { if (data.id) location.reload(); else alert(data.message || 'Failed'); })
+                                .catch(function() { alert('Failed'); });
+                    });
+                });
+                document.querySelectorAll('.hp-gmc-audience-export').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var id = this.dataset.id;
+                        fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                if (data.csv !== undefined) {
+                                    var a = document.createElement('a');
+                                    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
+                                    a.download = data.filename || 'segment.csv';
+                                    a.click();
+                                } else { alert(data.message || 'Failed'); }
+                            })
+                            .catch(function() { alert('Error'); });
+                    });
+                });
+                document.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var id = this.dataset.id;
+                        var count = parseInt(this.dataset.count, 10) || 0;
+                        if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
+                            return;
+                        }
+                        btn.disabled = true;
+                        fetch(restBase + '/' + id + '/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                            body: JSON.stringify({ append: false })
+                        })
+                            .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+                            .then(function(res) {
+                                if (res.ok && res.data.success) {
+                                    var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
+                                    if (statusCell) {
+                                        statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
+                                    }
+                                    alert('Upload started. ' + (res.data.count ? res.data.count + ' users. ' : '') + 'Job may take a few hours. Check "Last upload" or refresh the page.');
+                                } else {
+                                    alert(res.data.message || res.data.error || 'Upload failed');
+                                }
+                            })
+                            .catch(function() { alert('Error'); })
+                            .finally(function() { btn.disabled = false; });
+                    });
+                });
+            })();
+            </script>
         </div>
         <?php
     }

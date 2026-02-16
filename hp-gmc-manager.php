@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.27.12
+ * Version: 1.27.14
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.27.12');
+define('HP_GMC_VERSION', '1.27.14');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -93,7 +93,13 @@ function hp_gmc_init() {
 function hp_gmc_maybe_create_tables() {
     global $wpdb;
     $db_version = get_option('hp_gmc_db_version', '0');
-    
+
+    // When "Run schema upgrade on plugin load" is disabled, only run on activation (manual mode).
+    $schema_on_load = get_option('hp_gmc_schema_upgrade_on_load', true);
+    if (!$schema_on_load) {
+        return;
+    }
+
     // Only run if version changed
     if (version_compare($db_version, HP_GMC_VERSION, '>=')) {
         return;
@@ -225,6 +231,25 @@ function hp_gmc_activate() {
         UNIQUE KEY feed_product_attr (feed_id, product_id, attribute_name)
     ) $charset_collate;";
 
+    // Saved segments table (Audiences feature)
+    $table_name_segments = $wpdb->prefix . 'hp_gmc_saved_segments';
+    $sql .= "CREATE TABLE $table_name_segments (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        name varchar(255) NOT NULL,
+        filter_definition longtext NOT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP,
+        updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        last_run_at datetime DEFAULT NULL,
+        last_run_count int DEFAULT NULL,
+        last_upload_job_id varchar(100) DEFAULT NULL,
+        last_upload_at datetime DEFAULT NULL,
+        last_upload_status varchar(50) DEFAULT NULL,
+        gmc_user_list_id varchar(100) DEFAULT NULL,
+        PRIMARY KEY (id),
+        UNIQUE KEY name (name),
+        KEY updated_at (updated_at)
+    ) $charset_collate;";
+
     require_once ABSPATH . 'wp-admin/includes/upgrade.php';
     dbDelta($sql);
 
@@ -240,6 +265,19 @@ function hp_gmc_activate() {
     foreach ($defaults as $key => $value) {
         if (get_option($key) === false) {
             add_option($key, $value);
+        }
+    }
+
+    // Schema & Audiences options (autoload=no)
+    $audience_defaults = [
+        'hp_gmc_schema_upgrade_on_load' => true,
+        'hp_gmc_audience_sync_run_cap' => 5000,
+        'hp_gmc_audience_force_background_over_cap' => false,
+        'hp_gmc_audience_upload_disabled' => false,
+    ];
+    foreach ($audience_defaults as $key => $val) {
+        if (get_option($key) === false) {
+            add_option($key, $val, '', 'no');
         }
     }
 

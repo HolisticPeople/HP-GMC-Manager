@@ -8,6 +8,7 @@ use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Rest\ProductFeedEndpoint;
 use HP_GMC\Rest\FunnelFeedEndpoint;
 use HP_GMC\Rest\SupplementalFeedEndpoint;
+use HP_GMC\Rest\AudiencesEndpoint;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -79,6 +80,7 @@ class Plugin
         add_action('rest_api_init', [ProductFeedEndpoint::class, 'register']);
         add_action('rest_api_init', [FunnelFeedEndpoint::class, 'register']);
         add_action('rest_api_init', [SupplementalFeedEndpoint::class, 'register']);
+        add_action('rest_api_init', [AudiencesEndpoint::class, 'register']);
 
         // Listen for funnel saves from HP-React-Widgets
         add_action('hp_funnel_saved', [self::class, 'on_funnel_saved'], 10, 3);
@@ -242,6 +244,33 @@ class Plugin
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
         ]);
+
+        // Schema & Audiences
+        register_setting('hp_gmc_settings', 'hp_gmc_schema_upgrade_on_load', [
+            'type' => 'boolean',
+            'sanitize_callback' => function ($value) {
+                return (bool) $value;
+            },
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_audience_sync_run_cap', [
+            'type' => 'integer',
+            'sanitize_callback' => function ($value) {
+                $v = absint($value);
+                return $v > 0 ? $v : 5000;
+            },
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_audience_force_background_over_cap', [
+            'type' => 'boolean',
+            'sanitize_callback' => function ($value) {
+                return (bool) $value;
+            },
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_audience_upload_disabled', [
+            'type' => 'boolean',
+            'sanitize_callback' => function ($value) {
+                return (bool) $value;
+            },
+        ]);
     }
 
     /**
@@ -296,6 +325,10 @@ class Plugin
             'label' => __('Google Merchant Center', 'hp-gmc-manager'),
             'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
         ]);
+        wp_register_ability_category('hp-marketing', [
+            'label' => __('Marketing & Audiences', 'hp-gmc-manager'),
+            'description' => __('Audience segments, GA4, and Google Ads for campaign workflows', 'hp-gmc-manager'),
+        ]);
     }
 
     /**
@@ -327,7 +360,7 @@ class Plugin
                     'type' => 'object',
                     'properties' => (object)[],
                 ],
-                'category' => 'hp-gmc',
+                'category' => $tool['category'] ?? 'hp-gmc',
             ]);
         }
     }
@@ -1326,6 +1359,108 @@ class Plugin
             ],
 
             // =========================================================================
+            // Audiences (saved segments for Google Ads Customer Match)
+            // =========================================================================
+            'gmc-audiences-segments-list' => [
+                'title' => 'List Audience Segments',
+                'description' => 'List saved audience segments (id, name, last_run_at, last_upload_at, count)',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentsList'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => (object) [],
+                ],
+                'category' => 'hp-marketing',
+            ],
+            'gmc-audiences-segment-get' => [
+                'title' => 'Get Audience Segment',
+                'description' => 'Get one saved segment by id (definition + last run/upload metadata)',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentGet'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'segment_id' => [
+                            'type' => 'integer',
+                            'description' => 'Saved segment ID',
+                        ],
+                    ],
+                    'required' => ['segment_id'],
+                ],
+                'category' => 'hp-marketing',
+            ],
+            'gmc-audiences-segment-run' => [
+                'title' => 'Run Audience Segment',
+                'description' => 'Run a saved segment and return count; updates last_run metadata',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentRun'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'segment_id' => [
+                            'type' => 'integer',
+                            'description' => 'Saved segment ID',
+                        ],
+                    ],
+                    'required' => ['segment_id'],
+                ],
+                'category' => 'hp-marketing',
+            ],
+            'gmc-audiences-segment-save' => [
+                'title' => 'Save Audience Segment',
+                'description' => 'Create or update a saved segment (name, filter_definition; segment_id for update)',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentSave'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'name' => ['type' => 'string', 'description' => 'Segment name'],
+                        'filter_definition' => ['type' => 'string', 'description' => 'JSON filter definition (logic + conditions)'],
+                        'segment_id' => ['type' => 'integer', 'description' => 'For update only'],
+                    ],
+                    'required' => ['name', 'filter_definition'],
+                ],
+                'category' => 'hp-marketing',
+            ],
+            'gmc-audiences-segment-duplicate' => [
+                'title' => 'Duplicate Audience Segment',
+                'description' => 'Duplicate a segment (same logic, new name)',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentDuplicate'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'segment_id' => ['type' => 'integer', 'description' => 'Source segment ID'],
+                        'name' => ['type' => 'string', 'description' => 'Optional new name (default: Copy of ...)'],
+                    ],
+                    'required' => ['segment_id'],
+                ],
+                'category' => 'hp-marketing',
+            ],
+            'gmc-audiences-segment-export-csv' => [
+                'title' => 'Export Audience Segment CSV',
+                'description' => 'Run segment and return CSV in Google Customer Match format (Email, Phone, First name, Last name, Country, Zip)',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentExportCsv'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'segment_id' => ['type' => 'integer', 'description' => 'Saved segment ID'],
+                    ],
+                    'required' => ['segment_id'],
+                ],
+                'category' => 'hp-marketing',
+            ],
+            'gmc-audiences-segment-upload' => [
+                'title' => 'Upload Audience Segment to Google Ads',
+                'description' => 'Run segment and upload to Google Ads Customer Match (append or replace list). Requires upload enabled in Settings.',
+                'callback' => [Abilities\AudiencesAbilities::class, 'segmentUpload'],
+                'input_schema' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'segment_id' => ['type' => 'integer', 'description' => 'Saved segment ID'],
+                        'append' => ['type' => 'boolean', 'description' => 'True = append to existing list; false = replace list', 'default' => false],
+                    ],
+                    'required' => ['segment_id'],
+                ],
+                'category' => 'hp-marketing',
+            ],
+
+            // =========================================================================
             // GA4 Analytics Tools
             // =========================================================================
             'gmc-ga4-funnel-performance' => [
@@ -1346,7 +1481,7 @@ class Plugin
                         ],
                     ],
                 ],
-                'category' => 'analytics',
+                'category' => 'hp-marketing',
             ],
             'gmc-ga4-traffic-sources' => [
                 'title' => 'GA4 Traffic Sources',
@@ -1366,7 +1501,7 @@ class Plugin
                         ],
                     ],
                 ],
-                'category' => 'analytics',
+                'category' => 'hp-marketing',
             ],
             'gmc-ga4-realtime' => [
                 'title' => 'GA4 Realtime',
@@ -1381,7 +1516,7 @@ class Plugin
                         ],
                     ],
                 ],
-                'category' => 'analytics',
+                'category' => 'hp-marketing',
             ],
             'gmc-ga4-conversion-funnel' => [
                 'title' => 'GA4 Conversion Funnel',
@@ -1401,7 +1536,7 @@ class Plugin
                         ],
                     ],
                 ],
-                'category' => 'analytics',
+                'category' => 'hp-marketing',
             ],
 
             // =========================================================================
@@ -1425,7 +1560,7 @@ class Plugin
                         ],
                     ],
                 ],
-                'category' => 'ads',
+                'category' => 'hp-marketing',
             ],
             'gmc-ads-funnel-campaign-map' => [
                 'title' => 'Funnel-Campaign Map',
@@ -1441,7 +1576,7 @@ class Plugin
                         ],
                     ],
                 ],
-                'category' => 'ads',
+                'category' => 'hp-marketing',
             ],
             'gmc-ads-budget-status' => [
                 'title' => 'Ads Budget Status',
@@ -1451,7 +1586,7 @@ class Plugin
                     'type' => 'object',
                     'properties' => (object)[],
                 ],
-                'category' => 'ads',
+                'category' => 'hp-marketing',
             ],
         ];
     }

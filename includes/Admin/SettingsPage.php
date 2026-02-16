@@ -230,6 +230,74 @@ class SettingsPage
                     </tr>
                 </table>
 
+                <h2><?php esc_html_e('Schema & Audiences', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_schema_upgrade_on_load"><?php esc_html_e('Run schema upgrade on plugin load', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="hidden" name="hp_gmc_schema_upgrade_on_load" value="0">
+                            <input type="checkbox"
+                                   id="hp_gmc_schema_upgrade_on_load"
+                                   name="hp_gmc_schema_upgrade_on_load"
+                                   value="1"
+                                   <?php checked(get_option('hp_gmc_schema_upgrade_on_load', true)); ?>>
+                            <p class="description">
+                                <?php esc_html_e('When enabled, database tables are created/updated on plugin load when the schema version changes. Disable to run upgrades only on plugin activation.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_audience_sync_run_cap"><?php esc_html_e('Audience sync run cap', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="number"
+                                   id="hp_gmc_audience_sync_run_cap"
+                                   name="hp_gmc_audience_sync_run_cap"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_audience_sync_run_cap', 5000)); ?>"
+                                   min="1"
+                                   class="small-text">
+                            <p class="description">
+                                <?php esc_html_e('Segment runs that would exceed this many rows use background processing. Default: 5000.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_audience_force_background_over_cap"><?php esc_html_e('Force runs over cap to background', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="hidden" name="hp_gmc_audience_force_background_over_cap" value="0">
+                            <input type="checkbox"
+                                   id="hp_gmc_audience_force_background_over_cap"
+                                   name="hp_gmc_audience_force_background_over_cap"
+                                   value="1"
+                                   <?php checked(get_option('hp_gmc_audience_force_background_over_cap', false)); ?>>
+                            <p class="description">
+                                <?php esc_html_e('When enabled, segment runs over the cap always use background job. Default: No.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_audience_upload_disabled"><?php esc_html_e('Disable Upload to Google Ads', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="hidden" name="hp_gmc_audience_upload_disabled" value="0">
+                            <input type="checkbox"
+                                   id="hp_gmc_audience_upload_disabled"
+                                   name="hp_gmc_audience_upload_disabled"
+                                   value="1"
+                                   <?php checked(get_option('hp_gmc_audience_upload_disabled', false)); ?>>
+                            <p class="description">
+                                <?php esc_html_e('Site-wide kill switch: hide or disable "Upload to Google Ads" in the Audiences tab. Use for quick rollback.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
                 <h2><?php esc_html_e('Connection Test', 'hp-gmc-manager'); ?></h2>
                 <table class="form-table">
                     <tr>
