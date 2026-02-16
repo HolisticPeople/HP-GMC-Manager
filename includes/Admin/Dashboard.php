@@ -1750,7 +1750,7 @@ class Dashboard
                         <td>
                             <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id']) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id'] . '&_=' . time()) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-delete" data-id="<?php echo esc_attr($seg['id']); ?>" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
                             <?php if (!$upload_disabled): ?>
@@ -2045,15 +2045,27 @@ class Dashboard
                         } else {
                             addConditionRow({});
                         }
+                        var fetchDone = false;
+                        var editFetchTimeout = setTimeout(function() {
+                            if (fetchDone) return;
+                            fetchDone = true;
+                            location.reload();
+                        }, 8000);
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) {
+                                if (fetchDone) return null;
                                 if (!r.ok) {
+                                    fetchDone = true;
+                                    clearTimeout(editFetchTimeout);
                                     location.reload();
                                     return null;
                                 }
                                 return r.json();
                             })
                             .then(function(seg) {
+                                if (fetchDone) return;
+                                fetchDone = true;
+                                clearTimeout(editFetchTimeout);
                                 if (!seg || !seg.filter_definition) return;
                                 if (seg.code && seg.message) return;
                                 var def;
@@ -2063,7 +2075,12 @@ class Dashboard
                                 if (def && (def.conditions || def.logic)) setDefinition(def);
                                 applySegmentToForm(seg);
                             })
-                            .catch(function() { location.reload(); });
+                            .catch(function() {
+                                if (fetchDone) return;
+                                fetchDone = true;
+                                clearTimeout(editFetchTimeout);
+                                location.reload();
+                            });
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
                     } else {
