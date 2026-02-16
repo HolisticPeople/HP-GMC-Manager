@@ -1685,7 +1685,7 @@ class Dashboard
 
             <div class="hp-gmc-audiences-help" style="margin: 1em 0; padding: 0.75em; background: #f0f0f1; border-left: 4px solid #2271b1;">
                 <strong><?php esc_html_e('Segment', 'hp-gmc-manager'); ?></strong>
-                <?php esc_html_e('Users who match the conditions below (e.g. location, purchase history, funnel).', 'hp-gmc-manager'); ?>
+                <?php esc_html_e('Users who match the conditions below (e.g. billing/shipping address, purchase history, funnel).', 'hp-gmc-manager'); ?>
                 <br>
                 <strong><?php esc_html_e('Append vs Replace', 'hp-gmc-manager'); ?></strong>
                 <?php esc_html_e('When uploading to Google Ads: Append adds the current run to the existing list; Replace clears the list and adds only the current run.', 'hp-gmc-manager'); ?>
