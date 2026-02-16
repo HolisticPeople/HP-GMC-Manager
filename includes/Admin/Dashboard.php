@@ -1815,7 +1815,8 @@ class Dashboard
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
-                    location: 'Location',
+                    billing_address: 'Billing address',
+                    shipping_address: 'Shipping address',
                     purchase_product: 'Purchase history: Bought product',
                     purchase_spend: 'Purchase history: Total spend',
                     purchase_orders: 'Purchase history: Number of orders',
@@ -1831,7 +1832,7 @@ class Dashboard
                 function buildConditionFields(type, c) {
                     c = c || {};
                     var esc = function(v) { return String(v === null || v === undefined ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-                    if (type === 'location') {
+                    if (type === 'billing_address' || type === 'shipping_address') {
                         var countryOpts = Object.keys(audienceCountries).map(function(code) {
                             var sel = (c.country === code) ? ' selected' : '';
                             return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
@@ -1953,7 +1954,7 @@ class Dashboard
                         }
                         if (val !== '' && val !== null && val !== undefined) cond[param] = val;
                     });
-                    if (type === 'location' && cond.country) return cond;
+                    if ((type === 'billing_address' || type === 'shipping_address') && cond.country) return cond;
                     if (type === 'purchase_product' && cond.sku) return cond;
                     if (type === 'purchase_spend' && (cond.ltv_min != null || cond.ltv_max != null)) return cond;
                     if (type === 'purchase_orders' && (cond.order_count_min != null || cond.order_count_max != null)) return cond;
@@ -1978,7 +1979,7 @@ class Dashboard
                 }
                 function addConditionRow(c) {
                     c = c || {};
-                    var type = c.type || 'location';
+                    var type = c.type || 'billing_address';
                     var includeVal = (c.include === false) ? 'exclude' : 'include';
                     var row = document.createElement('tr');
                     row.className = 'hp-gmc-condition';
