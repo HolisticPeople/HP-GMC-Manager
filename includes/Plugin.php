@@ -21,9 +21,7 @@ class Plugin
 {
     /**
      * Append one NDJSON line for debug (GMC sync/status).
-     * Set HP_GMC_DEBUG_LOG in wp-config.php to a writable path on production/staging
-     * (e.g. WP_CONTENT_DIR . '/uploads/hp-gmc-debug.log') to capture logs there.
-     * Default: on Windows c:\DEV\.cursor\debug.log; elsewhere sys_get_temp_dir()/hp-gmc-debug.log.
+     * No-op unless HP_GMC_DEBUG_LOG is defined in wp-config.php (e.g. WP_CONTENT_DIR . '/uploads/hp-gmc-debug.log').
      *
      * @param string $message Short label
      * @param array  $data    Key-value data (no secrets)
@@ -31,7 +29,10 @@ class Plugin
      */
     public static function debugLog(string $message, array $data = [], string $hypothesisId = ''): void
     {
-        $path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (DIRECTORY_SEPARATOR === '\\' ? 'c:\\DEV\\.cursor\\debug.log' : sys_get_temp_dir() . '/hp-gmc-debug.log');
+        if (!defined('HP_GMC_DEBUG_LOG') || HP_GMC_DEBUG_LOG === '') {
+            return;
+        }
+        $path = HP_GMC_DEBUG_LOG;
         $payload = array_filter([
             'id' => 'hp-gmc-' . uniqid('', true),
             'timestamp' => (int) round(microtime(true) * 1000),
@@ -41,10 +42,7 @@ class Plugin
             'hypothesisId' => $hypothesisId ?: null,
         ]);
         $line = wp_json_encode($payload) . "\n";
-        $written = ($path !== '' && @file_put_contents($path, $line, FILE_APPEND | LOCK_EX));
-        if (!$written) {
-            error_log('[HP-GMC-DBG] ' . trim($line));
-        }
+        @file_put_contents($path, $line, FILE_APPEND | LOCK_EX);
     }
 
     /**
@@ -504,22 +502,6 @@ class Plugin
                             'type' => 'string',
                             'description' => 'Name to say hello to',
                             'default' => 'World',
-                        ],
-                    ],
-                ],
-                'category' => 'test',
-            ],
-            'gmc-debug-products-api' => [
-                'title' => 'Debug Products API',
-                'description' => 'Debug: Get raw API response for products endpoint to diagnose issues',
-                'callback' => [Abilities\ProductAbilities::class, 'debugProductsApi'],
-                'input_schema' => [
-                    'type' => 'object',
-                    'properties' => [
-                        'page_size' => [
-                            'type' => 'integer',
-                            'description' => 'Number of products to fetch',
-                            'default' => 5,
                         ],
                     ],
                 ],
@@ -2577,13 +2559,6 @@ class Plugin
         // Clear funnel feed cache when any funnel is saved
         if (Services\FunnelDataFeed::isAvailable()) {
             Services\FunnelDataFeed::clearCache();
-
-            error_log(json_encode([
-                'event' => 'funnel_feed.cache_cleared_on_save',
-                'funnel_id' => $post_id,
-                'update' => $update,
-                'timestamp' => current_time('mysql'),
-            ]));
         }
     }
 
@@ -2598,13 +2573,6 @@ class Plugin
         // Clear funnel feed cache when GMC settings change
         if (Services\FunnelDataFeed::isAvailable()) {
             Services\FunnelDataFeed::clearCache();
-
-            error_log(json_encode([
-                'event' => 'funnel_feed.gmc_settings_updated',
-                'funnel_id' => $funnel_id,
-                'gmc_enabled' => $gmc_enabled,
-                'timestamp' => current_time('mysql'),
-            ]));
         }
     }
 }

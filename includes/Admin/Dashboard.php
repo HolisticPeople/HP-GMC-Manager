@@ -1122,11 +1122,6 @@ class Dashboard
                                     title="<?php esc_attr_e('Force crawl: tell GMC to fetch this feed now', 'hp-gmc-manager'); ?>">
                                 <span class="dashicons dashicons-controls-play"></span>
                             </button>
-                            <button type="button" class="button button-small hp-gmc-feed-debug" 
-                                    data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
-                                    title="<?php esc_attr_e('View raw GMC response', 'hp-gmc-manager'); ?>">
-                                <span class="dashicons dashicons-visibility"></span>
-                            </button>
                             <button type="button" class="button button-small hp-gmc-feed-remove-gmc" 
                                     data-feed-id="<?php echo esc_attr($feed['id']); ?>" 
                                     data-feed-name="<?php echo esc_attr($feed['name']); ?>"
@@ -1253,22 +1248,6 @@ class Dashboard
                     <button type="button" class="button button-primary" id="hp-gmc-add-all-pending" data-feed-id="">
                         <?php esc_html_e('Add All to Feed', 'hp-gmc-manager'); ?>
                     </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Feed Debug Modal -->
-        <div id="hp-gmc-feed-debug-modal" class="hp-gmc-modal hp-gmc-modal-lg" style="display:none;">
-            <div class="hp-gmc-modal-content">
-                <div class="hp-gmc-modal-header">
-                    <h3><?php esc_html_e('GMC Feed Debug', 'hp-gmc-manager'); ?></h3>
-                    <button type="button" class="hp-gmc-modal-close">&times;</button>
-                </div>
-                <div class="hp-gmc-modal-body">
-                    <pre id="hp-gmc-feed-debug-content" style="background: #f0f0f1; padding: 10px; border-radius: 4px; overflow: auto; max-height: 500px;"></pre>
-                </div>
-                <div class="hp-gmc-modal-footer">
-                    <button type="button" class="button hp-gmc-modal-close"><?php esc_html_e('Close', 'hp-gmc-manager'); ?></button>
                 </div>
             </div>
         </div>
