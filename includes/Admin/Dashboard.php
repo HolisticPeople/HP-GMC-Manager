@@ -1750,7 +1750,7 @@ class Dashboard
                         <td>
                             <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc&edit=' . (int) $seg['id']) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id']) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
                             <?php if (!$upload_disabled): ?>
                             <button type="button" class="button button-small button-secondary hp-gmc-audience-upload" data-id="<?php echo esc_attr($seg['id']); ?>" data-count="<?php echo esc_attr($seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : ''); ?>"><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></button>
@@ -2041,7 +2041,7 @@ class Dashboard
                     if (editId) { url = restBase + '/' + editId; method = 'PUT'; }
                     fetch(url, { method: method, headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(payload) })
                         .then(function(r) { return r.json(); })
-                        .then(function(data) { if (data.id || data.name) { location.href = location.pathname + '?page=hp-gmc&tab=audiences'; } else { alert(data.message || 'Failed'); } })
+                        .then(function(data) { if (data.id || data.name) { location.href = location.pathname + '?page=hp-gmc-manager#audiences'; } else { alert(data.message || 'Failed'); } })
                         .catch(function() { alert('Failed'); });
                 });
                 document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
