@@ -1812,7 +1812,22 @@ class Dashboard
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
                 var productSearchAjaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
-                var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
+                <?php
+                $edit_def_json = 'null';
+                if ($edit_segment && !empty($edit_segment['filter_definition'])) {
+                    $edit_def = json_decode($edit_segment['filter_definition'], true);
+                    if (is_array($edit_def) && !empty($edit_def['conditions'])) {
+                        foreach ($edit_def['conditions'] as &$c) {
+                            if (isset($c['type']) && $c['type'] === 'location') {
+                                $c['type'] = 'billing_address';
+                            }
+                        }
+                        unset($c);
+                    }
+                    $edit_def_json = wp_json_encode($edit_def);
+                }
+                ?>
+                var editDefinition = <?php echo $edit_def_json; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
@@ -2011,8 +2026,15 @@ class Dashboard
                         if (tr) tr.remove();
                     });
                 });
-                if (editDefinition) setDefinition(editDefinition);
-                else addConditionRow({});
+                function applyEditDefinition() {
+                    if (editDefinition) setDefinition(editDefinition);
+                    else addConditionRow({});
+                }
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', applyEditDefinition);
+                } else {
+                    applyEditDefinition();
+                }
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
