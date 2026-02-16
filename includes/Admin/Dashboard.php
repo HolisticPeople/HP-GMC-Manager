@@ -2012,6 +2012,24 @@ class Dashboard
                 });
                 if (editDefinition) setDefinition(editDefinition);
                 else addConditionRow({});
+                (function syncEditFromUrl() {
+                    var match = location.search.match(/[?&]edit=(\d+)/);
+                    if (!match) return;
+                    var urlEditId = parseInt(match[1], 10);
+                    if (urlEditId === editId && editDefinition) return;
+                    fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
+                        .then(function(r) { return r.json(); })
+                        .then(function(seg) {
+                            if (seg && seg.filter_definition) {
+                                var def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
+                                if (def && (def.conditions || def.logic)) setDefinition(def);
+                            }
+                        })
+                        .catch(function() {});
+                })();
+                window.addEventListener('pageshow', function(event) {
+                    if (event.persisted && /[?&]edit=\d+/.test(location.search)) location.reload();
+                });
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });

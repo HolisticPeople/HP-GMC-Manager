@@ -81,6 +81,12 @@
     display: block;
 }
 
+/* Segment builder: vertical separator between Condition type and Parameters */
+.hp-gmc-audience-conditions-table th:nth-child(3),
+.hp-gmc-audience-conditions-table td:nth-child(3) {
+    border-left: 2px solid #c3c4c7;
+}
+
 /* Tab content */
 .hp-gmc-tab-content {
     background: #fff;
