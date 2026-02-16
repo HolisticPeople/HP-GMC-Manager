@@ -1698,6 +1698,18 @@ class Dashboard
             if (empty($audience_countries)) {
                 $audience_countries = ['US' => 'United States', 'CA' => 'Canada', 'GB' => 'United Kingdom', 'AU' => 'Australia'];
             }
+            $audience_funnel_slugs = [];
+            $funnel_posts = get_posts([
+                'post_type'      => 'hp-funnel',
+                'post_status'    => 'publish',
+                'posts_per_page' => -1,
+                'orderby'        => 'title',
+                'order'          => 'ASC',
+            ]);
+            foreach ($funnel_posts as $fp) {
+                $slug = get_post_meta($fp->ID, 'funnel_slug', true) ?: $fp->post_name;
+                $audience_funnel_slugs[] = ['slug' => $slug, 'title' => $fp->post_title];
+            }
             ?>
 
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
@@ -1765,9 +1777,21 @@ class Dashboard
                     <option value="and">AND</option>
                     <option value="or">OR</option>
                 </select>
-                <div id="hp-gmc-audience-conditions"></div>
+                <table class="wp-list-table widefat fixed striped" style="margin-top: 0.5em;">
+                    <thead>
+                        <tr>
+                            <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
+                            <th><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
+                            <th><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
+                            <th><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="hp-gmc-audience-conditions"></tbody>
+                </table>
                 <p style="margin-top: 0.5em;">
                     <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
                     <span id="hp-gmc-audience-preview-result"></span>
                 </p>
@@ -1787,6 +1811,7 @@ class Dashboard
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
+                var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
                     location: 'Location',
                     purchase_product: 'Purchase history: Bought product',
@@ -1832,15 +1857,23 @@ class Dashboard
                             ' <input type="date" class="cond-date" data-param="date" value="' + esc(c.date) + '">';
                     }
                     if (type === 'funnel') {
-                        return 'Funnel slug <input type="text" class="cond-funnel-slug" data-param="funnel_slug" placeholder="e.g. my-funnel" value="' + esc(c.funnel_slug) + '" style="width:140px"> ' +
-                            'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
+                        var funnelOpts = '<option value="">— ' + (audienceFunnelSlugs.length ? 'Select funnel' : 'No funnels') + ' —</option>';
+                        audienceFunnelSlugs.forEach(function(f) {
+                            var sel = (c.funnel_slug === f.slug) ? ' selected' : '';
+                            funnelOpts += '<option value="' + esc(f.slug) + '"' + sel + '>' + esc(f.title || f.slug) + '</option>';
+                        });
+                        return 'Funnel <select class="cond-funnel-slug" data-param="funnel_slug" style="min-width:160px">' + funnelOpts + '</select> ' +
+                            'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px" title="Leave empty for all time"> days';
                     }
                     return '';
                 }
                 function getConditionFromRow(row) {
-                    var type = row.querySelector('.cond-type').value;
+                    var typeEl = row.querySelector('.cond-type');
+                    var includeEl = row.querySelector('.cond-include-exclude');
+                    if (!typeEl || !includeEl) return null;
+                    var type = typeEl.value;
                     if (!type) return null;
-                    var cond = { type: type, include: row.querySelector('.cond-include').checked };
+                    var cond = { type: type, include: includeEl.value !== 'exclude' };
                     var fields = row.querySelectorAll('.cond-fields [data-param]');
                     fields.forEach(function(el) {
                         var param = el.getAttribute('data-param');
@@ -1882,19 +1915,33 @@ class Dashboard
                 function addConditionRow(c) {
                     c = c || {};
                     var type = c.type || 'location';
-                    var row = document.createElement('div');
+                    var includeVal = (c.include === false) ? 'exclude' : 'include';
+                    var row = document.createElement('tr');
                     row.className = 'hp-gmc-condition';
                     var typeOpts = Object.keys(conditionTypeLabels).map(function(t) {
                         return '<option value="' + t + '"' + (t === type ? ' selected' : '') + '>' + conditionTypeLabels[t] + '</option>';
                     }).join('');
-                    row.innerHTML = '<select class="cond-type">' + typeOpts + '</select> <span class="cond-fields">' + buildConditionFields(type, c) + '</span> <label><input type="checkbox" class="cond-include" ' + (c.include !== false ? 'checked' : '') + '> Include</label>';
-                    document.getElementById('hp-gmc-audience-conditions').appendChild(row);
+                    row.innerHTML =
+                        '<td class="check-column"><input type="checkbox" class="cond-delete" aria-label="Select for deletion"></td>' +
+                        '<td><select class="cond-type">' + typeOpts + '</select></td>' +
+                        '<td><span class="cond-fields">' + buildConditionFields(type, c) + '</span></td>' +
+                        '<td><select class="cond-include-exclude"><option value="include"' + (includeVal === 'include' ? ' selected' : '') + '>Include</option><option value="exclude"' + (includeVal === 'exclude' ? ' selected' : '') + '>Exclude</option></select></td>' +
+                        '<td><button type="button" class="button button-small cond-remove">Remove</button></td>';
+                    var tbody = document.getElementById('hp-gmc-audience-conditions');
+                    tbody.appendChild(row);
                     row.querySelector('.cond-type').addEventListener('change', function() {
                         var newType = this.value;
                         row.querySelector('.cond-fields').innerHTML = buildConditionFields(newType, {});
                     });
+                    row.querySelector('.cond-remove').addEventListener('click', function() { row.remove(); });
                 }
                 document.getElementById('hp-gmc-audience-add-condition').addEventListener('click', function() { addConditionRow({}); });
+                document.getElementById('hp-gmc-audience-delete-selected').addEventListener('click', function() {
+                    document.querySelectorAll('#hp-gmc-audience-conditions .cond-delete:checked').forEach(function(cb) {
+                        var tr = cb.closest('tr');
+                        if (tr) tr.remove();
+                    });
+                });
                 if (editDefinition) setDefinition(editDefinition);
                 else addConditionRow({});
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {

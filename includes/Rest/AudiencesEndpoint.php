@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
  */
 class AudiencesEndpoint
 {
-    private static function permission(): bool
+    public static function permission(): bool
     {
         return current_user_can('manage_woocommerce');
     }
