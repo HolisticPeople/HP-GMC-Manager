@@ -1813,6 +1813,7 @@ class Dashboard
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
+                var currentEditId = editId;
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
@@ -2010,22 +2011,41 @@ class Dashboard
                         if (tr) tr.remove();
                     });
                 });
-                if (editDefinition) setDefinition(editDefinition);
-                else addConditionRow({});
-                (function syncEditFromUrl() {
+                (function applyInitialDefinition() {
                     var match = location.search.match(/[?&]edit=(\d+)/);
-                    if (!match) return;
-                    var urlEditId = parseInt(match[1], 10);
-                    if (urlEditId === editId && editDefinition) return;
-                    fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
-                        .then(function(r) { return r.json(); })
-                        .then(function(seg) {
-                            if (seg && seg.filter_definition) {
-                                var def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
-                                if (def && (def.conditions || def.logic)) setDefinition(def);
-                            }
-                        })
-                        .catch(function() {});
+                    if (match) {
+                        var urlEditId = parseInt(match[1], 10);
+                        fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
+                            .then(function(r) { return r.json(); })
+                            .then(function(seg) {
+                                if (seg && seg.filter_definition) {
+                                    var def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
+                                    if (def && (def.conditions || def.logic)) setDefinition(def);
+                                } else { addConditionRow({}); }
+                                currentEditId = seg && seg.id ? parseInt(seg.id, 10) : 0;
+                                var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                                if (nameEl && seg && seg.name) nameEl.value = seg.name;
+                                var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                                if (currentEditId && editIdInput) editIdInput.value = currentEditId;
+                                if (currentEditId && !editIdInput) {
+                                    var p = document.getElementById('hp-gmc-audience-save-name');
+                                    if (p && p.parentNode) {
+                                        var hid = document.createElement('input');
+                                        hid.type = 'hidden';
+                                        hid.id = 'hp-gmc-audience-edit-id';
+                                        hid.value = currentEditId;
+                                        p.parentNode.appendChild(hid);
+                                    }
+                                }
+                                var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                                if (saveBtn && currentEditId) saveBtn.textContent = 'Update';
+                            })
+                            .catch(function() { addConditionRow({}); });
+                    } else if (editDefinition) {
+                        setDefinition(editDefinition);
+                    } else {
+                        addConditionRow({});
+                    }
                 })();
                 window.addEventListener('pageshow', function(event) {
                     if (event.persisted && /[?&]edit=\d+/.test(location.search)) location.reload();
@@ -2047,7 +2067,7 @@ class Dashboard
                     if (!name) { alert('Enter a segment name'); return; }
                     var payload = { name: name, filter_definition: JSON.stringify(getDefinition()) };
                     var url = restBase, method = 'POST';
-                    if (editId) { url = restBase + '/' + editId; method = 'PUT'; }
+                    if (currentEditId) { url = restBase + '/' + currentEditId; method = 'PUT'; }
                     fetch(url, { method: method, headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(payload) })
                         .then(function(r) { return r.json(); })
                         .then(function(data) { if (data.id || data.name) { location.href = location.pathname + '?page=hp-gmc-manager#audiences'; } else { alert(data.message || 'Failed'); } })
