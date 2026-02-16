@@ -2036,30 +2036,21 @@ class Dashboard
                         if (saveBtn && currentEditId) saveBtn.textContent = 'Update';
                     }
 
-                    if (urlEditId) {
-                        if (editId === urlEditId && editDefinition) {
-                            setDefinition(editDefinition);
-                            currentEditId = editId;
-                            var nameEl = document.getElementById('hp-gmc-audience-save-name');
-                            applySegmentToForm({ id: editId, name: nameEl ? nameEl.value : '' });
-                        } else {
-                            addConditionRow({});
-                        }
+                    if (urlEditId && editId === urlEditId && editDefinition) {
+                        setDefinition(editDefinition);
+                        currentEditId = editId;
+                        var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                        applySegmentToForm({ id: editId, name: nameEl ? nameEl.value : '' });
+                    } else if (urlEditId) {
+                        addConditionRow({});
                         var fetchDone = false;
                         var editFetchTimeout = setTimeout(function() {
-                            if (fetchDone) return;
-                            fetchDone = true;
-                            location.reload();
+                            if (!fetchDone) { fetchDone = true; location.reload(); }
                         }, 8000);
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) {
                                 if (fetchDone) return null;
-                                if (!r.ok) {
-                                    fetchDone = true;
-                                    clearTimeout(editFetchTimeout);
-                                    location.reload();
-                                    return null;
-                                }
+                                if (!r.ok) { fetchDone = true; clearTimeout(editFetchTimeout); location.reload(); return null; }
                                 return r.json();
                             })
                             .then(function(seg) {
@@ -2069,17 +2060,11 @@ class Dashboard
                                 if (!seg || !seg.filter_definition) return;
                                 if (seg.code && seg.message) return;
                                 var def;
-                                try {
-                                    def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
-                                } catch (e) { return; }
-                                if (def && (def.conditions || def.logic)) setDefinition(def);
-                                applySegmentToForm(seg);
+                                try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (e) { return; }
+                                if (def && (def.conditions || def.logic)) { setDefinition(def); applySegmentToForm(seg); }
                             })
                             .catch(function() {
-                                if (fetchDone) return;
-                                fetchDone = true;
-                                clearTimeout(editFetchTimeout);
-                                location.reload();
+                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); location.reload(); }
                             });
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
@@ -2087,9 +2072,6 @@ class Dashboard
                         addConditionRow({});
                     }
                 })();
-                window.addEventListener('pageshow', function(event) {
-                    if (event.persisted && /[?&]edit=\d+/.test(location.search)) location.reload();
-                });
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
