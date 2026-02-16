@@ -95,10 +95,10 @@
     max-width: 100%;
     width: 100%;
 }
-/* Vertical separator and Parameters column: line starts at boundary, parameters flush to it */
+/* Vertical separator and Parameters column: regular 1px line, parameters flush to it */
 .hp-gmc-audience-conditions-table th:nth-child(3),
 .hp-gmc-audience-conditions-table td:nth-child(3) {
-    border-left: 2px solid #c3c4c7;
+    border-left: 1px solid #c3c4c7;
     padding-left: 0;
 }
 

@@ -2013,34 +2013,50 @@ class Dashboard
                 });
                 (function applyInitialDefinition() {
                     var match = location.search.match(/[?&]edit=(\d+)/);
-                    if (match) {
-                        var urlEditId = parseInt(match[1], 10);
+                    var urlEditId = match ? parseInt(match[1], 10) : 0;
+
+                    function applySegmentToForm(seg) {
+                        if (!seg) return;
+                        currentEditId = seg.id ? parseInt(seg.id, 10) : 0;
+                        var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                        if (nameEl && seg.name) nameEl.value = seg.name;
+                        var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                        if (currentEditId && editIdInput) editIdInput.value = currentEditId;
+                        if (currentEditId && !editIdInput) {
+                            var p = document.getElementById('hp-gmc-audience-save-name');
+                            if (p && p.parentNode) {
+                                var hid = document.createElement('input');
+                                hid.type = 'hidden';
+                                hid.id = 'hp-gmc-audience-edit-id';
+                                hid.value = currentEditId;
+                                p.parentNode.appendChild(hid);
+                            }
+                        }
+                        var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                        if (saveBtn && currentEditId) saveBtn.textContent = 'Update';
+                    }
+
+                    if (urlEditId) {
+                        if (editId === urlEditId && editDefinition) {
+                            setDefinition(editDefinition);
+                            currentEditId = editId;
+                            var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                            applySegmentToForm({ id: editId, name: nameEl ? nameEl.value : '' });
+                        } else {
+                            addConditionRow({});
+                        }
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) { return r.json(); })
                             .then(function(seg) {
-                                if (seg && seg.filter_definition) {
-                                    var def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
-                                    if (def && (def.conditions || def.logic)) setDefinition(def);
-                                } else { addConditionRow({}); }
-                                currentEditId = seg && seg.id ? parseInt(seg.id, 10) : 0;
-                                var nameEl = document.getElementById('hp-gmc-audience-save-name');
-                                if (nameEl && seg && seg.name) nameEl.value = seg.name;
-                                var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
-                                if (currentEditId && editIdInput) editIdInput.value = currentEditId;
-                                if (currentEditId && !editIdInput) {
-                                    var p = document.getElementById('hp-gmc-audience-save-name');
-                                    if (p && p.parentNode) {
-                                        var hid = document.createElement('input');
-                                        hid.type = 'hidden';
-                                        hid.id = 'hp-gmc-audience-edit-id';
-                                        hid.value = currentEditId;
-                                        p.parentNode.appendChild(hid);
-                                    }
-                                }
-                                var saveBtn = document.getElementById('hp-gmc-audience-save-as');
-                                if (saveBtn && currentEditId) saveBtn.textContent = 'Update';
+                                if (!seg || !seg.filter_definition) return;
+                                var def;
+                                try {
+                                    def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition;
+                                } catch (e) { return; }
+                                if (def && (def.conditions || def.logic)) setDefinition(def);
+                                applySegmentToForm(seg);
                             })
-                            .catch(function() { addConditionRow({}); });
+                            .catch(function() {});
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
                     } else {
