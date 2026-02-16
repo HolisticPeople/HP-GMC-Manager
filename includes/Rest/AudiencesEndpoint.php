@@ -263,20 +263,21 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
         }
-        $result = self::run_definition_internal($def);
+        $result = self::run_definition_internal($def, true);
         if (isset($result['error'])) {
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
         return new WP_REST_Response(['count' => $result['count']], 200);
     }
 
-    private static function run_definition_internal(array $def): array
+    private static function run_definition_internal(array $def, bool $preview = false): array
     {
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
         $engine = new \HP_Abilities\Services\SegmentFilterEngine();
-        $out = $engine->run($def, null);
+        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : null;
+        $out = $engine->run($def, null, $max_orders);
         return ['count' => $out['count'], 'rows' => $out['rows']];
     }
 
