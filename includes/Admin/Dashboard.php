@@ -1808,6 +1808,8 @@ class Dashboard
             (function() {
                 var restBase = <?php echo wp_json_encode($rest_base); ?>;
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
+                var productSearchAjaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
+                var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
@@ -1837,7 +1839,10 @@ class Dashboard
                         return '<select class="cond-country" data-param="country"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
                     }
                     if (type === 'purchase_product') {
-                        return 'SKU <input type="text" class="cond-sku" data-param="sku" placeholder="e.g. ABC-123" value="' + esc(c.sku) + '" style="width:120px"> ' +
+                        return 'SKU <span class="hp-gmc-sku-wrap" style="position:relative;display:inline-block;">' +
+                            '<input type="text" class="cond-sku" data-param="sku" placeholder="e.g. ABC-123 or search…" value="' + esc(c.sku) + '" style="width:180px" autocomplete="off">' +
+                            '<div class="hp-gmc-sku-suggestions" style="position:absolute;left:0;top:100%;min-width:100%;max-height:200px;overflow:auto;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 4px 8px rgba(0,0,0,0.15);display:none;z-index:100;"></div>' +
+                            '</span> ' +
                             'At least <input type="number" class="cond-min-quantity" data-param="min_quantity" min="1" value="' + (c.min_quantity || 1) + '" style="width:50px"> units ' +
                             'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
                     }
@@ -1866,6 +1871,65 @@ class Dashboard
                             'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px" title="Leave empty for all time"> days';
                     }
                     return '';
+                }
+                function initSkuAutocomplete(row) {
+                    var input = row ? row.querySelector('.cond-sku') : null;
+                    var wrap = input ? input.closest('.hp-gmc-sku-wrap') : null;
+                    var list = wrap ? wrap.querySelector('.hp-gmc-sku-suggestions') : null;
+                    if (!input || !list) return;
+                    var debounce = null;
+                    function hideList() { list.style.display = 'none'; list.innerHTML = ''; }
+                    function showList(items) {
+                        list.innerHTML = items.map(function(p) {
+                            return '<div class="hp-gmc-sku-item" data-sku="' + String(p.sku || '').replace(/"/g, '&quot;') + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
+                        }).join('');
+                        list.style.display = items.length ? 'block' : 'none';
+                        list.querySelectorAll('.hp-gmc-sku-item').forEach(function(el) {
+                            el.addEventListener('click', function() {
+                                input.value = el.getAttribute('data-sku') || '';
+                                hideList();
+                                input.focus();
+                            });
+                        });
+                    }
+                    list.addEventListener('mousedown', function(e) { e.preventDefault(); });
+                    input.addEventListener('input', function() {
+                        clearTimeout(debounce);
+                        var term = input.value.trim();
+                        if (term.length < 2) { hideList(); return; }
+                        debounce = setTimeout(function() {
+                            var form = new FormData();
+                            form.append('action', 'hp_gmc_search_products');
+                            form.append('nonce', productSearchNonce);
+                            form.append('term', term);
+                            fetch(productSearchAjaxUrl, { method: 'POST', body: form })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    var products = (data && data.data && data.data.products) ? data.data.products : [];
+                                    showList(products);
+                                })
+                                .catch(function() { hideList(); });
+                        }, 250);
+                    });
+                    input.addEventListener('focus', function() {
+                        var term = input.value.trim();
+                        if (term.length >= 2 && list.innerHTML === '') {
+                            var form = new FormData();
+                            form.append('action', 'hp_gmc_search_products');
+                            form.append('nonce', productSearchNonce);
+                            form.append('term', term);
+                            fetch(productSearchAjaxUrl, { method: 'POST', body: form })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    var products = (data && data.data && data.data.products) ? data.data.products : [];
+                                    showList(products);
+                                })
+                                .catch(function() {});
+                        }
+                    });
+                    input.addEventListener('blur', function() {
+                        setTimeout(hideList, 200);
+                    });
                 }
                 function getConditionFromRow(row) {
                     var typeEl = row.querySelector('.cond-type');
@@ -1929,9 +1993,11 @@ class Dashboard
                         '<td><button type="button" class="button button-small cond-remove">Remove</button></td>';
                     var tbody = document.getElementById('hp-gmc-audience-conditions');
                     tbody.appendChild(row);
+                    if (type === 'purchase_product') initSkuAutocomplete(row);
                     row.querySelector('.cond-type').addEventListener('change', function() {
                         var newType = this.value;
                         row.querySelector('.cond-fields').innerHTML = buildConditionFields(newType, {});
+                        if (newType === 'purchase_product') initSkuAutocomplete(row);
                     });
                     row.querySelector('.cond-remove').addEventListener('click', function() { row.remove(); });
                 }
@@ -1950,8 +2016,19 @@ class Dashboard
                 document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
                     var resultEl = document.getElementById('hp-gmc-audience-preview-result');
                     resultEl.textContent = '…';
-                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: getDefinition() }) })
-                        .then(function(r) { return r.json(); })
+                    var filterDefinition = getDefinition();
+                    // #region agent log
+                    fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'filter_definition sent',data:{filter_definition:filterDefinition},timestamp:Date.now(),hypothesisId:'H1'})}).catch(function(){});
+                    // #endregion
+                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition }) })
+                        .then(function(r) {
+                            return r.json().then(function(data) {
+                                // #region agent log
+                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-response',message:'run-definition response',data:{ok:r.ok,status:r.status,data:data},timestamp:Date.now(),hypothesisId:'H5'})}).catch(function(){});
+                                // #endregion
+                                return data;
+                            });
+                        })
                         .then(function(data) { resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error'); })
                         .catch(function() { resultEl.textContent = 'Error'; });
                 });
