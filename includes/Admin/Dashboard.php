@@ -1675,7 +1675,6 @@ class Dashboard
             <h2><?php esc_html_e('Audiences', 'hp-gmc-manager'); ?></h2>
             <p class="description">
                 <?php esc_html_e('Build segments from your WooCommerce data and export them as CSV for Google Ads Customer Match, or upload via API (production).', 'hp-gmc-manager'); ?>
-                <br><span class="description"><?php esc_html_e('Saving a segment stores its definition (name + conditions) so you can re-run, re-export CSV, or re-upload to Google Ads anytime without rebuilding the conditions.', 'hp-gmc-manager'); ?></span>
             </p>
 
             <?php if ($upload_disabled): ?>
@@ -1756,7 +1755,6 @@ class Dashboard
                             <?php if (!$upload_disabled): ?>
                             <button type="button" class="button button-small button-secondary hp-gmc-audience-upload" data-id="<?php echo esc_attr($seg['id']); ?>" data-count="<?php echo esc_attr($seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : ''); ?>"><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></button>
                             <?php endif; ?>
-                            <button type="button" class="button button-small hp-gmc-audience-delete" data-id="<?php echo esc_attr($seg['id']); ?>" data-name="<?php echo esc_attr($seg['name']); ?>" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -1814,7 +1812,6 @@ class Dashboard
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
-                var noSegmentsMsg = <?php echo wp_json_encode(__('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager')); ?>;
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
@@ -2066,28 +2063,6 @@ class Dashboard
                                     a.download = data.filename || 'segment.csv';
                                     a.click();
                                 } else { alert(data.message || 'Failed'); }
-                            })
-                            .catch(function() { alert('Error'); });
-                    });
-                });
-                document.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        var name = this.dataset.name || ('#' + id);
-                        if (!confirm('Delete segment “‘ + name + '”? This cannot be undone.')) { return; }
-                        var row = this.closest('tr');
-                        fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.deleted && row) {
-                                    row.remove();
-                                    var tbody = row.closest('tbody');
-                                    if (tbody && tbody.querySelectorAll('tr').length === 0) {
-                                        var empty = document.createElement('tr');
-                                        empty.innerHTML = '<td colspan="5">' + (typeof noSegmentsMsg !== 'undefined' ? noSegmentsMsg : 'No saved segments yet. Use the builder below and "Save as".') + '</td>';
-                                        tbody.appendChild(empty);
-                                    }
-                                } else { alert(data.message || 'Delete failed'); }
                             })
                             .catch(function() { alert('Error'); });
                     });
