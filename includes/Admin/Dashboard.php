@@ -1752,6 +1752,7 @@ class Dashboard
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
                             <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id']) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
+                            <button type="button" class="button button-small hp-gmc-audience-delete" data-id="<?php echo esc_attr($seg['id']); ?>" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
                             <?php if (!$upload_disabled): ?>
                             <button type="button" class="button button-small button-secondary hp-gmc-audience-upload" data-id="<?php echo esc_attr($seg['id']); ?>" data-count="<?php echo esc_attr($seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : ''); ?>"><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></button>
                             <?php endif; ?>
@@ -2065,6 +2066,19 @@ class Dashboard
                                 } else { alert(data.message || 'Failed'); }
                             })
                             .catch(function() { alert('Error'); });
+                    });
+                });
+                document.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var id = this.dataset.id;
+                        if (!confirm('Delete this segment? This cannot be undone.')) return;
+                        fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                if (data.deleted) location.reload();
+                                else alert(data.message || 'Delete failed');
+                            })
+                            .catch(function() { alert('Delete failed'); });
                     });
                 });
                 document.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
