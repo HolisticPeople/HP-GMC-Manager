@@ -2018,18 +2018,8 @@ class Dashboard
                     var resultEl = document.getElementById('hp-gmc-audience-preview-result');
                     resultEl.textContent = '…';
                     var filterDefinition = getDefinition();
-                    // #region agent log
-                    fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'filter_definition sent',data:{filter_definition:filterDefinition},timestamp:Date.now(),hypothesisId:'H1'})}).catch(function(){});
-                    // #endregion
                     fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition }) })
-                        .then(function(r) {
-                            return r.json().then(function(data) {
-                                // #region agent log
-                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-response',message:'run-definition response',data:{ok:r.ok,status:r.status,data:data},timestamp:Date.now(),hypothesisId:'H5'})}).catch(function(){});
-                                // #endregion
-                                return data;
-                            });
-                        })
+                        .then(function(r) { return r.json(); })
                         .then(function(data) { resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error'); })
                         .catch(function() { resultEl.textContent = 'Error'; });
                 });

@@ -255,11 +255,6 @@ class AudiencesEndpoint
     {
         $filter_definition = $request->get_param('filter_definition');
         $def = is_string($filter_definition) ? json_decode($filter_definition, true) : $filter_definition;
-        // #region agent log
-        if (function_exists('error_log')) {
-            error_log('SEGMENT_DEBUG ' . json_encode(['hypothesisId' => 'H1', 'location' => 'AudiencesEndpoint::run_definition', 'message' => 'received filter_definition', 'data' => ['has_param' => $filter_definition !== null, 'def_keys' => is_array($def) ? array_keys($def) : null, 'conditions_count' => is_array($def) ? count($def['conditions'] ?? []) : null, 'conditions_sample' => is_array($def) && !empty($def['conditions']) ? $def['conditions'][0] : null], 'timestamp' => round(microtime(true) * 1000)]));
-        }
-        // #endregion
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
         }
