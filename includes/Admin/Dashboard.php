@@ -1778,13 +1778,13 @@ class Dashboard
                     <option value="and">AND</option>
                     <option value="or">OR</option>
                 </select>
-                <table class="wp-list-table widefat fixed striped" style="margin-top: 0.5em;">
+                <table class="wp-list-table widefat fixed striped hp-gmc-audience-conditions-table" style="margin-top: 0.5em;">
                     <thead>
                         <tr>
                             <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
-                            <th><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
-                            <th><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
-                            <th><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 18%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 52%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 10%;"><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
                             <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
                         </tr>
                     </thead>
@@ -1838,7 +1838,7 @@ class Dashboard
                             var sel = (c.country === code) ? ' selected' : '';
                             return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
                         }).join('');
-                        return '<select class="cond-country" data-param="country"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
+                        return '<select class="cond-country" data-param="country" style="width:140px;max-width:100%;"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
                     }
                     if (type === 'purchase_product') {
                         return 'SKU <span class="hp-gmc-sku-wrap" style="position:relative;display:inline-block;">' +
