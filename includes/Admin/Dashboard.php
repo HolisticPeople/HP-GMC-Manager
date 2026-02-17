@@ -2180,7 +2180,13 @@ class Dashboard
                             headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
                             body: JSON.stringify({ append: false })
                         })
-                            .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+                            .then(function(r) {
+                                return r.text().then(function(text) {
+                                    var data;
+                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
+                                    return { ok: r.ok, status: r.status, data: data };
+                                });
+                            })
                             .then(function(res) {
                                 if (res.ok && res.data.success) {
                                     var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
@@ -2189,10 +2195,18 @@ class Dashboard
                                     }
                                     alert('Upload started. ' + (res.data.count ? res.data.count + ' users. ' : '') + 'Job may take a few hours. Check "Last upload" or refresh the page.');
                                 } else {
-                                    alert(res.data.message || res.data.error || 'Upload failed');
+                                    var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
+                                    if (res.status === 404) {
+                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available: ' + restBase + '/' + id + '/upload';
+                                    } else if (res.status === 403) {
+                                        msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                    }
+                                    alert(msg);
                                 }
                             })
-                            .catch(function() { alert('Error'); })
+                            .catch(function(err) {
+                                alert('Network or server error. If you see 404, update the plugin and ensure permalinks are not plain.');
+                            })
                             .finally(function() { btn.disabled = false; });
                     });
                 });
