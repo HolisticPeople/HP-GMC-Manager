@@ -223,31 +223,6 @@ class GoogleAdsAudienceUpload
             'developer-token' => $devToken,
             'login-customer-id' => $loginCustomerId,
         ];
-        // Staging debug: log request identity and target (no secrets).
-        $uploadAuth = get_option('hp_gmc_ads_upload_auth', 'oauth');
-        $authType = ($uploadAuth === 'service_account') ? 'service_account' : ((class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected()) ? 'oauth' : 'service_account');
-        $identityEmail = $authType === 'oauth' && class_exists(\HP_GMC\Services\GoogleAdsOAuth::class)
-            ? (\HP_GMC\Services\GoogleAdsOAuth::getStoredEmail() ?? 'oauth_connected')
-            : null;
-        if ($identityEmail === null) {
-            try {
-                $creds = \HP_GMC\Services\GoogleApiClient::loadCredentials();
-                $identityEmail = isset($creds['client_email']) ? $creds['client_email'] : 'unknown';
-            } catch (\Throwable $e) {
-                $identityEmail = 'load_failed';
-            }
-        }
-        if (defined('WP_DEBUG') && WP_DEBUG && function_exists('error_log')) {
-            error_log(json_encode([
-                'event' => 'gmc.ads.create_user_list.request',
-                'auth' => $authType,
-                'customerId' => $customerId,
-                'loginCustomerId' => $loginCustomerId,
-                'url' => $url,
-                'identity' => $identityEmail,
-                'api_version' => self::getAdsApiVersion(),
-            ]));
-        }
         // membershipLifeSpan: max 540 days per Google Ads Customer Match policy.
         $body = [
             'operations' => [
@@ -275,16 +250,6 @@ class GoogleAdsAudienceUpload
         $resBody = wp_remote_retrieve_body($response);
         $decoded = json_decode($resBody, true);
         if ($code >= 400) {
-            if (defined('WP_DEBUG') && WP_DEBUG && function_exists('error_log')) {
-                error_log(json_encode([
-                    'event' => 'gmc.ads.create_user_list.error',
-                    'httpCode' => $code,
-                    'customerId' => $customerId,
-                    'loginCustomerId' => $loginCustomerId,
-                    'response_body' => $resBody,
-                    'decoded_error' => is_array($decoded) ? ($decoded['error'] ?? $decoded) : null,
-                ]));
-            }
             $err = self::formatApiError($code, $decoded, 'creating user list');
             $apiMsg = is_array($decoded) ? ($decoded['error']['message'] ?? json_encode($decoded)) : '';
             $err .= ' [Debug: customerId=' . $customerId . ', loginCustomerId=' . ($loginCustomerId ?? 'none') . ', httpCode=' . $code . ', api=' . substr($apiMsg, 0, 200) . ']';
