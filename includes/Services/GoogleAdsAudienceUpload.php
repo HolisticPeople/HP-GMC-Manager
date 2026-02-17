@@ -205,9 +205,8 @@ class GoogleAdsAudienceUpload
     private static function createUserList(string $customerId, string $name): array
     {
         $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
-        // Use client as login-customer-id so the API uses direct access (service account is a user of the client).
-        $loginCustomerId = $customerId;
-        $sendLoginCustomerId = true;
+        // When using a manager account, docs require login-customer-id = manager ID for client calls.
+        $loginCustomerId = !empty($managerId) ? $managerId : $customerId;
         // Customer Match lists are UserList resources; audiences:mutate is for Audience (dimensions/scope).
         $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/userLists:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
@@ -219,8 +218,8 @@ class GoogleAdsAudienceUpload
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'developer-token' => $devToken,
+            'login-customer-id' => $loginCustomerId,
         ];
-        $headers['login-customer-id'] = $loginCustomerId;
         // membershipLifeSpan: max 540 days per Google Ads Customer Match policy.
         $body = [
             'operations' => [
@@ -267,12 +266,13 @@ class GoogleAdsAudienceUpload
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
+        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
         $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'developer-token' => $devToken,
-            'login-customer-id' => $customerId,
+            'login-customer-id' => !empty($managerId) ? $managerId : $customerId,
         ];
         // Consent required for create operations (Customer Match policy).
         $job = [
@@ -363,8 +363,7 @@ class GoogleAdsAudienceUpload
             if (stripos($msg, 'caller does not have permission') !== false
                 || stripos($msg, 'PERMISSION_DENIED') !== false
                 || stripos($msg, 'does not have permission') !== false) {
-                $customerId = get_option('hp_gmc_ads_customer_id', '');
-                $msg .= ' Add the service account to the client Google Ads account (Customer ID ' . $customerId . ' in Settings), not only the manager. In Google Ads, switch to that client account, then Admin > Access and security > add the same service account email with Standard or Admin access. If you already added it, wait 15–30 minutes for access to propagate, then try again. If it still fails, give the service account Admin access on the client account.';
+                $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). Ensure the account is eligible for Customer Match and the developer token is approved for production.';
             }
         }
         return $msg;
