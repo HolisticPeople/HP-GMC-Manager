@@ -100,6 +100,7 @@ class GoogleAdsAudienceUpload
             if (empty($devToken)) {
                 return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
             }
+            $loginCustomerId = self::getLoginCustomerId($customerId);
             $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
             $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/googleAds:searchStream';
             $gaql = "SELECT offline_user_data_job.status, offline_user_data_job.resource_name FROM offline_user_data_job WHERE offline_user_data_job.resource_name = '" . str_replace("'", "\\'", $jobResourceName) . "'";
@@ -107,7 +108,7 @@ class GoogleAdsAudienceUpload
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Content-Type' => 'application/json',
                 'developer-token' => $devToken,
-                'login-customer-id' => $customerId,
+                'login-customer-id' => $loginCustomerId,
             ];
             $response = wp_remote_post($url, [
                 'headers' => $headers,
@@ -199,10 +200,16 @@ class GoogleAdsAudienceUpload
         return $operations;
     }
 
+    private static function getLoginCustomerId(string $customerId): string
+    {
+        // When Manager Account ID is set, use it (required when OAuth user or service account accesses client via MCC).
+        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
+        return $managerId !== '' ? $managerId : $customerId;
+    }
+
     private static function createUserList(string $customerId, string $name): array
     {
-        // Direct client access: login-customer-id = client ID. Use if service account is invited to the client account (not only manager).
-        $loginCustomerId = $customerId;
+        $loginCustomerId = self::getLoginCustomerId($customerId);
         // Customer Match lists are UserList resources; audiences:mutate is for Audience (dimensions/scope).
         $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/userLists:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
@@ -296,13 +303,13 @@ class GoogleAdsAudienceUpload
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
-        // Use client as login for direct client access (same as createUserList).
+        $loginCustomerId = self::getLoginCustomerId($customerId);
         $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'developer-token' => $devToken,
-            'login-customer-id' => $customerId,
+            'login-customer-id' => $loginCustomerId,
         ];
         // Consent required for create operations (Customer Match policy).
         $job = [

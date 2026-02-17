@@ -1670,7 +1670,14 @@ class Dashboard
                 <?php esc_html_e('When uploading to Google Ads: Append adds the current run to the existing list; Replace clears the list and adds only the current run.', 'hp-gmc-manager'); ?>
                 <br>
                 <strong><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></strong>
-                <?php esc_html_e('Uses the same service account as GMC. Add that service account email as a user in Google Ads (Admin &gt; Access and security) with access to your customer/manager account.', 'hp-gmc-manager'); ?>
+                <?php
+                $oauth_connected = class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
+                if ($oauth_connected) {
+                    esc_html_e('Uses your connected Google account (Settings > Upload to Google Ads). If you manage the client via a manager (MCC) account, set Manager Account ID in Settings.', 'hp-gmc-manager');
+                } else {
+                    esc_html_e('Uses the same service account as GMC. Add that service account email as a user in Google Ads (Admin > Access and security) with access to your customer/manager account.', 'hp-gmc-manager');
+                }
+                ?>
             </div>
             <?php
             $audience_countries = [];
