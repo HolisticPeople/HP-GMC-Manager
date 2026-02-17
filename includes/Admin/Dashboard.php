@@ -1821,9 +1821,14 @@ class Dashboard
                         return '<select class="cond-country" data-param="country" style="width:140px;max-width:100%;"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
                     }
                     if (type === 'purchase_product') {
-                        return 'SKU <span class="hp-gmc-sku-wrap" style="position:relative;display:inline-block;">' +
-                            '<input type="text" class="cond-sku" data-param="sku" placeholder="e.g. ABC-123 or search…" value="' + esc(c.sku) + '" style="width:180px" autocomplete="off">' +
-                            '<div class="hp-gmc-sku-suggestions" style="position:absolute;left:0;top:100%;min-width:100%;max-height:200px;overflow:auto;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 4px 8px rgba(0,0,0,0.15);display:none;z-index:100;"></div>' +
+                        var skuList = Array.isArray(c.skus) ? c.skus : (c.sku ? [c.sku] : []);
+                        var chipsHtml = skuList.map(function(s) {
+                            return '<span class="cond-sku-chip" data-sku="' + esc(s) + '">' + esc(s) + ' <button type="button" class="cond-sku-remove" aria-label="Remove">&times;</button></span>';
+                        }).join('');
+                        return 'SKUs <span class="hp-gmc-sku-wrap" style="position:relative;display:inline-block;vertical-align:middle;">' +
+                            '<span class="hp-gmc-sku-chips" style="display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:28px;">' + chipsHtml + '</span>' +
+                            '<input type="text" class="cond-sku" data-param="sku" placeholder="Add SKU or search…" value="" style="width:160px;margin-left:2px;" autocomplete="off">' +
+                            '<div class="hp-gmc-sku-suggestions" style="position:absolute;left:0;top:100%;min-width:220px;max-height:200px;overflow:auto;background:#fff;border:1px solid #ccc;border-radius:4px;box-shadow:0 4px 8px rgba(0,0,0,0.15);display:none;z-index:100;"></div>' +
                             '</span> ' +
                             'At least <input type="number" class="cond-min-quantity" data-param="min_quantity" min="1" value="' + (c.min_quantity || 1) + '" style="width:50px"> units ' +
                             'In the last <input type="number" class="cond-last-days" data-param="last_days" min="1" placeholder="all time" value="' + esc(c.last_days) + '" style="width:60px"> days';
@@ -1858,9 +1863,34 @@ class Dashboard
                     var input = row ? row.querySelector('.cond-sku') : null;
                     var wrap = input ? input.closest('.hp-gmc-sku-wrap') : null;
                     var list = wrap ? wrap.querySelector('.hp-gmc-sku-suggestions') : null;
-                    if (!input || !list) return;
+                    var chipsContainer = wrap ? wrap.querySelector('.hp-gmc-sku-chips') : null;
+                    if (!input || !list || !chipsContainer) return;
                     var debounce = null;
                     function hideList() { list.style.display = 'none'; list.innerHTML = ''; }
+                    function addChip(sku) {
+                        sku = String(sku || '').trim();
+                        if (!sku) return;
+                        var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
+                        for (var i = 0; i < existing.length; i++) { if ((existing[i].getAttribute('data-sku') || '').toUpperCase() === sku.toUpperCase()) return; }
+                        var span = document.createElement('span');
+                        span.className = 'cond-sku-chip';
+                        span.setAttribute('data-sku', sku);
+                        span.textContent = sku + ' ';
+                        var btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'cond-sku-remove';
+                        btn.setAttribute('aria-label', 'Remove');
+                        btn.innerHTML = '&times;';
+                        btn.addEventListener('click', function() { span.remove(); });
+                        span.appendChild(btn);
+                        chipsContainer.appendChild(span);
+                    }
+                    wrap.addEventListener('click', function(e) {
+                        if (e.target && e.target.classList.contains('cond-sku-remove')) {
+                            var chip = e.target.closest('.cond-sku-chip');
+                            if (chip) chip.remove();
+                        }
+                    });
                     function showList(items) {
                         list.innerHTML = items.map(function(p) {
                             return '<div class="hp-gmc-sku-item" data-sku="' + String(p.sku || '').replace(/"/g, '&quot;') + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
@@ -1868,7 +1898,8 @@ class Dashboard
                         list.style.display = items.length ? 'block' : 'none';
                         list.querySelectorAll('.hp-gmc-sku-item').forEach(function(el) {
                             el.addEventListener('click', function() {
-                                input.value = el.getAttribute('data-sku') || '';
+                                addChip(el.getAttribute('data-sku') || '');
+                                input.value = '';
                                 hideList();
                                 input.focus();
                             });
@@ -1912,6 +1943,14 @@ class Dashboard
                     input.addEventListener('blur', function() {
                         setTimeout(hideList, 200);
                     });
+                    input.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addChip(input.value);
+                            input.value = '';
+                            hideList();
+                        }
+                    });
                 }
                 function getConditionFromRow(row) {
                     var typeEl = row.querySelector('.cond-type');
@@ -1936,7 +1975,15 @@ class Dashboard
                         if (val !== '' && val !== null && val !== undefined) cond[param] = val;
                     });
                     if ((type === 'billing_address' || type === 'shipping_address') && cond.country) return cond;
-                    if (type === 'purchase_product' && cond.sku) return cond;
+                    if (type === 'purchase_product') {
+                        var chipSkus = [];
+                        row.querySelectorAll('.cond-sku-chip').forEach(function(el) { var s = (el.getAttribute('data-sku') || '').trim(); if (s) chipSkus.push(s); });
+                        var inputSku = (row.querySelector('.cond-sku') && row.querySelector('.cond-sku').value || '').trim();
+                        if (inputSku) chipSkus.push(inputSku);
+                        cond.skus = chipSkus.filter(function(s, i, a) { return a.indexOf(s) === i; });
+                        if (cond.skus.length) return cond;
+                        return null;
+                    }
                     if (type === 'purchase_spend' && (cond.ltv_min != null || cond.ltv_max != null)) return cond;
                     if (type === 'purchase_orders' && (cond.order_count_min != null || cond.order_count_max != null)) return cond;
                     if (type === 'purchase_last_order' && cond.date) { if (!cond.when) cond.when = row.querySelector('.cond-when:checked') ? row.querySelector('.cond-when:checked').value : 'before'; return cond; }
@@ -2133,7 +2180,13 @@ class Dashboard
                             headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
                             body: JSON.stringify({ append: false })
                         })
-                            .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+                            .then(function(r) {
+                                return r.text().then(function(text) {
+                                    var data;
+                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
+                                    return { ok: r.ok, status: r.status, data: data };
+                                });
+                            })
                             .then(function(res) {
                                 if (res.ok && res.data.success) {
                                     var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
@@ -2142,10 +2195,18 @@ class Dashboard
                                     }
                                     alert('Upload started. ' + (res.data.count ? res.data.count + ' users. ' : '') + 'Job may take a few hours. Check "Last upload" or refresh the page.');
                                 } else {
-                                    alert(res.data.message || res.data.error || 'Upload failed');
+                                    var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
+                                    if (res.status === 404) {
+                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available: ' + restBase + '/' + id + '/upload';
+                                    } else if (res.status === 403) {
+                                        msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                    }
+                                    alert(msg);
                                 }
                             })
-                            .catch(function() { alert('Error'); })
+                            .catch(function(err) {
+                                alert('Network or server error. If you see 404, update the plugin and ensure permalinks are not plain.');
+                            })
                             .finally(function() { btn.disabled = false; });
                     });
                 });
