@@ -352,6 +352,14 @@ class GoogleAdsAudienceUpload
         } else {
             $msg = "Google Ads API ({$step}): " . $msg;
         }
+        // When Ads API rejects the token, point to service-account setup.
+        if ($code === 401 || $code === 500) {
+            if (stripos($msg, 'missing required authentication credential') !== false
+                || stripos($msg, 'invalid authentication credential') !== false
+                || stripos($msg, 'Expected OAuth 2 access token') !== false) {
+                $msg .= ' Add the service account email (from GMC Manager > Settings) as a user in Google Ads: Admin > Access and security, then grant access to the customer/manager account.';
+            }
+        }
         return $msg;
     }
 
