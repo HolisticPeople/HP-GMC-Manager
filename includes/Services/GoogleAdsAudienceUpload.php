@@ -17,7 +17,7 @@ if (!defined('ABSPATH')) {
 class GoogleAdsAudienceUpload
 {
     private const SCOPE = 'https://www.googleapis.com/auth/adwords';
-    private const API_VERSION = 'v18';
+    private const API_VERSION = 'v20';
     private const EEA_COUNTRY_CODES = ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'IS', 'LI', 'NO'];
 
     /**
@@ -48,7 +48,8 @@ class GoogleAdsAudienceUpload
             }
             $customerId = \HP_GMC\Services\GoogleApiClient::getAdsCustomerId();
             if (!$userListResourceName) {
-                $userListResourceName = $seg['gmc_user_list_id'] ? 'customers/' . $customerId . '/userLists/' . $seg['gmc_user_list_id'] : null;
+                // v20 uses audiences; same numeric ID works for both path forms.
+            $userListResourceName = $seg['gmc_user_list_id'] ? 'customers/' . $customerId . '/audiences/' . $seg['gmc_user_list_id'] : null;
             }
             if (!$userListResourceName) {
                 $createList = self::createUserList($customerId, $seg['name']);
@@ -198,7 +199,8 @@ class GoogleAdsAudienceUpload
 
     private static function createUserList(string $customerId, string $name): array
     {
-        $url = 'https://googleads.googleapis.com/' . self::API_VERSION . '/customers/' . $customerId . '/userLists:mutate';
+        // v20 REST uses audiences:mutate (userLists:mutate is deprecated / returns 404).
+        $url = 'https://googleads.googleapis.com/' . self::API_VERSION . '/customers/' . $customerId . '/audiences:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
@@ -213,13 +215,14 @@ class GoogleAdsAudienceUpload
         if (!empty($managerId)) {
             $headers['login-customer-id'] = $managerId;
         }
+        // membershipLifeSpan: max 540 days per Google Ads Customer Match policy.
         $body = [
             'operations' => [
                 [
                     'create' => [
                         'name' => substr($name, 0, 80),
                         'description' => 'Customer Match list from GMC Manager',
-                        'membershipLifeSpan' => 10000,
+                        'membershipLifeSpan' => 540,
                         'crmBasedUserList' => [
                             'uploadKeyType' => 'CONTACT_INFO',
                         ],
@@ -243,7 +246,7 @@ class GoogleAdsAudienceUpload
         }
         $resourceName = $decoded['results'][0]['resourceName'] ?? null;
         if (!$resourceName) {
-            return ['success' => false, 'error' => 'User list created but no resource name returned.'];
+            return ['success' => false, 'error' => 'Audience created but no resource name returned.'];
         }
         return ['success' => true, 'resource_name' => $resourceName];
     }
@@ -265,10 +268,15 @@ class GoogleAdsAudienceUpload
         if (!empty($managerId)) {
             $headers['login-customer-id'] = $managerId;
         }
+        // Consent required for create operations (Customer Match policy).
         $job = [
             'type' => 'CUSTOMER_MATCH_USER_LIST',
             'customerMatchUserListMetadata' => [
                 'userList' => $userListResourceName,
+                'consent' => [
+                    'adUserData' => 'GRANTED',
+                    'adPersonalization' => 'GRANTED',
+                ],
             ],
         ];
         $createResponse = wp_remote_post($url, [
@@ -344,7 +352,8 @@ class GoogleAdsAudienceUpload
 
     private static function extractListIdFromResourceName(string $resourceName): ?string
     {
-        if (preg_match('#/userLists/(\d+)$#', $resourceName, $m)) {
+        // v20 returns customers/xxx/audiences/yyy; legacy was userLists.
+        if (preg_match('#/(?:userLists|audiences)/(\d+)$#', $resourceName, $m)) {
             return $m[1];
         }
         return null;
