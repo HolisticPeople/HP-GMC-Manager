@@ -363,7 +363,7 @@ class GoogleAdsAudienceUpload
             if (stripos($msg, 'caller does not have permission') !== false
                 || stripos($msg, 'PERMISSION_DENIED') !== false
                 || stripos($msg, 'does not have permission') !== false) {
-                $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). Ensure the account is eligible for Customer Match and the developer token is approved for production.';
+                $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). If the service account shows an "allowed domains" warning, add the relevant domain in Access and security > Allowed domains so API access is not restricted. Ensure the account is eligible for Customer Match and the developer token is approved for production.';
             }
         }
         return $msg;
