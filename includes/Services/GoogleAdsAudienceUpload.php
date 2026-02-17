@@ -363,7 +363,7 @@ class GoogleAdsAudienceUpload
                 || stripos($msg, 'PERMISSION_DENIED') !== false
                 || stripos($msg, 'does not have permission') !== false) {
                 $customerId = get_option('hp_gmc_ads_customer_id', '');
-                $msg .= ' Add the service account to the client Google Ads account (Customer ID ' . $customerId . ' in Settings), not only the manager. In Google Ads, switch to that client account, then Admin > Access and security > add the same service account email with Standard or Admin access.';
+                $msg .= ' Add the service account to the client Google Ads account (Customer ID ' . $customerId . ' in Settings), not only the manager. In Google Ads, switch to that client account, then Admin > Access and security > add the same service account email with Standard or Admin access. If you already added it, wait 15–30 minutes for access to propagate, then try again. If it still fails, give the service account Admin access on the client account.';
             }
         }
         return $msg;
