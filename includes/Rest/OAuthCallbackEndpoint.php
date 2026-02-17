@@ -18,8 +18,10 @@ class OAuthCallbackEndpoint
 {
     public static function permission(WP_REST_Request $request): bool
     {
-        // Allow admins (manage_options) or WooCommerce managers so OAuth redirect from Google can complete.
-        return current_user_can('manage_options') || current_user_can('manage_woocommerce');
+        // Allow any request to hit the callback; security is enforced by one-time state validation
+        // in exchangeCodeForTokens(). Redirects from Google often don't send cookies (cross-site),
+        // so requiring a logged-in user here causes 401 for admins.
+        return true;
     }
 
     public static function register(): void
