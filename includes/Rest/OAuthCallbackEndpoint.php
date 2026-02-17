@@ -18,7 +18,8 @@ class OAuthCallbackEndpoint
 {
     public static function permission(WP_REST_Request $request): bool
     {
-        return current_user_can('manage_woocommerce');
+        // Allow admins (manage_options) or WooCommerce managers so OAuth redirect from Google can complete.
+        return current_user_can('manage_options') || current_user_can('manage_woocommerce');
     }
 
     public static function register(): void
