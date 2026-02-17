@@ -1668,6 +1668,9 @@ class Dashboard
                 <br>
                 <strong><?php esc_html_e('Append vs Replace', 'hp-gmc-manager'); ?></strong>
                 <?php esc_html_e('When uploading to Google Ads: Append adds the current run to the existing list; Replace clears the list and adds only the current run.', 'hp-gmc-manager'); ?>
+                <br>
+                <strong><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></strong>
+                <?php esc_html_e('Uses the same service account as GMC. Add that service account email as a user in Google Ads (Admin &gt; Access and security) with access to your customer/manager account.', 'hp-gmc-manager'); ?>
             </div>
             <?php
             $audience_countries = [];
