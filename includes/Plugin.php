@@ -2,7 +2,6 @@
 namespace HP_GMC;
 
 use HP_GMC\Admin\Dashboard;
-use HP_GMC\Admin\SettingsPage;
 use HP_GMC\Services\MerchantApiClient;
 use HP_GMC\Services\IssueMonitor;
 use HP_GMC\Rest\ProductFeedEndpoint;
@@ -169,7 +168,7 @@ class Plugin
             __('Settings', 'hp-gmc-manager'),
             'manage_woocommerce',
             'hp-gmc-settings',
-            [SettingsPage::class, 'render']
+            'hp_gmc_render_settings_page'
         );
 
         // Campaign ROI submenu
