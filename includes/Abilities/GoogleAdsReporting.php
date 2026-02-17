@@ -10,8 +10,7 @@ if (!defined('ABSPATH')) {
 /**
  * Google Ads Reporting MCP Abilities.
  *
- * Provides campaign performance, funnel-campaign mapping, and budget status
- * via the Google Ads API v18 (REST).
+ * Uses the plugin-wide Google Ads API version (HP_GMC_ADS_API_VERSION).
  *
  * @since 1.23.0
  * @see https://developers.google.com/google-ads/api/rest/reference/rest
@@ -19,7 +18,6 @@ if (!defined('ABSPATH')) {
 class GoogleAdsReporting
 {
     private const SCOPE = 'https://www.googleapis.com/auth/adwords';
-    private const API_VERSION = 'v18';
 
     /**
      * Campaign performance report: clicks, impressions, cost, conversions.
@@ -262,9 +260,10 @@ class GoogleAdsReporting
      */
     private static function executeGaql(string $customerId, string $gaql): array
     {
+        $apiVersion = defined('HP_GMC_ADS_API_VERSION') ? HP_GMC_ADS_API_VERSION : 'v20';
         $url = sprintf(
             'https://googleads.googleapis.com/%s/customers/%s/googleAds:searchStream',
-            self::API_VERSION,
+            $apiVersion,
             $customerId
         );
 

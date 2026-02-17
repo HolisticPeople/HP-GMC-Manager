@@ -17,7 +17,12 @@ if (!defined('ABSPATH')) {
 class GoogleAdsAudienceUpload
 {
     private const SCOPE = 'https://www.googleapis.com/auth/adwords';
-    private const API_VERSION = 'v20';
+
+    private static function getAdsApiVersion(): string
+    {
+        return defined('HP_GMC_ADS_API_VERSION') ? HP_GMC_ADS_API_VERSION : 'v20';
+    }
+
     private const EEA_COUNTRY_CODES = ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'IS', 'LI', 'NO'];
 
     /**
@@ -96,7 +101,7 @@ class GoogleAdsAudienceUpload
                 return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
             }
             $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
-            $url = 'https://googleads.googleapis.com/' . self::API_VERSION . '/customers/' . $customerId . '/googleAds:searchStream';
+            $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/googleAds:searchStream';
             $gaql = "SELECT offline_user_data_job.status, offline_user_data_job.resource_name FROM offline_user_data_job WHERE offline_user_data_job.resource_name = '" . str_replace("'", "\\'", $jobResourceName) . "'";
             $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
             $headers = [
@@ -200,7 +205,7 @@ class GoogleAdsAudienceUpload
     private static function createUserList(string $customerId, string $name): array
     {
         // v20 REST uses audiences:mutate (userLists:mutate is deprecated / returns 404).
-        $url = 'https://googleads.googleapis.com/' . self::API_VERSION . '/customers/' . $customerId . '/audiences:mutate';
+        $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/audiences:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
@@ -253,7 +258,7 @@ class GoogleAdsAudienceUpload
 
     private static function createAndRunJob(string $customerId, string $userListResourceName, array $operations): array
     {
-        $url = 'https://googleads.googleapis.com/' . self::API_VERSION . '/customers/' . $customerId . '/offlineUserDataJobs';
+        $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/offlineUserDataJobs';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
@@ -297,7 +302,7 @@ class GoogleAdsAudienceUpload
         if (!$jobResourceName) {
             return ['success' => false, 'error' => 'Job created but no resource name returned.'];
         }
-        $addUrl = 'https://googleads.googleapis.com/' . self::API_VERSION . '/' . $jobResourceName . ':addOperations';
+        $addUrl = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/' . $jobResourceName . ':addOperations';
         $addBody = ['operations' => $operations, 'enablePartialFailure' => true];
         $addResponse = wp_remote_post($addUrl, [
             'headers' => $headers,
@@ -312,7 +317,7 @@ class GoogleAdsAudienceUpload
             $addDecoded = json_decode(wp_remote_retrieve_body($addResponse), true);
             return ['success' => false, 'error' => self::formatApiError($addCode, $addDecoded, 'adding operations')];
         }
-        $runUrl = 'https://googleads.googleapis.com/' . self::API_VERSION . '/' . $jobResourceName . ':run';
+        $runUrl = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/' . $jobResourceName . ':run';
         $runResponse = wp_remote_post($runUrl, [
             'headers' => $headers,
             'body' => '{}',
