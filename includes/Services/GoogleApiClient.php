@@ -112,6 +112,10 @@ class GoogleApiClient
             if (!empty($token)) {
                 return $token;
             }
+            // OAuth connected but token refresh failed — do not fall back to service account.
+            throw new \RuntimeException(
+                'OAuth is connected but token refresh failed. Go to GMC Manager > Settings > Upload to Google Ads (OAuth) and click Disconnect, then Connect with Google again.'
+            );
         }
         return self::getAccessToken(self::SCOPE_ADWORDS);
     }

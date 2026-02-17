@@ -383,17 +383,26 @@ class GoogleAdsAudienceUpload
         } else {
             $msg = "Google Ads API ({$step}): " . $msg;
         }
-        // When Ads API rejects the token or permission, point to service-account setup.
+        // When Ads API rejects the token or permission, point to the right setup (OAuth vs service account).
+        $usingOAuth = class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
         if ($code === 401 || $code === 403 || $code === 500) {
             if (stripos($msg, 'missing required authentication credential') !== false
                 || stripos($msg, 'invalid authentication credential') !== false
                 || stripos($msg, 'Expected OAuth 2 access token') !== false) {
-                $msg .= ' Add the service account email (from GMC Manager > Settings) as a user in Google Ads: Admin > Access and security, then grant access to the customer/manager account.';
+                if ($usingOAuth) {
+                    $msg .= ' Reconnect in GMC Manager > Settings > Upload to Google Ads (OAuth): Disconnect then Connect with Google again.';
+                } else {
+                    $msg .= ' Add the service account email (from GMC Manager > Settings) as a user in Google Ads: Admin > Access and security, then grant access to the customer/manager account.';
+                }
             }
             if (stripos($msg, 'caller does not have permission') !== false
                 || stripos($msg, 'PERMISSION_DENIED') !== false
                 || stripos($msg, 'does not have permission') !== false) {
-                $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). If the service account shows an "allowed domains" warning, add the relevant domain in Access and security > Allowed domains so API access is not restricted. Ensure the account is eligible for Customer Match and the developer token is approved for production.';
+                if ($usingOAuth) {
+                    $msg .= ' You are using OAuth. Ensure the connected Google account (Settings > Upload to Google Ads) has Admin access to this Google Ads account: Google Ads > Admin > Access and security. The developer token must be approved for production and the account eligible for Customer Match.';
+                } else {
+                    $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). If the service account shows an "allowed domains" warning, add the relevant domain in Access and security > Allowed domains so API access is not restricted. Ensure the account is eligible for Customer Match and the developer token is approved for production.';
+                }
             }
         }
         return $msg;
