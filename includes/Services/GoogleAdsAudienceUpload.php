@@ -352,12 +352,18 @@ class GoogleAdsAudienceUpload
         } else {
             $msg = "Google Ads API ({$step}): " . $msg;
         }
-        // When Ads API rejects the token, point to service-account setup.
-        if ($code === 401 || $code === 500) {
+        // When Ads API rejects the token or permission, point to service-account setup.
+        if ($code === 401 || $code === 403 || $code === 500) {
             if (stripos($msg, 'missing required authentication credential') !== false
                 || stripos($msg, 'invalid authentication credential') !== false
                 || stripos($msg, 'Expected OAuth 2 access token') !== false) {
                 $msg .= ' Add the service account email (from GMC Manager > Settings) as a user in Google Ads: Admin > Access and security, then grant access to the customer/manager account.';
+            }
+            if (stripos($msg, 'caller does not have permission') !== false
+                || stripos($msg, 'PERMISSION_DENIED') !== false
+                || stripos($msg, 'does not have permission') !== false) {
+                $customerId = get_option('hp_gmc_ads_customer_id', '');
+                $msg .= ' Add the service account to the client Google Ads account (Customer ID ' . $customerId . ' in Settings), not only the manager. In Google Ads, switch to that client account, then Admin > Access and security > add the same service account email with Standard or Admin access.';
             }
         }
         return $msg;
