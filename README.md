@@ -60,6 +60,22 @@ Google Merchant Center management plugin for WordPress/WooCommerce with admin da
 | `gmc-disable-country` | Remove country from shipping |
 | `gmc-get-account-status` | Overall account health |
 
+### Audiences (Marketing)
+
+Saved segments for Google Ads Customer Match. Tools are in category `hp-marketing` for use with the Marketing MCP server.
+
+| Tool | Description |
+|------|-------------|
+| `gmc-audiences-segments-list` | List saved segments |
+| `gmc-audiences-segment-get` | Get one segment by id |
+| `gmc-audiences-segment-run` | Run segment, return count |
+| `gmc-audiences-segment-save` | Create or update segment |
+| `gmc-audiences-segment-duplicate` | Duplicate segment |
+| `gmc-audiences-segment-export-csv` | Export segment as Google Customer Match CSV |
+
+**Marketing MCP server (hp_marketing_stg / hp_marketing_prod)**  
+Use the same bridge URL as GMC staging/production with query param `?scope=marketing` to receive only tools in category `hp-marketing` (Audiences + GA4 + Google Ads). This keeps Cursor under the tool limit when working on audience and campaign workflows. Document in `.cursor/rules` or mcp.json: use `hp_marketing_stg` for staging audience/campaign work.
+
 ## Operating Modes
 
 | Mode | Description |
@@ -74,10 +90,13 @@ Google Merchant Center management plugin for WordPress/WooCommerce with admin da
 
 1. **Overview**: Product status summary cards
 2. **Issues**: List of disapproved/warning products
-3. **Exclusions**: Manage destination exclusions
-4. **Shipping**: Account-level shipping settings
-5. **MCP Tools**: Enable/disable individual tools
-6. **Dry Run Log**: View simulated actions (staging only)
+3. **Feeds**: Supplemental feeds
+4. **Exclusions**: Manage destination exclusions
+5. **Funnels**: Funnel feed and GMC settings
+6. **Shipping**: Account-level shipping settings
+7. **Audiences**: Saved segments, segment builder, CSV export for Google Ads Customer Match
+8. **MCP Tools**: Enable/disable individual tools
+9. **Dry Run Log**: View simulated actions (staging only)
 
 ## GLA Integration
 

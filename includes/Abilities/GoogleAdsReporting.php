@@ -328,23 +328,6 @@ class GoogleAdsReporting
 
         $body = wp_remote_retrieve_body($response);
 
-        // #region agent log
-        error_log('HP_GMC_DEBUG: ' . json_encode([
-            'id' => 'log_' . microtime(true),
-            'timestamp' => time() * 1000,
-            'location' => 'GoogleAdsReporting.php:executeGaql',
-            'message' => 'API Response Body',
-            'data' => [
-                'statusCode' => $statusCode,
-                'bodySnippet' => substr($body, 0, 500),
-                'decoded' => json_decode($body, true),
-                'jsonLastError' => json_last_error_msg()
-            ],
-            'runId' => 'run1',
-            'hypothesisId' => 'A,B,C,D'
-        ]));
-        // #endregion
-
         // searchStream returns newline-delimited JSON arrays
         $decoded = json_decode($body, true);
 

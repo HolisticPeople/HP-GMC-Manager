@@ -81,6 +81,27 @@
     display: block;
 }
 
+/* Segment builder: fixed layout so columns and separator are respected */
+.hp-gmc-audience-conditions-table {
+    table-layout: fixed;
+}
+/* Condition type column: allow wrapping */
+.hp-gmc-audience-conditions-table th:nth-child(2),
+.hp-gmc-audience-conditions-table td:nth-child(2) {
+    word-wrap: break-word;
+    white-space: normal;
+}
+.hp-gmc-audience-conditions-table td:nth-child(2) select.cond-type {
+    max-width: 100%;
+    width: 100%;
+}
+/* Vertical separator and Parameters column: regular 1px line, parameters flush to it */
+.hp-gmc-audience-conditions-table th:nth-child(3),
+.hp-gmc-audience-conditions-table td:nth-child(3) {
+    border-left: 1px solid #c3c4c7;
+    padding-left: 0;
+}
+
 /* Tab content */
 .hp-gmc-tab-content {
     background: #fff;
