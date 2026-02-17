@@ -204,8 +204,8 @@ class GoogleAdsAudienceUpload
 
     private static function createUserList(string $customerId, string $name): array
     {
-        // v20 REST uses audiences:mutate (userLists:mutate is deprecated / returns 404).
-        $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/audiences:mutate';
+        // Customer Match lists are UserList resources; audiences:mutate is for Audience (dimensions/scope).
+        $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/userLists:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
@@ -251,7 +251,7 @@ class GoogleAdsAudienceUpload
         }
         $resourceName = $decoded['results'][0]['resourceName'] ?? null;
         if (!$resourceName) {
-            return ['success' => false, 'error' => 'Audience created but no resource name returned.'];
+            return ['success' => false, 'error' => 'User list created but no resource name returned.'];
         }
         return ['success' => true, 'resource_name' => $resourceName];
     }
@@ -357,8 +357,8 @@ class GoogleAdsAudienceUpload
 
     private static function extractListIdFromResourceName(string $resourceName): ?string
     {
-        // v20 returns customers/xxx/audiences/yyy; legacy was userLists.
-        if (preg_match('#/(?:userLists|audiences)/(\d+)$#', $resourceName, $m)) {
+        // UserList resource name is customers/xxx/userLists/yyy.
+        if (preg_match('#/userLists/(\d+)$#', $resourceName, $m)) {
             return $m[1];
         }
         return null;
