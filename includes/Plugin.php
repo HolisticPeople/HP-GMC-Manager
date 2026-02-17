@@ -296,7 +296,11 @@ class Plugin
                 wp_safe_redirect($url);
                 exit;
             } catch (\Throwable $e) {
-                wp_die(esc_html($e->getMessage()));
+                $msg = $e->getMessage();
+                if (stripos($msg, 'Client ID') !== false || stripos($msg, 'not configured') !== false) {
+                    $msg .= ' ' . __("Save your Client ID and Client Secret first: scroll down and click 'Save Changes', then click 'Connect with Google' again.", 'hp-gmc-manager');
+                }
+                wp_die(esc_html($msg), '', ['back_link' => true]);
             }
         }
         if (isset($_GET['hp_gmc_oauth_disconnect']) && isset($_GET['_wpnonce'])) {

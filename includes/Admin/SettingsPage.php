@@ -252,6 +252,7 @@ class SettingsPage
                                 <p><strong><?php esc_html_e('Redirect URI:', 'hp-gmc-manager'); ?></strong> <code><?php echo esc_html(rest_url('hp-gmc/v1/oauth-callback')); ?></code></p>
                                 <input type="text" id="hp_gmc_ads_oauth_client_id" name="hp_gmc_ads_oauth_client_id" value="<?php echo esc_attr(get_option('hp_gmc_ads_oauth_client_id', '')); ?>" class="regular-text" placeholder="Client ID">
                                 <input type="password" id="hp_gmc_ads_oauth_client_secret" name="hp_gmc_ads_oauth_client_secret" value="<?php echo esc_attr(get_option('hp_gmc_ads_oauth_client_secret', '')); ?>" class="regular-text" placeholder="Client Secret" style="margin-top:6px;">
+                                <p class="description" style="margin-top:8px;"><?php esc_html_e('Save your changes (click Save Changes at the bottom of this page) before clicking Connect with Google.', 'hp-gmc-manager'); ?></p>
                                 <?php if ($oauth_connected && $oauth_email) : ?>
                                     <p style="margin-top:10px;"><span class="dashicons dashicons-yes-alt" style="color:green;"></span> <?php echo esc_html(sprintf(__('Connected as %s', 'hp-gmc-manager'), $oauth_email)); ?>
                                         <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=hp-gmc-settings&hp_gmc_oauth_disconnect=1'), 'hp_gmc_oauth_disconnect')); ?>" class="button button-small" style="margin-left:10px;"><?php esc_html_e('Disconnect', 'hp-gmc-manager'); ?></a>
