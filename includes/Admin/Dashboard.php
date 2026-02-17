@@ -2197,15 +2197,17 @@ class Dashboard
                                 } else {
                                     var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
                                     if (res.status === 404) {
-                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available: ' + restBase + '/' + id + '/upload';
+                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
                                     } else if (res.status === 403) {
                                         msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                    } else {
+                                        msg = 'HTTP ' + res.status + ': ' + msg;
                                     }
                                     alert(msg);
                                 }
                             })
                             .catch(function(err) {
-                                alert('Network or server error. If you see 404, update the plugin and ensure permalinks are not plain.');
+                                alert('Network or server error. Check the Network tab for the real status (e.g. 500 = server error).');
                             })
                             .finally(function() { btn.disabled = false; });
                     });

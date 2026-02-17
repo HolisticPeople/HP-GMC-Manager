@@ -354,7 +354,18 @@ class AudiencesEndpoint
         if (!$seg) {
             return new WP_Error('not_found', 'Segment not found.', ['status' => 404]);
         }
-        $result = GoogleAdsAudienceUpload::upload($id, $append, null);
+        try {
+            $result = GoogleAdsAudienceUpload::upload($id, $append, null);
+        } catch (\Throwable $e) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[HP-GMC] Audience upload exception: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+            }
+            return new WP_Error(
+                'upload_error',
+                'Server error during upload: ' . $e->getMessage(),
+                ['status' => 500]
+            );
+        }
         if (!$result['success']) {
             $status = (isset($result['error']) && strpos($result['error'], 'not found') !== false) ? 404 : 500;
             return new WP_Error('upload_failed', $result['error'] ?? 'Upload failed.', ['status' => $status]);
