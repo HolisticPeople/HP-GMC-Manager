@@ -406,7 +406,7 @@ class GoogleAdsAudienceUpload
                 || stripos($msg, 'PERMISSION_DENIED') !== false
                 || stripos($msg, 'does not have permission') !== false) {
                 if ($usingOAuth) {
-                    $msg .= ' You are using OAuth. Ensure the connected Google account (Settings > Upload to Google Ads) has Admin access to this Google Ads account: Google Ads > Admin > Access and security. The developer token must be approved for production and the account eligible for Customer Match.';
+                    $msg .= ' You are using OAuth. Check: (1) Connected Google account has Standard or Admin access to the manager account (Manager Account ID in Settings) and the manager has access to the client — Google Ads > Admin > Access and security. (2) Developer token is approved for production (not Test account): Google Ads > Tools & settings > API Center. (3) The client account is eligible for Customer Match (see support.google.com/google-ads/answer/6334160).';
                 } else {
                     $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). If the service account shows an "allowed domains" warning, add the relevant domain in Access and security > Allowed domains so API access is not restricted. Ensure the account is eligible for Customer Match and the developer token is approved for production.';
                 }

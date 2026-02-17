@@ -231,7 +231,7 @@ class SettingsPage
                                    value="<?php echo esc_attr(get_option('hp_gmc_ads_developer_token', '')); ?>"
                                    class="regular-text">
                             <p class="description">
-                                <?php esc_html_e('Google Ads API developer token. Found in Google Ads > Tools > API Center.', 'hp-gmc-manager'); ?>
+                                <?php esc_html_e('Google Ads API developer token. Found in Google Ads > Tools > API Center. For Customer Match (Audiences upload) the token must be approved for production, not Test account.', 'hp-gmc-manager'); ?>
                             </p>
                         </td>
                     </tr>
