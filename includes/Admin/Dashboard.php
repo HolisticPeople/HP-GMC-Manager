@@ -1671,11 +1671,11 @@ class Dashboard
                 <br>
                 <strong><?php esc_html_e('Upload to Google Ads', 'hp-gmc-manager'); ?></strong>
                 <?php
-                $oauth_connected = class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
-                if ($oauth_connected) {
-                    esc_html_e('Uses your connected Google account (Settings > Upload to Google Ads). If you manage the client via a manager (MCC) account, set Manager Account ID in Settings.', 'hp-gmc-manager');
+                $upload_auth = get_option('hp_gmc_ads_upload_auth', 'oauth');
+                if ($upload_auth === 'service_account') {
+                    esc_html_e('Uses the service account (Settings > Audience upload authentication). Add that service account email as a user in Google Ads (Admin > Access and security) with access to your customer/manager account.', 'hp-gmc-manager');
                 } else {
-                    esc_html_e('Uses the same service account as GMC. Add that service account email as a user in Google Ads (Admin > Access and security) with access to your customer/manager account.', 'hp-gmc-manager');
+                    esc_html_e('Uses OAuth when connected (Settings > Audience upload authentication). If you manage the client via a manager (MCC) account, set Manager Account ID in Settings.', 'hp-gmc-manager');
                 }
                 ?>
             </div>

@@ -252,6 +252,13 @@ class Plugin
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
         ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_ads_upload_auth', [
+            'type' => 'string',
+            'default' => 'oauth',
+            'sanitize_callback' => function ($value) {
+                return in_array($value, ['oauth', 'service_account'], true) ? $value : 'oauth';
+            },
+        ]);
 
         // Schema & Audiences
         register_setting('hp_gmc_settings', 'hp_gmc_schema_upgrade_on_load', [

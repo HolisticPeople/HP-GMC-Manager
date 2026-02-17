@@ -224,7 +224,8 @@ class GoogleAdsAudienceUpload
             'login-customer-id' => $loginCustomerId,
         ];
         // Staging debug: log request identity and target (no secrets).
-        $authType = (class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected()) ? 'oauth' : 'service_account';
+        $uploadAuth = get_option('hp_gmc_ads_upload_auth', 'oauth');
+        $authType = ($uploadAuth === 'service_account') ? 'service_account' : ((class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected()) ? 'oauth' : 'service_account');
         $identityEmail = $authType === 'oauth' && class_exists(\HP_GMC\Services\GoogleAdsOAuth::class)
             ? (\HP_GMC\Services\GoogleAdsOAuth::getStoredEmail() ?? 'oauth_connected')
             : null;
@@ -391,7 +392,8 @@ class GoogleAdsAudienceUpload
             $msg = "Google Ads API ({$step}): " . $msg;
         }
         // When Ads API rejects the token or permission, point to the right setup (OAuth vs service account).
-        $usingOAuth = class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
+        $uploadAuth = get_option('hp_gmc_ads_upload_auth', 'oauth');
+        $usingOAuth = ($uploadAuth === 'oauth') && class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
         if ($code === 401 || $code === 403 || $code === 500) {
             if (stripos($msg, 'missing required authentication credential') !== false
                 || stripos($msg, 'invalid authentication credential') !== false

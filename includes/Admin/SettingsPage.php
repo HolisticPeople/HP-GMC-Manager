@@ -190,6 +190,20 @@ class SettingsPage
                 <table class="form-table">
                     <tr>
                         <th scope="row">
+                            <label for="hp_gmc_ads_upload_auth"><?php esc_html_e('Audience upload authentication', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <select id="hp_gmc_ads_upload_auth" name="hp_gmc_ads_upload_auth">
+                                <option value="oauth" <?php selected(get_option('hp_gmc_ads_upload_auth', 'oauth'), 'oauth'); ?>><?php esc_html_e('OAuth (when connected)', 'hp-gmc-manager'); ?></option>
+                                <option value="service_account" <?php selected(get_option('hp_gmc_ads_upload_auth', 'oauth'), 'service_account'); ?>><?php esc_html_e('Service account', 'hp-gmc-manager'); ?></option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Which credentials to use for Audiences → Upload to Google Ads. OAuth uses your connected Google account; Service account uses the JSON key file below.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
                             <label for="hp_gmc_ads_customer_id"><?php esc_html_e('Customer ID', 'hp-gmc-manager'); ?></label>
                         </th>
                         <td>
