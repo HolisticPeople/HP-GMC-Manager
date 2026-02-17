@@ -176,14 +176,21 @@ class GoogleApiClient
 
         if ($statusCode >= 400) {
             $errorMsg = $decoded['error']['message'] ?? "HTTP {$statusCode}";
-            error_log(json_encode([
-                'event'       => 'google_api.request.http_error',
-                'method'      => $method,
-                'url'         => $url,
-                'status'      => $statusCode,
-                'error'       => $errorMsg,
-                'duration_ms' => $durationMs,
-            ]));
+            if (preg_match('/^HTTP \d+$/i', $errorMsg)) {
+                $errorMsg = $statusCode === 404
+                    ? 'Not found. Check Google Ads customer ID and manager ID in Settings.'
+                    : ($statusCode === 403 ? 'Forbidden. Check developer token and OAuth scope.' : $errorMsg);
+            }
+            if (function_exists('error_log')) {
+                error_log(json_encode([
+                    'event'       => 'google_api.request.http_error',
+                    'method'      => $method,
+                    'url'         => $url,
+                    'status'      => $statusCode,
+                    'error'       => $errorMsg,
+                    'duration_ms' => $durationMs,
+                ]));
+            }
 
             // If 401, clear token cache and retry once
             if ($statusCode === 401) {

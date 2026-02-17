@@ -118,8 +118,7 @@ class GoogleAdsAudienceUpload
             $body = wp_remote_retrieve_body($response);
             $decoded = json_decode($body, true);
             if ($code >= 400) {
-                $msg = $decoded['error']['message'] ?? $decoded[0]['error']['message'] ?? "HTTP {$code}";
-                return ['success' => false, 'error' => $msg];
+                return ['success' => false, 'error' => self::formatApiError($code, $decoded, 'job status')];
             }
             $rows = [];
             if (is_array($decoded)) {
@@ -240,8 +239,7 @@ class GoogleAdsAudienceUpload
         $resBody = wp_remote_retrieve_body($response);
         $decoded = json_decode($resBody, true);
         if ($code >= 400) {
-            $msg = $decoded['error']['message'] ?? $decoded['error']['message'] ?? "HTTP {$code}";
-            return ['success' => false, 'error' => $msg];
+            return ['success' => false, 'error' => self::formatApiError($code, $decoded, 'creating user list')];
         }
         $resourceName = $decoded['results'][0]['resourceName'] ?? null;
         if (!$resourceName) {
@@ -285,8 +283,7 @@ class GoogleAdsAudienceUpload
         $createBody = wp_remote_retrieve_body($createResponse);
         $createDecoded = json_decode($createBody, true);
         if ($createCode >= 400) {
-            $msg = $createDecoded['error']['message'] ?? "HTTP {$createCode}";
-            return ['success' => false, 'error' => $msg];
+            return ['success' => false, 'error' => self::formatApiError($createCode, $createDecoded, 'creating offline job')];
         }
         $jobResourceName = $createDecoded['resourceName'] ?? $createDecoded['name'] ?? null;
         if (!$jobResourceName) {
@@ -305,8 +302,7 @@ class GoogleAdsAudienceUpload
         $addCode = wp_remote_retrieve_response_code($addResponse);
         if ($addCode >= 400) {
             $addDecoded = json_decode(wp_remote_retrieve_body($addResponse), true);
-            $msg = $addDecoded['error']['message'] ?? "HTTP {$addCode}";
-            return ['success' => false, 'error' => $msg];
+            return ['success' => false, 'error' => self::formatApiError($addCode, $addDecoded, 'adding operations')];
         }
         $runUrl = 'https://googleads.googleapis.com/' . self::API_VERSION . '/' . $jobResourceName . ':run';
         $runResponse = wp_remote_post($runUrl, [
@@ -321,6 +317,29 @@ class GoogleAdsAudienceUpload
             return ['success' => true, 'job_resource_name' => $jobResourceName];
         }
         return ['success' => true, 'job_resource_name' => $jobResourceName];
+    }
+
+    /**
+     * Turn a bare HTTP code or API error into a clear message for the UI (no debug log needed).
+     */
+    private static function formatApiError(int $code, $decoded, string $step): string
+    {
+        $msg = null;
+        if (is_array($decoded)) {
+            $msg = $decoded['error']['message'] ?? $decoded['error']['message'] ?? null;
+            if ($msg === null && isset($decoded[0]['error']['message'])) {
+                $msg = $decoded[0]['error']['message'];
+            }
+        }
+        if ($msg === null || $msg === '' || preg_match('/^HTTP \d+$/i', $msg)) {
+            $hint = $code === 404
+                ? ' Not found — check Google Ads customer ID (Settings), manager ID, and that the account exists.'
+                : ($code === 403 ? ' Forbidden — check developer token and OAuth scope (AdWords).' : '');
+            $msg = "Google Ads API ({$step}): HTTP {$code}{$hint}";
+        } else {
+            $msg = "Google Ads API ({$step}): " . $msg;
+        }
+        return $msg;
     }
 
     private static function extractListIdFromResourceName(string $resourceName): ?string
