@@ -128,6 +128,15 @@
     color: #d63638;
 }
 
+/* Audiences: on-screen upload message (no popup) */
+.hp-gmc-audience-upload-message {
+    max-width: 800px;
+}
+.hp-gmc-audience-upload-message.success {
+    border-left-color: #00a32a;
+    background: #edfaef;
+}
+
 /* Tab content */
 .hp-gmc-tab-content {
     background: #fff;
