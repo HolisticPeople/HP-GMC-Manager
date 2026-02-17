@@ -204,6 +204,9 @@ class GoogleAdsAudienceUpload
 
     private static function createUserList(string $customerId, string $name): array
     {
+        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
+        // Omit login-customer-id when calling the client so the API uses direct access (service account added to client).
+        $sendLoginCustomerId = false;
         // Customer Match lists are UserList resources; audiences:mutate is for Audience (dimensions/scope).
         $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/userLists:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
@@ -211,13 +214,12 @@ class GoogleAdsAudienceUpload
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
         $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
-        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'developer-token' => $devToken,
         ];
-        if (!empty($managerId)) {
+        if ($sendLoginCustomerId && !empty($managerId)) {
             $headers['login-customer-id'] = $managerId;
         }
         // membershipLifeSpan: max 540 days per Google Ads Customer Match policy.
@@ -247,7 +249,10 @@ class GoogleAdsAudienceUpload
         $resBody = wp_remote_retrieve_body($response);
         $decoded = json_decode($resBody, true);
         if ($code >= 400) {
-            return ['success' => false, 'error' => self::formatApiError($code, $decoded, 'creating user list')];
+            $err = self::formatApiError($code, $decoded, 'creating user list');
+            $apiMsg = is_array($decoded) ? ($decoded['error']['message'] ?? json_encode($decoded)) : '';
+            $err .= ' [Debug: customerId=' . $customerId . ', managerId=' . ($managerId ?: 'none') . ', sentLoginCustomerId=' . ($sendLoginCustomerId ? '1' : '0') . ', httpCode=' . $code . ', api=' . substr($apiMsg, 0, 200) . ']';
+            return ['success' => false, 'error' => $err];
         }
         $resourceName = $decoded['results'][0]['resourceName'] ?? null;
         if (!$resourceName) {
@@ -264,15 +269,12 @@ class GoogleAdsAudienceUpload
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
         $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
-        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'developer-token' => $devToken,
         ];
-        if (!empty($managerId)) {
-            $headers['login-customer-id'] = $managerId;
-        }
+        // Omit login-customer-id so the API uses direct access to the client (same as createUserList).
         // Consent required for create operations (Customer Match policy).
         $job = [
             'type' => 'CUSTOMER_MATCH_USER_LIST',
