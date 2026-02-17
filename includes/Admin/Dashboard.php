@@ -1692,6 +1692,7 @@ class Dashboard
             ?>
 
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
+            <div id="hp-gmc-audience-upload-message" class="hp-gmc-audience-upload-message" style="display:none; margin: 0.5em 0; padding: 0.75em; border-left: 4px solid #d63638; background: #fcf0f1; color: #1d2327;"></div>
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
@@ -2174,6 +2175,8 @@ class Dashboard
                         if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
                             return;
                         }
+                        var msgEl = document.getElementById('hp-gmc-audience-upload-message');
+                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
                         btn.disabled = true;
                         fetch(restBase + '/' + id + '/upload', {
                             method: 'POST',
@@ -2193,7 +2196,7 @@ class Dashboard
                                     if (statusCell) {
                                         statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
                                     }
-                                    alert('Upload started. ' + (res.data.count ? res.data.count + ' users. ' : '') + 'Job may take a few hours. Check "Last upload" or refresh the page.');
+                                    if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
                                 } else {
                                     var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
                                     if (res.status === 404) {
@@ -2203,11 +2206,21 @@ class Dashboard
                                     } else {
                                         msg = 'HTTP ' + res.status + ': ' + msg;
                                     }
-                                    alert(msg);
+                                    if (msgEl) {
+                                        msgEl.textContent = msg;
+                                        msgEl.style.display = 'block';
+                                        msgEl.style.borderLeftColor = '#d63638';
+                                        msgEl.style.background = '#fcf0f1';
+                                    }
                                 }
                             })
                             .catch(function(err) {
-                                alert('Network or server error. Check the Network tab for the real status (e.g. 500 = server error).');
+                                if (msgEl) {
+                                    msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
+                                    msgEl.style.display = 'block';
+                                    msgEl.style.borderLeftColor = '#d63638';
+                                    msgEl.style.background = '#fcf0f1';
+                                }
                             })
                             .finally(function() { btn.disabled = false; });
                     });
