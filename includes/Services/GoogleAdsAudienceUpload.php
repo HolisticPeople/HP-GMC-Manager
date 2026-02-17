@@ -100,7 +100,7 @@ class GoogleAdsAudienceUpload
             if (empty($devToken)) {
                 return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
             }
-            $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
+            $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
             $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/googleAds:searchStream';
             $gaql = "SELECT offline_user_data_job.status, offline_user_data_job.resource_name FROM offline_user_data_job WHERE offline_user_data_job.resource_name = '" . str_replace("'", "\\'", $jobResourceName) . "'";
             $headers = [
@@ -209,7 +209,7 @@ class GoogleAdsAudienceUpload
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
-        $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
+        $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
@@ -217,19 +217,26 @@ class GoogleAdsAudienceUpload
             'login-customer-id' => $loginCustomerId,
         ];
         // Staging debug: log request identity and target (no secrets).
-        try {
-            $creds = \HP_GMC\Services\GoogleApiClient::loadCredentials();
-            $clientEmail = isset($creds['client_email']) ? $creds['client_email'] : 'unknown';
-        } catch (\Throwable $e) {
-            $clientEmail = 'load_failed';
+        $authType = (class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected()) ? 'oauth' : 'service_account';
+        $identityEmail = $authType === 'oauth' && class_exists(\HP_GMC\Services\GoogleAdsOAuth::class)
+            ? (\HP_GMC\Services\GoogleAdsOAuth::getStoredEmail() ?? 'oauth_connected')
+            : null;
+        if ($identityEmail === null) {
+            try {
+                $creds = \HP_GMC\Services\GoogleApiClient::loadCredentials();
+                $identityEmail = isset($creds['client_email']) ? $creds['client_email'] : 'unknown';
+            } catch (\Throwable $e) {
+                $identityEmail = 'load_failed';
+            }
         }
         if (defined('WP_DEBUG') && WP_DEBUG && function_exists('error_log')) {
             error_log(json_encode([
                 'event' => 'gmc.ads.create_user_list.request',
+                'auth' => $authType,
                 'customerId' => $customerId,
                 'loginCustomerId' => $loginCustomerId,
                 'url' => $url,
-                'service_account' => $clientEmail,
+                'identity' => $identityEmail,
                 'api_version' => self::getAdsApiVersion(),
             ]));
         }
@@ -290,7 +297,7 @@ class GoogleAdsAudienceUpload
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
         // Use client as login for direct client access (same as createUserList).
-        $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
+        $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',

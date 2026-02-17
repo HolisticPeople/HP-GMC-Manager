@@ -17,6 +17,9 @@ if (!defined('ABSPATH')) {
  */
 class GoogleApiClient
 {
+    /** OAuth2 scope for Google Ads API. */
+    public const SCOPE_ADWORDS = 'https://www.googleapis.com/auth/adwords';
+
     /** @var array<string, string> Cached access tokens keyed by scope */
     private static array $tokenCache = [];
 
@@ -94,6 +97,23 @@ class GoogleApiClient
         self::$tokenCache[$scope] = $accessToken;
 
         return $accessToken;
+    }
+
+    /**
+     * Get an access token for the Google Ads API. Prefers OAuth (user account) if connected, else service account.
+     *
+     * @return string Access token
+     * @throws \RuntimeException If neither OAuth nor service account can provide a token
+     */
+    public static function getAdsAccessToken(): string
+    {
+        if (class_exists(GoogleAdsOAuth::class) && GoogleAdsOAuth::isConnected()) {
+            $token = GoogleAdsOAuth::getAccessToken();
+            if (!empty($token)) {
+                return $token;
+            }
+        }
+        return self::getAccessToken(self::SCOPE_ADWORDS);
     }
 
     /**

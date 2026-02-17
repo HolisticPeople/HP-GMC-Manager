@@ -9,6 +9,7 @@ use HP_GMC\Rest\ProductFeedEndpoint;
 use HP_GMC\Rest\FunnelFeedEndpoint;
 use HP_GMC\Rest\SupplementalFeedEndpoint;
 use HP_GMC\Rest\AudiencesEndpoint;
+use HP_GMC\Rest\OAuthCallbackEndpoint;
 
 if (!defined('ABSPATH')) {
     exit;
@@ -53,6 +54,7 @@ class Plugin
         // Register admin pages
         add_action('admin_menu', [self::class, 'register_admin_menu']);
         add_action('admin_init', [self::class, 'register_settings']);
+        add_action('admin_init', [self::class, 'handle_ads_oauth_actions']);
 
         // Enqueue admin assets
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
@@ -79,6 +81,7 @@ class Plugin
         add_action('rest_api_init', [FunnelFeedEndpoint::class, 'register']);
         add_action('rest_api_init', [SupplementalFeedEndpoint::class, 'register']);
         add_action('rest_api_init', [AudiencesEndpoint::class, 'register']);
+        add_action('rest_api_init', [OAuthCallbackEndpoint::class, 'register']);
 
         // Listen for funnel saves from HP-React-Widgets
         add_action('hp_funnel_saved', [self::class, 'on_funnel_saved'], 10, 3);
@@ -242,6 +245,14 @@ class Plugin
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
         ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_ads_oauth_client_id', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_ads_oauth_client_secret', [
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
 
         // Schema & Audiences
         register_setting('hp_gmc_settings', 'hp_gmc_schema_upgrade_on_load', [
@@ -269,6 +280,33 @@ class Plugin
                 return (bool) $value;
             },
         ]);
+    }
+
+    /**
+     * Handle Google Ads OAuth: start (redirect to Google) and disconnect.
+     */
+    public static function handle_ads_oauth_actions(): void
+    {
+        if (!current_user_can('manage_woocommerce')) {
+            return;
+        }
+        if (isset($_GET['hp_gmc_oauth_start']) && $_GET['hp_gmc_oauth_start'] === '1') {
+            try {
+                $redirectUri = rest_url('hp-gmc/v1/oauth-callback');
+                $url = \HP_GMC\Services\GoogleAdsOAuth::getAuthUrl($redirectUri);
+                wp_safe_redirect($url);
+                exit;
+            } catch (\Throwable $e) {
+                wp_die(esc_html($e->getMessage()));
+            }
+        }
+        if (isset($_GET['hp_gmc_oauth_disconnect']) && isset($_GET['_wpnonce'])) {
+            if (wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'hp_gmc_oauth_disconnect')) {
+                \HP_GMC\Services\GoogleAdsOAuth::disconnect();
+                wp_safe_redirect(remove_query_arg(['hp_gmc_oauth_disconnect', '_wpnonce'], admin_url('admin.php?page=hp-gmc-settings')));
+                exit;
+            }
+        }
     }
 
     /**
