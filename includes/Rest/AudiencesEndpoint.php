@@ -667,12 +667,15 @@ class AudiencesEndpoint
                     'total'   => $total_batches,
                 ];
             }
+            $next_current = ($chunk_index + 1) * self::get_batches_per_chunk();
+            set_transient($key, ['current' => $next_current, 'total' => $total_batches], 300);
+            self::set_progress_file($progress_key, $next_current, $total_batches);
             // #region agent log
-            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_return_next', 'message' => 'returning next chunk', 'data' => ['chunk_index' => $chunk_index, 'done' => false, 'current' => ($chunk_index + 1) * self::get_batches_per_chunk(), 'total' => $total_batches], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
+            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_return_next', 'message' => 'returning next chunk', 'data' => ['chunk_index' => $chunk_index, 'done' => false, 'current' => $next_current, 'total' => $total_batches], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
             // #endregion
             return [
                 'done'    => false,
-                'current' => ($chunk_index + 1) * self::get_batches_per_chunk(),
+                'current' => $next_current,
                 'total'   => $total_batches,
             ];
         } catch (\Throwable $e) {
