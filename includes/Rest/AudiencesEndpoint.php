@@ -97,6 +97,16 @@ class AudiencesEndpoint
             ],
         ]);
 
+        register_rest_route($namespace, '/audiences/segments/run-start', [
+            'methods' => 'POST',
+            'callback' => [self::class, 'run_start'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'progress_key' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+                'preview' => ['type' => 'boolean', 'default' => false],
+            ],
+        ]);
+
         register_rest_route($namespace, '/audiences/segments/run-progress', [
             'methods' => 'GET',
             'callback' => [self::class, 'run_progress'],
@@ -334,6 +344,23 @@ class AudiencesEndpoint
             $write_log('exception', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 'php-run-exception');
             return ['error' => $e->getMessage(), 'count' => 0];
         }
+    }
+
+    /**
+     * Lightweight start: set progress transient to (0, total) so the client can show "Processing 0 of N" immediately
+     * while the heavy run request may be queued. Called by the client before POST /run or /run-definition.
+     */
+    public static function run_start(WP_REST_Request $request): WP_REST_Response
+    {
+        $progress_key = $request->get_param('progress_key');
+        $preview = (bool) $request->get_param('preview');
+        $max_orders = $preview && class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)
+            ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT
+            : 10000;
+        $total = (int) ceil($max_orders / self::ORDER_ID_FETCH_BATCH);
+        $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+        set_transient($key, ['current' => 0, 'total' => $total], 300);
+        return new WP_REST_Response(['total' => $total], 200);
     }
 
     public static function run_progress(WP_REST_Request $request): WP_REST_Response

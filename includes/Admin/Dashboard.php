@@ -1755,6 +1755,7 @@ class Dashboard
                     <?php endif; ?>
                 </tbody>
             </table>
+            <p class="description" style="margin-top: 0.5em;"><?php esc_html_e('Count and Last run are from the last successful run.', 'hp-gmc-manager'); ?></p>
 
             <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
             <p><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></p>
@@ -2118,13 +2119,15 @@ class Dashboard
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
                 function startProgressPolling(progressKey, updateFn) {
-                    var t = setInterval(function() {
+                    function poll() {
                         fetch(restBase + '/run-progress?progress_key=' + encodeURIComponent(progressKey), { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) { return r.json(); })
-                            .then(function(d) { if (d && (d.current > 0 || d.total > 0)) updateFn(d.current, d.total); })
+                            .then(function(d) { if (d && (d.total > 0 || d.current > 0)) updateFn(d.current || 0, d.total || 0); })
                             .catch(function() {});
-                    }, 1500);
-                    return function() { clearInterval(t); };
+                    }
+                    var firstId = setTimeout(poll, 400);
+                    var t = setInterval(poll, 1500);
+                    return function() { clearTimeout(firstId); clearInterval(t); };
                 }
                 function renderProgress(container, current, total) {
                     if (!container) return;
@@ -2148,7 +2151,8 @@ class Dashboard
                     // #region agent log
                     fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'Run preview clicked',data:{defKeys:Object.keys(filterDefinition||{}),combine:(filterDefinition&&filterDefinition.combine)},timestamp:Date.now(),hypothesisId:'preview-request'})}).catch(function(){});
                     // #endregion
-                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) })
+                    fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: true }) })
+                        .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (d && d.total > 0) renderProgress(resultEl, 0, d.total); return fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) }); }); })
                         .then(function(r) {
                             return r.text().then(function(text) {
                                 var data;
@@ -2220,7 +2224,9 @@ class Dashboard
                         if (statusEl) statusEl.style.display = 'inline';
                         var progressKey = 'run_' + Date.now();
                         var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(statusEl, cur, tot); });
-                        fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
+                        var runPayload = { progress_key: progressKey };
+                        fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
+                            .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
                             .then(function(r) {
                                 return r.text().then(function(text) {
                                     var data;
