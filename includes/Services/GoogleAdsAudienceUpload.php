@@ -100,18 +100,16 @@ class GoogleAdsAudienceUpload
             if (empty($devToken)) {
                 return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
             }
-            $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
+            $loginCustomerId = self::getLoginCustomerId($customerId);
+            $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
             $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/googleAds:searchStream';
             $gaql = "SELECT offline_user_data_job.status, offline_user_data_job.resource_name FROM offline_user_data_job WHERE offline_user_data_job.resource_name = '" . str_replace("'", "\\'", $jobResourceName) . "'";
-            $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
             $headers = [
                 'Authorization' => 'Bearer ' . $accessToken,
                 'Content-Type' => 'application/json',
                 'developer-token' => $devToken,
+                'login-customer-id' => $loginCustomerId,
             ];
-            if (!empty($managerId)) {
-                $headers['login-customer-id'] = $managerId;
-            }
             $response = wp_remote_post($url, [
                 'headers' => $headers,
                 'body' => wp_json_encode(['query' => $gaql]),
@@ -202,18 +200,23 @@ class GoogleAdsAudienceUpload
         return $operations;
     }
 
+    private static function getLoginCustomerId(string $customerId): string
+    {
+        // When Manager Account ID is set, use it (required when OAuth user or service account accesses client via MCC).
+        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
+        return $managerId !== '' ? $managerId : $customerId;
+    }
+
     private static function createUserList(string $customerId, string $name): array
     {
-        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
-        // When using a manager account, docs require login-customer-id = manager ID for client calls.
-        $loginCustomerId = !empty($managerId) ? $managerId : $customerId;
+        $loginCustomerId = self::getLoginCustomerId($customerId);
         // Customer Match lists are UserList resources; audiences:mutate is for Audience (dimensions/scope).
         $url = 'https://googleads.googleapis.com/' . self::getAdsApiVersion() . '/customers/' . $customerId . '/userLists:mutate';
         $devToken = get_option('hp_gmc_ads_developer_token', '');
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
-        $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
+        $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
@@ -266,13 +269,13 @@ class GoogleAdsAudienceUpload
         if (empty($devToken)) {
             return ['success' => false, 'error' => 'Google Ads developer token not configured.'];
         }
-        $managerId = \HP_GMC\Services\GoogleApiClient::getAdsManagerId();
-        $accessToken = \HP_GMC\Services\GoogleApiClient::getAccessToken(self::SCOPE);
+        $loginCustomerId = self::getLoginCustomerId($customerId);
+        $accessToken = \HP_GMC\Services\GoogleApiClient::getAdsAccessToken();
         $headers = [
             'Authorization' => 'Bearer ' . $accessToken,
             'Content-Type' => 'application/json',
             'developer-token' => $devToken,
-            'login-customer-id' => !empty($managerId) ? $managerId : $customerId,
+            'login-customer-id' => $loginCustomerId,
         ];
         // Consent required for create operations (Customer Match policy).
         $job = [
@@ -353,17 +356,27 @@ class GoogleAdsAudienceUpload
         } else {
             $msg = "Google Ads API ({$step}): " . $msg;
         }
-        // When Ads API rejects the token or permission, point to service-account setup.
+        // When Ads API rejects the token or permission, point to the right setup (OAuth vs service account).
+        $uploadAuth = get_option('hp_gmc_ads_upload_auth', 'oauth');
+        $usingOAuth = ($uploadAuth === 'oauth') && class_exists(\HP_GMC\Services\GoogleAdsOAuth::class) && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
         if ($code === 401 || $code === 403 || $code === 500) {
             if (stripos($msg, 'missing required authentication credential') !== false
                 || stripos($msg, 'invalid authentication credential') !== false
                 || stripos($msg, 'Expected OAuth 2 access token') !== false) {
-                $msg .= ' Add the service account email (from GMC Manager > Settings) as a user in Google Ads: Admin > Access and security, then grant access to the customer/manager account.';
+                if ($usingOAuth) {
+                    $msg .= ' Reconnect in GMC Manager > Settings > Upload to Google Ads (OAuth): Disconnect then Connect with Google again.';
+                } else {
+                    $msg .= ' Add the service account email (from GMC Manager > Settings) as a user in Google Ads: Admin > Access and security, then grant access to the customer/manager account.';
+                }
             }
             if (stripos($msg, 'caller does not have permission') !== false
                 || stripos($msg, 'PERMISSION_DENIED') !== false
                 || stripos($msg, 'does not have permission') !== false) {
-                $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). If the service account shows an "allowed domains" warning, add the relevant domain in Access and security > Allowed domains so API access is not restricted. Ensure the account is eligible for Customer Match and the developer token is approved for production.';
+                if ($usingOAuth) {
+                    $msg .= ' You are using OAuth. Check: (1) Connected Google account has Standard or Admin access to the manager account (Manager Account ID in Settings) and the manager has access to the client — Google Ads > Admin > Access and security. (2) Developer token is approved for production (not Test account): Google Ads > Tools & settings > API Center. (3) The client account is eligible for Customer Match (see support.google.com/google-ads/answer/6334160).';
+                } else {
+                    $msg .= ' In Google Ads (client account): give the service account Admin access (Admin > Access and security). If the service account shows an "allowed domains" warning, add the relevant domain in Access and security > Allowed domains so API access is not restricted. Ensure the account is eligible for Customer Match and the developer token is approved for production.';
+                }
             }
         }
         return $msg;

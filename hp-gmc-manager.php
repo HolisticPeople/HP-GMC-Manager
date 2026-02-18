@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.28.15
+ * Version: 1.29.0
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -19,7 +19,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.28.15');
+define('HP_GMC_VERSION', '1.29.0');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -57,6 +57,22 @@ spl_autoload_register(function ($class) {
         require $file;
     }
 });
+
+/**
+ * Settings page callback. Resolves SettingsPage only when the page is viewed so a missing file shows a message instead of a fatal.
+ */
+function hp_gmc_render_settings_page(): void
+{
+    if (class_exists(\HP_GMC\Admin\SettingsPage::class)) {
+        \HP_GMC\Admin\SettingsPage::render();
+        return;
+    }
+    wp_die(
+        esc_html__('GMC Manager settings could not be loaded. Re-deploy the plugin (ensure includes/Admin/SettingsPage.php exists).', 'hp-gmc-manager'),
+        esc_html__('Plugin error', 'hp-gmc-manager'),
+        ['response' => 500, 'back_link' => true]
+    );
+}
 
 /**
  * Initialize the plugin.

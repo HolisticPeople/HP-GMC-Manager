@@ -17,6 +17,9 @@ if (!defined('ABSPATH')) {
  */
 class GoogleApiClient
 {
+    /** OAuth2 scope for Google Ads API. */
+    public const SCOPE_ADWORDS = 'https://www.googleapis.com/auth/adwords';
+
     /** @var array<string, string> Cached access tokens keyed by scope */
     private static array $tokenCache = [];
 
@@ -94,6 +97,35 @@ class GoogleApiClient
         self::$tokenCache[$scope] = $accessToken;
 
         return $accessToken;
+    }
+
+    /**
+     * Get an access token for the Google Ads API (e.g. Audiences upload).
+     * Uses the method selected in Settings (OAuth when connected, or Service account).
+     *
+     * @return string Access token
+     * @throws \RuntimeException If the selected method cannot provide a token
+     */
+    public static function getAdsAccessToken(): string
+    {
+        $uploadAuth = get_option('hp_gmc_ads_upload_auth', 'oauth');
+
+        if ($uploadAuth === 'service_account') {
+            return self::getAccessToken(self::SCOPE_ADWORDS);
+        }
+
+        // OAuth (when connected)
+        if (class_exists(GoogleAdsOAuth::class) && GoogleAdsOAuth::isConnected()) {
+            $token = GoogleAdsOAuth::getAccessToken();
+            if (!empty($token)) {
+                return $token;
+            }
+            throw new \RuntimeException(
+                'OAuth is connected but token refresh failed. Go to GMC Manager > Settings > Upload to Google Ads (OAuth) and click Disconnect, then Connect with Google again.'
+            );
+        }
+
+        return self::getAccessToken(self::SCOPE_ADWORDS);
     }
 
     /**

@@ -27,7 +27,14 @@ class SettingsPage
                 <?php esc_html_e('GMC Manager Settings', 'hp-gmc-manager'); ?>
                 <span class="hp-gmc-version">v<?php echo esc_html(HP_GMC_VERSION); ?></span>
             </h1>
-
+            <?php
+            if (isset($_GET['hp_gmc_oauth']) && $_GET['hp_gmc_oauth'] === '1') {
+                echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__('Google Ads OAuth: Connected successfully. Upload to Google Ads will use your account.', 'hp-gmc-manager') . '</p></div>';
+            }
+            if (!empty($_GET['hp_gmc_oauth_error'])) {
+                echo '<div class="notice notice-error is-dismissible"><p>' . esc_html__('Google Ads OAuth error:', 'hp-gmc-manager') . ' ' . esc_html(urldecode(sanitize_text_field(wp_unslash($_GET['hp_gmc_oauth_error'])))) . '</p></div>';
+            }
+            ?>
             <form method="post" action="options.php">
                 <?php settings_fields('hp_gmc_settings'); ?>
 
@@ -183,6 +190,20 @@ class SettingsPage
                 <table class="form-table">
                     <tr>
                         <th scope="row">
+                            <label for="hp_gmc_ads_upload_auth"><?php esc_html_e('Audience upload authentication', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <select id="hp_gmc_ads_upload_auth" name="hp_gmc_ads_upload_auth">
+                                <option value="oauth" <?php selected(get_option('hp_gmc_ads_upload_auth', 'oauth'), 'oauth'); ?>><?php esc_html_e('OAuth (when connected)', 'hp-gmc-manager'); ?></option>
+                                <option value="service_account" <?php selected(get_option('hp_gmc_ads_upload_auth', 'oauth'), 'service_account'); ?>><?php esc_html_e('Service account', 'hp-gmc-manager'); ?></option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Which credentials to use for Audiences → Upload to Google Ads. OAuth uses your connected Google account; Service account uses the JSON key file below.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
                             <label for="hp_gmc_ads_customer_id"><?php esc_html_e('Customer ID', 'hp-gmc-manager'); ?></label>
                         </th>
                         <td>
@@ -224,8 +245,40 @@ class SettingsPage
                                    value="<?php echo esc_attr(get_option('hp_gmc_ads_developer_token', '')); ?>"
                                    class="regular-text">
                             <p class="description">
-                                <?php esc_html_e('Google Ads API developer token. Found in Google Ads > Tools > API Center.', 'hp-gmc-manager'); ?>
+                                <?php esc_html_e('Google Ads API developer token. Found in Google Ads > Tools > API Center. For Customer Match (Audiences upload) the token must be approved for production, not Test account.', 'hp-gmc-manager'); ?>
                             </p>
+                        </td>
+                    </tr>
+                    <?php
+                    $oauth_available = class_exists(\HP_GMC\Services\GoogleAdsOAuth::class);
+                    $oauth_connected = $oauth_available && \HP_GMC\Services\GoogleAdsOAuth::isConnected();
+                    $oauth_email = $oauth_connected ? \HP_GMC\Services\GoogleAdsOAuth::getStoredEmail() : null;
+                    ?>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Upload to Google Ads (OAuth)', 'hp-gmc-manager'); ?></th>
+                        <td>
+                            <?php if (!$oauth_available) : ?>
+                                <p class="description"><?php esc_html_e('OAuth module not loaded. Ensure all plugin files are deployed.', 'hp-gmc-manager'); ?></p>
+                            <?php else : ?>
+                                <p class="description">
+                                    <?php esc_html_e('Use your Google account for "Upload to Google Ads" when the service account gets 403. Create OAuth 2.0 credentials (Web application) in Google Cloud, add the redirect URI below to Authorized redirect URIs, then connect.', 'hp-gmc-manager'); ?>
+                                </p>
+                                <p><strong><?php esc_html_e('Redirect URI:', 'hp-gmc-manager'); ?></strong> <code><?php echo esc_html(rest_url('hp-gmc/v1/oauth-callback')); ?></code></p>
+                                <input type="text" id="hp_gmc_ads_oauth_client_id" name="hp_gmc_ads_oauth_client_id" value="<?php echo esc_attr(get_option('hp_gmc_ads_oauth_client_id', '')); ?>" class="regular-text" placeholder="Client ID">
+                                <input type="password" id="hp_gmc_ads_oauth_client_secret" name="hp_gmc_ads_oauth_client_secret" value="<?php echo esc_attr(get_option('hp_gmc_ads_oauth_client_secret', '')); ?>" class="regular-text" placeholder="Client Secret" style="margin-top:6px;">
+                                <p class="description" style="margin-top:8px;"><?php esc_html_e('Save your changes (click Save Changes at the bottom of this page) before clicking Connect with Google.', 'hp-gmc-manager'); ?></p>
+                                <?php if ($oauth_connected && $oauth_email) : ?>
+                                    <p style="margin-top:10px;"><span class="dashicons dashicons-yes-alt" style="color:green;"></span> <?php echo esc_html(sprintf(__('Connected as %s', 'hp-gmc-manager'), $oauth_email)); ?>
+                                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=hp-gmc-settings&hp_gmc_oauth_disconnect=1'), 'hp_gmc_oauth_disconnect')); ?>" class="button button-small" style="margin-left:10px;"><?php esc_html_e('Disconnect', 'hp-gmc-manager'); ?></a>
+                                    </p>
+                                <?php elseif ($oauth_connected) : ?>
+                                    <p style="margin-top:10px;"><span class="dashicons dashicons-yes-alt" style="color:green;"></span> <?php esc_html_e('Connected (user email not stored).', 'hp-gmc-manager'); ?>
+                                        <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin.php?page=hp-gmc-settings&hp_gmc_oauth_disconnect=1'), 'hp_gmc_oauth_disconnect')); ?>" class="button button-small" style="margin-left:10px;"><?php esc_html_e('Disconnect', 'hp-gmc-manager'); ?></a>
+                                    </p>
+                                <?php else : ?>
+                                    <p style="margin-top:10px;"><a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-settings&hp_gmc_oauth_start=1')); ?>" class="button"><?php esc_html_e('Connect with Google', 'hp-gmc-manager'); ?></a></p>
+                                <?php endif; ?>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 </table>
