@@ -330,26 +330,9 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
         }
-        // #region agent log
-        $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
-        $log_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'entry', 'data' => ['def_keys' => array_keys($def), 'combine' => $def['combine'] ?? null], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-def']);
-        if ($log_path) {
-            @file_put_contents($log_path, $log_line . "\n", FILE_APPEND | LOCK_EX);
-        } else {
-            error_log('hp_gmc_audiences_debug: ' . $log_line);
-        }
-        // #endregion
         $progress_key = $request->get_param('progress_key');
         $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
-            // #region agent log
-            $err_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'error_result', 'data' => ['error' => $result['error']], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-err']);
-            if ($log_path) {
-                @file_put_contents($log_path, $err_line . "\n", FILE_APPEND | LOCK_EX);
-            } else {
-                error_log('hp_gmc_audiences_debug: ' . $err_line);
-            }
-            // #endregion
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
         return new WP_REST_Response(['count' => $result['count']], 200);
@@ -543,17 +526,8 @@ class AudiencesEndpoint
 
     private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
     {
-        $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
-        $write_log = static function (string $message, array $data, string $hypothesisId) use ($log_path): void {
-            $line = json_encode(['location' => 'AudiencesEndpoint::run_definition_internal', 'message' => $message, 'data' => $data, 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => $hypothesisId]);
-            if ($log_path) {
-                @file_put_contents($log_path, $line . "\n", FILE_APPEND | LOCK_EX);
-            }
-            error_log('hp_gmc_audience ' . (defined('HP_GMC_VERSION') ? 'v' . HP_GMC_VERSION . ' ' : '') . $line);
-        };
         self::server_log('run_definition_internal_start', ['preview' => $preview, 'progress_key' => $progress_key ? 'set' : 'none']);
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
-            $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
         $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : self::get_max_orders();
@@ -582,7 +556,6 @@ class AudiencesEndpoint
             $engine = new \HP_Abilities\Services\SegmentFilterEngine();
             $out = $engine->run($def, null, $max_orders, $on_progress);
             self::server_log('engine_run_success', ['count' => $out['count'] ?? 0]);
-            $write_log('success', ['count' => $out['count'] ?? 0], 'php-run-ok');
             return ['count' => $out['count'], 'rows' => $out['rows']];
         } catch (\Throwable $e) {
             self::server_log('engine_run_exception', [
@@ -591,7 +564,6 @@ class AudiencesEndpoint
                 'line' => $e->getLine(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            $write_log('exception', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 'php-run-exception');
             return ['error' => $e->getMessage(), 'count' => 0];
         }
     }
@@ -613,14 +585,10 @@ class AudiencesEndpoint
         }
         $order_offset = $chunk_index * self::get_batches_per_chunk() * self::get_order_batch_size();
         $max_orders_in_chunk = (int) min(self::get_batches_per_chunk() * self::get_order_batch_size(), self::get_max_orders() - $order_offset);
-        // #region agent log
-        $logPath = 'c:\\DEV\\.cursor\\debug.log';
-        @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_start', 'message' => 'chunk started', 'data' => ['chunk_index' => $chunk_index, 'order_offset' => $order_offset, 'max_orders_in_chunk' => $max_orders_in_chunk, 'total_batches' => $total_batches, 'num_chunks' => $num_chunks, 'progress_key' => $progress_key], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
-        // #endregion
         $abort_key = self::ABORT_TRANSIENT_PREFIX . sanitize_key($progress_key);
         $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
         $batches_per_chunk = self::get_batches_per_chunk();
-        $on_progress = static function (int $batch_in_chunk, int $total_in_chunk) use ($progress_key, $chunk_index, $total_batches, $key, $abort_key, $batches_per_chunk, $logPath): void {
+        $on_progress = static function (int $batch_in_chunk, int $total_in_chunk) use ($progress_key, $chunk_index, $total_batches, $key, $abort_key, $batches_per_chunk): void {
             if (get_transient($abort_key)) {
                 delete_transient($abort_key);
                 self::delete_chunk_files($progress_key, (int) ceil($total_batches / self::get_batches_per_chunk()));
@@ -629,18 +597,10 @@ class AudiencesEndpoint
             $current_global = $chunk_index * $batches_per_chunk + $batch_in_chunk;
             set_transient($key, ['current' => $current_global, 'total' => $total_batches], 300);
             self::set_progress_file($progress_key, $current_global, $total_batches);
-            // #region agent log
-            if ($batch_in_chunk % 5 === 0 || $batch_in_chunk === 0) {
-                @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::on_progress', 'message' => 'progress tick', 'data' => ['current_global' => $current_global, 'batch_in_chunk' => $batch_in_chunk, 'chunk_index' => $chunk_index], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H5']) . "\n", LOCK_EX | FILE_APPEND);
-            }
-            // #endregion
         };
         try {
             $engine = new \HP_Abilities\Services\SegmentFilterEngine();
             $candidates = $engine->build_candidate_identifiers_range($def, $order_offset, $max_orders_in_chunk, $on_progress, self::get_order_batch_size());
-            // #region agent log
-            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_after_engine', 'message' => 'chunk engine returned', 'data' => ['chunk_index' => $chunk_index, 'candidates_count' => count($candidates)], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
-            // #endregion
             self::save_chunk_file($progress_key, $chunk_index, $candidates);
             $is_last = $chunk_index === $num_chunks - 1;
             if ($is_last) {
@@ -657,9 +617,6 @@ class AudiencesEndpoint
                 $repo->set_last_run($segment_id, count($rows));
                 self::save_last_run_rows($segment_id, $rows);
                 self::delete_chunk_files($progress_key, $num_chunks);
-                // #region agent log
-                @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_return_done', 'message' => 'last chunk done', 'data' => ['chunk_index' => $chunk_index, 'done' => true, 'count' => count($rows), 'current' => $total_batches], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
-                // #endregion
                 return [
                     'done'    => true,
                     'count'   => count($rows),
@@ -670,18 +627,12 @@ class AudiencesEndpoint
             $next_current = ($chunk_index + 1) * self::get_batches_per_chunk();
             set_transient($key, ['current' => $next_current, 'total' => $total_batches], 300);
             self::set_progress_file($progress_key, $next_current, $total_batches);
-            // #region agent log
-            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_return_next', 'message' => 'returning next chunk', 'data' => ['chunk_index' => $chunk_index, 'done' => false, 'current' => $next_current, 'total' => $total_batches], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
-            // #endregion
             return [
                 'done'    => false,
                 'current' => $next_current,
                 'total'   => $total_batches,
             ];
         } catch (\Throwable $e) {
-            // #region agent log
-            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_catch', 'message' => 'chunk threw', 'data' => ['chunk_index' => $chunk_index, 'error' => $e->getMessage()], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
-            // #endregion
             self::delete_chunk_files($progress_key, $num_chunks);
             return ['error' => $e->getMessage(), 'current' => 0, 'total' => $total_batches];
         }
@@ -720,9 +671,6 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
         }
-        // #region agent log
-        @file_put_contents('c:\\DEV\\.cursor\\debug.log', json_encode(['location' => 'AudiencesEndpoint::run_continue', 'message' => 'run_continue entry', 'data' => ['segment_id' => $segment_id, 'progress_key' => $progress_key, 'chunk_index' => $chunk_index], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H3']) . "\n", LOCK_EX | FILE_APPEND);
-        // #endregion
         $result = self::run_chunk_internal($def, $segment_id, $progress_key, $chunk_index, $repo);
         if (isset($result['error'])) {
             return new WP_REST_Response(['error' => $result['error'], 'done' => false, 'current' => $result['current'] ?? 0, 'total' => $result['total'] ?? 0], 200);

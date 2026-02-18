@@ -2159,18 +2159,12 @@ class Dashboard
                     resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><span class="hp-gmc-audience-run-status-text"><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span>';
                     var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(resultEl, cur, tot); });
                     var filterDefinition = getDefinition();
-                    // #region agent log
-                    fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'Run preview clicked',data:{defKeys:Object.keys(filterDefinition||{}),combine:(filterDefinition&&filterDefinition.combine)},timestamp:Date.now(),hypothesisId:'preview-request'})}).catch(function(){});
-                    // #endregion
                     fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: true }) })
                         .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (d && d.total > 0) renderProgress(resultEl, 0, d.total); return fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) }); }); })
                         .then(function(r) {
                             return r.text().then(function(text) {
                                 var data;
                                 try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
-                                // #region agent log
-                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-response',message:'Run preview response',data:{ok:r.ok,status:r.status,hasCount:!!(data&&data.count!==undefined),message:(data&&data.message)||null,code:(data&&data.code)||null},timestamp:Date.now(),hypothesisId:'preview-response'})}).catch(function(){});
-                                // #endregion
                                 if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
                                 return data;
                             });
@@ -2184,9 +2178,6 @@ class Dashboard
                             stopPolling();
                             previewBtn.disabled = false;
                             resultEl.textContent = e.message || 'Error';
-                            // #region agent log
-                            fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-catch',message:'Run preview catch',data:{errMessage:e.message},timestamp:Date.now(),hypothesisId:'preview-catch'})}).catch(function(){});
-                            // #endregion
                         });
                 });
                 document.getElementById('hp-gmc-audience-save-as').addEventListener('click', function() {
@@ -2272,20 +2263,11 @@ class Dashboard
                                 return;
                             }
                             var threshold = nextChunkIndex * batchesPerChunk;
-                            // #region agent log
-                            if (tot > 0 && cur >= threshold) {
-                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:progress_trigger_run_continue',message:'poll cur>=threshold',data:{cur:cur,tot:tot,nextChunkIndex:nextChunkIndex,batchesPerChunk:batchesPerChunk,threshold:threshold},timestamp:Date.now(),hypothesisId:'H2'})}).catch(function(){});
-                            }
-                            // #endregion
                             if (tot > 0 && cur >= threshold) {
                                 var idx = nextChunkIndex++;
-                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_continue_call',message:'calling run-continue',data:{chunk_index:idx},timestamp:Date.now(),hypothesisId:'H2'})}).catch(function(){});
                                 fetch(restBase + '/run-continue', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ segment_id: id, progress_key: progressKey, chunk_index: idx }) })
                                     .then(function(r) { return r.json(); })
                                     .then(function(data) {
-                                        // #region agent log
-                                        fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_continue_response',message:'run-continue response',data:{done:!!data.done,current:data.current,total:data.total,error:data.error},timestamp:Date.now(),hypothesisId:'H3'})}).catch(function(){});
-                                        // #endregion
                                         if (data.done) {
                                             stopPolling();
                                             wrap._stopPolling = null;
@@ -2293,16 +2275,14 @@ class Dashboard
                                             setTimeout(function() { location.reload(); }, 500);
                                         }
                                     })
-                                    .catch(function(err) {
-                                        fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_continue_catch',message:'run-continue failed',data:{err:String(err&&err.message||err)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(function(){});
-                                    });
+                                    .catch(function() {});
                             }
                         });
                         wrap._stopPolling = stopPolling;
                         wrap._progressKey = progressKey;
                         var runPayload = { progress_key: progressKey };
                         fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
-                            .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_start_resolved',message:'run-start response',data:{batches_per_chunk:d&&d.batches_per_chunk,total:d&&d.total},timestamp:Date.now(),hypothesisId:'H2'})}).catch(function(){}); return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
+                            .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
                             .then(function(r) {
                                 return r.text().then(function(text) {
                                     var data;
