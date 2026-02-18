@@ -298,7 +298,7 @@ class AudiencesEndpoint
     }
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
-    private const ORDER_ID_FETCH_BATCH = 500;
+    private const ORDER_ID_FETCH_BATCH = 50;
 
     private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
     {
