@@ -286,6 +286,27 @@ class Plugin
                 return (bool) $value;
             },
         ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_audience_batches_per_chunk', [
+            'type' => 'integer',
+            'sanitize_callback' => function ($value) {
+                $v = absint($value);
+                return $v >= 25 && $v <= 250 ? $v : 100;
+            },
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_audience_order_batch_size', [
+            'type' => 'integer',
+            'sanitize_callback' => function ($value) {
+                $v = absint($value);
+                return $v >= 10 && $v <= 200 ? $v : 50;
+            },
+        ]);
+        register_setting('hp_gmc_settings', 'hp_gmc_audience_max_orders', [
+            'type' => 'integer',
+            'sanitize_callback' => function ($value) {
+                $v = absint($value);
+                return $v >= 1000 && $v <= 100000 ? $v : 25000;
+            },
+        ]);
     }
 
     /**

@@ -2260,18 +2260,37 @@ class Dashboard
                         if (abortBtn) abortBtn.style.display = 'inline-block';
                         if (statusEl) statusEl.style.display = 'inline';
                         var progressKey = 'run_' + Date.now();
+                        var batchesPerChunk = 100;
+                        var nextChunkIndex = 1;
                         var stopPolling = startProgressPolling(progressKey, function(cur, tot) {
                             renderProgress(statusEl, cur, tot);
                             if (tot > 0 && cur >= tot) {
                                 stopPolling();
+                                wrap._stopPolling = null;
+                                wrap._progressKey = null;
                                 setTimeout(function() { location.reload(); }, 2000);
+                                return;
+                            }
+                            if (tot > 0 && cur >= nextChunkIndex * batchesPerChunk) {
+                                var idx = nextChunkIndex++;
+                                fetch(restBase + '/run-continue', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ segment_id: id, progress_key: progressKey, chunk_index: idx }) })
+                                    .then(function(r) { return r.json(); })
+                                    .then(function(data) {
+                                        if (data.done) {
+                                            stopPolling();
+                                            wrap._stopPolling = null;
+                                            wrap._progressKey = null;
+                                            setTimeout(function() { location.reload(); }, 500);
+                                        }
+                                    })
+                                    .catch(function() {});
                             }
                         });
                         wrap._stopPolling = stopPolling;
                         wrap._progressKey = progressKey;
                         var runPayload = { progress_key: progressKey };
                         fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
-                            .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
+                            .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
                             .then(function(r) {
                                 return r.text().then(function(text) {
                                     var data;

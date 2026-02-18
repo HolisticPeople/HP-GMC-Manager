@@ -31,9 +31,10 @@ class GoogleAdsAudienceUpload
      * @param int $segmentId Saved segment id
      * @param bool $append True = append to existing list, false = replace (remove_all then add)
      * @param string|null $userListResourceName Existing list resource name (e.g. customers/123/lists/456); if null and append=false we create a new list
+     * @param array|null $rows Optional cached rows from last run; if null, segment is run via engine
      * @return array{success: bool, job_resource_name?: string, user_list_resource_name?: string, count?: int, error?: string}
      */
-    public static function upload(int $segmentId, bool $append, ?string $userListResourceName = null): array
+    public static function upload(int $segmentId, bool $append, ?string $userListResourceName = null, ?array $rows = null): array
     {
         try {
             $repo = new SavedSegmentsRepository();
@@ -41,11 +42,13 @@ class GoogleAdsAudienceUpload
             if (!$seg) {
                 return ['success' => false, 'error' => 'Segment not found'];
             }
-            $def = json_decode($seg['filter_definition'], true);
-            if (!is_array($def)) {
-                return ['success' => false, 'error' => 'Invalid filter definition'];
+            if ($rows === null) {
+                $def = json_decode($seg['filter_definition'], true);
+                if (!is_array($def)) {
+                    return ['success' => false, 'error' => 'Invalid filter definition'];
+                }
+                $rows = self::runSegment($def);
             }
-            $rows = self::runSegment($def);
             $rows = self::applyConsentFilter($rows);
             if (empty($rows)) {
                 $repo->set_last_upload($segmentId, null, 'failure', null);
