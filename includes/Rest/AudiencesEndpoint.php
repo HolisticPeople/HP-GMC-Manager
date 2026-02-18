@@ -81,7 +81,10 @@ class AudiencesEndpoint
             'methods' => 'POST',
             'callback' => [self::class, 'run_segment'],
             'permission_callback' => [self::class, 'permission'],
-            'args' => ['id' => ['required' => true, 'type' => 'integer', 'minimum' => 1]],
+            'args' => [
+                'id' => ['required' => true, 'type' => 'integer', 'minimum' => 1],
+                'progress_key' => ['type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
         ]);
 
         register_rest_route($namespace, '/audiences/segments/run-definition', [
@@ -90,6 +93,46 @@ class AudiencesEndpoint
             'permission_callback' => [self::class, 'permission'],
             'args' => [
                 'filter_definition' => ['required' => true],
+                'progress_key' => ['type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
+        ]);
+
+        register_rest_route($namespace, '/audiences/segments/run-start', [
+            'methods' => 'POST',
+            'callback' => [self::class, 'run_start'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'progress_key' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+                'preview' => ['type' => 'boolean', 'default' => false],
+            ],
+        ]);
+
+        register_rest_route($namespace, '/audiences/segments/run-progress', [
+            'methods' => ['GET', 'POST'],
+            'callback' => [self::class, 'run_progress'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'progress_key' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
+        ]);
+
+        register_rest_route($namespace, '/audiences/segments/run-abort', [
+            'methods' => 'POST',
+            'callback' => [self::class, 'run_abort'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'progress_key' => ['required' => false, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
+        ]);
+
+        register_rest_route($namespace, '/audiences/segments/run-continue', [
+            'methods' => 'POST',
+            'callback' => [self::class, 'run_continue'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'segment_id'  => ['required' => true, 'type' => 'integer', 'minimum' => 1],
+                'progress_key' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+                'chunk_index'  => ['required' => true, 'type' => 'integer', 'minimum' => 0],
             ],
         ]);
 
@@ -222,11 +265,13 @@ class AudiencesEndpoint
     }
 
     /**
-     * Run segment by id; returns count and optionally updates last_run_*.
+     * Run segment by id. With progress_key: returns 202 immediately and runs in background (avoids timeout).
+     * Without progress_key: runs synchronously and returns 200 with count.
      */
-    public static function run_segment(WP_REST_Request $request): WP_REST_Response|WP_Error
+    public static function run_segment(WP_REST_Request $request): WP_REST_Response|WP_Error|null
     {
         $id = (int) $request->get_param('id');
+        self::server_log('run_segment_start', ['segment_id' => $id]);
         $repo = new SavedSegmentsRepository();
         $seg = $repo->get($id);
         if (!$seg) {
@@ -236,11 +281,38 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
         }
-        $result = self::run_definition_internal($def);
+        $progress_key = $request->get_param('progress_key');
+        $use_async = is_string($progress_key) && $progress_key !== '' && function_exists('fastcgi_finish_request');
+
+        if ($use_async) {
+            $total = (int) ceil(self::get_max_orders() / self::get_order_batch_size());
+            $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            set_transient($key, ['current' => 0, 'total' => $total], 300);
+            self::set_progress_file($progress_key, 0, $total);
+            self::server_log('run_segment_async_202', ['segment_id' => $id, 'total' => $total]);
+            status_header(202);
+            header('Content-Type: application/json; charset=' . get_option('blog_charset'));
+            echo wp_json_encode(['status' => 'accepted', 'progress_key' => $progress_key, 'total' => $total]);
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+            self::server_log('run_segment_background_start', ['segment_id' => $id, 'chunk' => 0]);
+            $result = self::run_chunk_internal($def, $id, $progress_key, 0, $repo);
+            if (isset($result['error'])) {
+                self::server_log('run_segment_background_error', ['segment_id' => $id, 'error' => $result['error']]);
+            } elseif (!empty($result['done'])) {
+                self::server_log('run_segment_background_done', ['segment_id' => $id, 'count' => $result['count'] ?? 0]);
+            }
+            exit(0);
+        }
+
+        self::server_log('run_segment_calling_internal', ['segment_id' => $id]);
+        $result = self::run_definition_internal($def, false, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
         $repo->set_last_run($id, $result['count']);
+        self::save_last_run_rows($id, $result['rows'] ?? []);
         return new WP_REST_Response([
             'count' => $result['count'],
             'segment_id' => $id,
@@ -258,22 +330,479 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
         }
-        $result = self::run_definition_internal($def, true);
+        // #region agent log
+        $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
+        $log_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'entry', 'data' => ['def_keys' => array_keys($def), 'combine' => $def['combine'] ?? null], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-def']);
+        if ($log_path) {
+            @file_put_contents($log_path, $log_line . "\n", FILE_APPEND | LOCK_EX);
+        } else {
+            error_log('hp_gmc_audiences_debug: ' . $log_line);
+        }
+        // #endregion
+        $progress_key = $request->get_param('progress_key');
+        $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
+            // #region agent log
+            $err_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'error_result', 'data' => ['error' => $result['error']], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-err']);
+            if ($log_path) {
+                @file_put_contents($log_path, $err_line . "\n", FILE_APPEND | LOCK_EX);
+            } else {
+                error_log('hp_gmc_audiences_debug: ' . $err_line);
+            }
+            // #endregion
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
         return new WP_REST_Response(['count' => $result['count']], 200);
     }
 
-    private static function run_definition_internal(array $def, bool $preview = false): array
+    private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
+    private const ABORT_TRANSIENT_PREFIX = 'hp_gmc_audience_abort_';
+    private const PROGRESS_FILE_DIR = 'hp-gmc-progress';
+
+    /** Batches per chunk (configurable 25–250, default 100). */
+    private static function get_batches_per_chunk(): int
     {
+        $v = (int) get_option('hp_gmc_audience_batches_per_chunk', 100);
+        return $v >= 25 && $v <= 250 ? $v : 100;
+    }
+
+    /** Order IDs per batch (configurable 10–200, default 50). */
+    private static function get_order_batch_size(): int
+    {
+        $v = (int) get_option('hp_gmc_audience_order_batch_size', 50);
+        return $v >= 10 && $v <= 200 ? $v : 50;
+    }
+
+    /** Max orders to scan per run (configurable 1000–100000, default 25000). */
+    private static function get_max_orders(): int
+    {
+        $v = (int) get_option('hp_gmc_audience_max_orders', 25000);
+        return $v >= 1000 && $v <= 100000 ? $v : 25000;
+    }
+
+    /** Progress file path (avoids DB/replica lag so poll always sees latest). */
+    private static function progress_file_path(string $progress_key): string
+    {
+        $upload = wp_upload_dir();
+        $dir = isset($upload['basedir']) ? $upload['basedir'] . '/' . self::PROGRESS_FILE_DIR : '';
+        if ($dir && !is_dir($dir)) {
+            wp_mkdir_p($dir);
+        }
+        $safe = preg_replace('/[^a-z0-9_\-]/', '', strtolower($progress_key)) ?: 'default';
+        return $dir . '/' . $safe . '.json';
+    }
+
+    private static function set_progress_file(string $progress_key, int $current, int $total): void
+    {
+        $path = self::progress_file_path($progress_key);
+        if ($path === '' || strpos($path, '..') !== false) {
+            return;
+        }
+        $data = json_encode(['current' => $current, 'total' => $total, 'ts' => time()]);
+        @file_put_contents($path, $data, LOCK_EX);
+    }
+
+    private static function get_progress_file(string $progress_key): ?array
+    {
+        $path = self::progress_file_path($progress_key);
+        if ($path === '' || !is_readable($path)) {
+            return null;
+        }
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['current'], $data['total'])) {
+            return null;
+        }
+        if (isset($data['ts']) && (time() - (int) $data['ts']) > 600) {
+            @unlink($path);
+            return null;
+        }
+        return ['current' => (int) $data['current'], 'total' => (int) $data['total']];
+    }
+
+    /** Path to last-run cache file for a segment (no DB; used by Export CSV and Upload). */
+    private static function last_run_file_path(int $segment_id): string
+    {
+        if ($segment_id <= 0) {
+            return '';
+        }
+        $upload = wp_upload_dir();
+        $dir = isset($upload['basedir']) ? $upload['basedir'] . '/' . self::PROGRESS_FILE_DIR : '';
+        if ($dir && !is_dir($dir)) {
+            wp_mkdir_p($dir);
+        }
+        return $dir . '/last_run_' . $segment_id . '.json';
+    }
+
+    /**
+     * Save last run rows to file so Export CSV and Upload can reuse without re-running.
+     *
+     * @param int   $segment_id Segment ID
+     * @param array $rows       Rows (email, phone, first_name, last_name, country, zip)
+     */
+    private static function save_last_run_rows(int $segment_id, array $rows): void
+    {
+        $path = self::last_run_file_path($segment_id);
+        if ($path === '' || strpos($path, '..') !== false) {
+            return;
+        }
+        $data = [
+            'ts'    => time(),
+            'count' => count($rows),
+            'rows'  => $rows,
+        ];
+        @file_put_contents($path, wp_json_encode($data), LOCK_EX);
+    }
+
+    /**
+     * Load last run rows from file; null if missing or invalid.
+     *
+     * @return array|null Rows array or null
+     */
+    private static function load_last_run_rows(int $segment_id): ?array
+    {
+        $path = self::last_run_file_path($segment_id);
+        if ($path === '' || !is_readable($path)) {
+            return null;
+        }
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['rows']) || !is_array($data['rows'])) {
+            return null;
+        }
+        return $data['rows'];
+    }
+
+    /** Path to chunk file for chunked run. */
+    private static function chunk_file_path(string $progress_key, int $chunk_index): string
+    {
+        $upload = wp_upload_dir();
+        $dir = isset($upload['basedir']) ? $upload['basedir'] . '/' . self::PROGRESS_FILE_DIR : '';
+        if ($dir && !is_dir($dir)) {
+            wp_mkdir_p($dir);
+        }
+        $safe = preg_replace('/[^a-z0-9_\-]/', '', strtolower($progress_key)) ?: 'default';
+        return $dir . '/chunk_' . $safe . '_' . $chunk_index . '.json';
+    }
+
+    private static function save_chunk_file(string $progress_key, int $chunk_index, array $candidates): void
+    {
+        $path = self::chunk_file_path($progress_key, $chunk_index);
+        if ($path === '' || strpos($path, '..') !== false) {
+            return;
+        }
+        @file_put_contents($path, wp_json_encode($candidates), LOCK_EX);
+    }
+
+    private static function load_chunk_file(string $progress_key, int $chunk_index): ?array
+    {
+        $path = self::chunk_file_path($progress_key, $chunk_index);
+        if ($path === '' || !is_readable($path)) {
+            return null;
+        }
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        return is_array($data) ? $data : null;
+    }
+
+    /** Delete all chunk files for a progress_key (on done or abort). */
+    private static function delete_chunk_files(string $progress_key, int $num_chunks): void
+    {
+        for ($i = 0; $i < $num_chunks; $i++) {
+            $path = self::chunk_file_path($progress_key, $i);
+            if ($path !== '' && is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    /** Log to server (error_log) and optionally to file. Include version for deploy verification. */
+    private static function server_log(string $message, array $data = []): void
+    {
+        $version = defined('HP_GMC_VERSION') ? HP_GMC_VERSION : '0';
+        $payload = array_merge(['version' => $version, 'message' => $message, 'ts' => round(microtime(true) * 1000)], $data);
+        if (function_exists('memory_get_usage')) {
+            $payload['memory_mb'] = round(memory_get_usage(true) / 1024 / 1024, 2);
+            $payload['peak_mb'] = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+        }
+        $line = 'hp_gmc_audience ' . json_encode($payload);
+        error_log($line);
+        if (defined('HP_GMC_DEBUG_LOG') && HP_GMC_DEBUG_LOG !== '') {
+            @file_put_contents(HP_GMC_DEBUG_LOG, $line . "\n", FILE_APPEND | LOCK_EX);
+        }
+    }
+
+    private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
+    {
+        $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
+        $write_log = static function (string $message, array $data, string $hypothesisId) use ($log_path): void {
+            $line = json_encode(['location' => 'AudiencesEndpoint::run_definition_internal', 'message' => $message, 'data' => $data, 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => $hypothesisId]);
+            if ($log_path) {
+                @file_put_contents($log_path, $line . "\n", FILE_APPEND | LOCK_EX);
+            }
+            error_log('hp_gmc_audience ' . (defined('HP_GMC_VERSION') ? 'v' . HP_GMC_VERSION . ' ' : '') . $line);
+        };
+        self::server_log('run_definition_internal_start', ['preview' => $preview, 'progress_key' => $progress_key ? 'set' : 'none']);
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
+            $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
-        $engine = new \HP_Abilities\Services\SegmentFilterEngine();
-        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : null;
-        $out = $engine->run($def, null, $max_orders);
-        return ['count' => $out['count'], 'rows' => $out['rows']];
+        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : self::get_max_orders();
+        $estimated_total = (int) ceil($max_orders / self::get_order_batch_size());
+        $on_progress = null;
+        if ($progress_key !== null && $progress_key !== '') {
+            $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            set_transient($key, ['current' => 0, 'total' => $estimated_total], 300);
+            self::set_progress_file($progress_key, 0, $estimated_total);
+            self::server_log('progress_transient_set', ['total' => $estimated_total]);
+            $abort_key = self::ABORT_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            $on_progress = static function (int $current, int $total) use ($key, $progress_key, $abort_key): void {
+                if (get_transient($abort_key)) {
+                    delete_transient($abort_key);
+                    throw new \RuntimeException('Run aborted by user');
+                }
+                set_transient($key, ['current' => $current, 'total' => $total], 300);
+                self::set_progress_file($progress_key, $current, $total);
+                if ($current <= 3 || $current % 10 === 0) {
+                    self::server_log('batch_progress', ['current' => $current, 'total' => $total]);
+                }
+            };
+        }
+        try {
+            self::server_log('engine_run_before', ['max_orders' => $max_orders]);
+            $engine = new \HP_Abilities\Services\SegmentFilterEngine();
+            $out = $engine->run($def, null, $max_orders, $on_progress);
+            self::server_log('engine_run_success', ['count' => $out['count'] ?? 0]);
+            $write_log('success', ['count' => $out['count'] ?? 0], 'php-run-ok');
+            return ['count' => $out['count'], 'rows' => $out['rows']];
+        } catch (\Throwable $e) {
+            self::server_log('engine_run_exception', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $write_log('exception', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 'php-run-exception');
+            return ['error' => $e->getMessage(), 'count' => 0];
+        }
+    }
+
+    /**
+     * Run one chunk of segment (for chunked run). Saves partial to chunk file; on last chunk merges, builds rows, saves last_run.
+     *
+     * @return array{done?: bool, count?: int, current: int, total: int}|array{error: string}
+     */
+    private static function run_chunk_internal(array $def, int $segment_id, string $progress_key, int $chunk_index, SavedSegmentsRepository $repo): array
+    {
+        if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
+            return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'current' => 0, 'total' => 0];
+        }
+        $total_batches = (int) ceil(self::get_max_orders() / self::get_order_batch_size());
+        $num_chunks = (int) ceil($total_batches / self::get_batches_per_chunk());
+        if ($chunk_index < 0 || $chunk_index >= $num_chunks) {
+            return ['error' => 'Invalid chunk_index.', 'current' => 0, 'total' => $total_batches];
+        }
+        $order_offset = $chunk_index * self::get_batches_per_chunk() * self::get_order_batch_size();
+        $max_orders_in_chunk = (int) min(self::get_batches_per_chunk() * self::get_order_batch_size(), self::get_max_orders() - $order_offset);
+        // #region agent log
+        $logPath = 'c:\\DEV\\.cursor\\debug.log';
+        @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_start', 'message' => 'chunk started', 'data' => ['chunk_index' => $chunk_index, 'order_offset' => $order_offset, 'max_orders_in_chunk' => $max_orders_in_chunk, 'total_batches' => $total_batches, 'num_chunks' => $num_chunks, 'progress_key' => $progress_key], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
+        // #endregion
+        $abort_key = self::ABORT_TRANSIENT_PREFIX . sanitize_key($progress_key);
+        $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+        $batches_per_chunk = self::get_batches_per_chunk();
+        $on_progress = static function (int $batch_in_chunk, int $total_in_chunk) use ($progress_key, $chunk_index, $total_batches, $key, $abort_key, $batches_per_chunk, $logPath): void {
+            if (get_transient($abort_key)) {
+                delete_transient($abort_key);
+                self::delete_chunk_files($progress_key, (int) ceil($total_batches / self::get_batches_per_chunk()));
+                throw new \RuntimeException('Run aborted by user');
+            }
+            $current_global = $chunk_index * $batches_per_chunk + $batch_in_chunk;
+            set_transient($key, ['current' => $current_global, 'total' => $total_batches], 300);
+            self::set_progress_file($progress_key, $current_global, $total_batches);
+            // #region agent log
+            if ($batch_in_chunk % 5 === 0 || $batch_in_chunk === 0) {
+                @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::on_progress', 'message' => 'progress tick', 'data' => ['current_global' => $current_global, 'batch_in_chunk' => $batch_in_chunk, 'chunk_index' => $chunk_index], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H5']) . "\n", LOCK_EX | FILE_APPEND);
+            }
+            // #endregion
+        };
+        try {
+            $engine = new \HP_Abilities\Services\SegmentFilterEngine();
+            $candidates = $engine->build_candidate_identifiers_range($def, $order_offset, $max_orders_in_chunk, $on_progress, self::get_order_batch_size());
+            // #region agent log
+            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_after_engine', 'message' => 'chunk engine returned', 'data' => ['chunk_index' => $chunk_index, 'candidates_count' => count($candidates)], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
+            // #endregion
+            self::save_chunk_file($progress_key, $chunk_index, $candidates);
+            $is_last = $chunk_index === $num_chunks - 1;
+            if ($is_last) {
+                $chunks = [];
+                for ($i = 0; $i < $num_chunks; $i++) {
+                    $c = self::load_chunk_file($progress_key, $i);
+                    if ($c !== null) {
+                        $chunks[] = $c;
+                    }
+                }
+                $merged = \HP_Abilities\Services\SegmentFilterEngine::merge_candidate_chunks($chunks);
+                $out = $engine->build_rows_from_candidates($merged, $def);
+                $rows = $out['rows'] ?? [];
+                $repo->set_last_run($segment_id, count($rows));
+                self::save_last_run_rows($segment_id, $rows);
+                self::delete_chunk_files($progress_key, $num_chunks);
+                // #region agent log
+                @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_return_done', 'message' => 'last chunk done', 'data' => ['chunk_index' => $chunk_index, 'done' => true, 'count' => count($rows), 'current' => $total_batches], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
+                // #endregion
+                return [
+                    'done'    => true,
+                    'count'   => count($rows),
+                    'current' => $total_batches,
+                    'total'   => $total_batches,
+                ];
+            }
+            $next_current = ($chunk_index + 1) * self::get_batches_per_chunk();
+            set_transient($key, ['current' => $next_current, 'total' => $total_batches], 300);
+            self::set_progress_file($progress_key, $next_current, $total_batches);
+            // #region agent log
+            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_return_next', 'message' => 'returning next chunk', 'data' => ['chunk_index' => $chunk_index, 'done' => false, 'current' => $next_current, 'total' => $total_batches], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
+            // #endregion
+            return [
+                'done'    => false,
+                'current' => $next_current,
+                'total'   => $total_batches,
+            ];
+        } catch (\Throwable $e) {
+            // #region agent log
+            @file_put_contents($logPath, json_encode(['location' => 'AudiencesEndpoint::run_chunk_internal_catch', 'message' => 'chunk threw', 'data' => ['chunk_index' => $chunk_index, 'error' => $e->getMessage()], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H1']) . "\n", LOCK_EX | FILE_APPEND);
+            // #endregion
+            self::delete_chunk_files($progress_key, $num_chunks);
+            return ['error' => $e->getMessage(), 'current' => 0, 'total' => $total_batches];
+        }
+    }
+
+    /**
+     * Continue chunked run: run one chunk by index. On last chunk, merge and save last_run.
+     */
+    public static function run_continue(WP_REST_Request $request): WP_REST_Response|WP_Error
+    {
+        $segment_id = (int) $request->get_param('segment_id');
+        $progress_key = $request->get_param('progress_key');
+        $json = $request->get_json_params();
+        if ($segment_id <= 0 && isset($json['segment_id'])) {
+            $segment_id = (int) $json['segment_id'];
+        }
+        if ((!is_string($progress_key) || $progress_key === '') && isset($json['progress_key'])) {
+            $progress_key = (string) $json['progress_key'];
+        }
+        $chunk_index = (int) $request->get_param('chunk_index');
+        if (isset($json['chunk_index'])) {
+            $chunk_index = (int) $json['chunk_index'];
+        }
+        if ($segment_id <= 0) {
+            return new WP_Error('invalid_segment', 'segment_id required.', ['status' => 400]);
+        }
+        if (!is_string($progress_key) || $progress_key === '') {
+            return new WP_Error('invalid_progress_key', 'progress_key required.', ['status' => 400]);
+        }
+        $repo = new SavedSegmentsRepository();
+        $seg = $repo->get($segment_id);
+        if (!$seg) {
+            return new WP_Error('not_found', 'Segment not found.', ['status' => 404]);
+        }
+        $def = json_decode($seg['filter_definition'], true);
+        if (!is_array($def)) {
+            return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
+        }
+        // #region agent log
+        @file_put_contents('c:\\DEV\\.cursor\\debug.log', json_encode(['location' => 'AudiencesEndpoint::run_continue', 'message' => 'run_continue entry', 'data' => ['segment_id' => $segment_id, 'progress_key' => $progress_key, 'chunk_index' => $chunk_index], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'H3']) . "\n", LOCK_EX | FILE_APPEND);
+        // #endregion
+        $result = self::run_chunk_internal($def, $segment_id, $progress_key, $chunk_index, $repo);
+        if (isset($result['error'])) {
+            return new WP_REST_Response(['error' => $result['error'], 'done' => false, 'current' => $result['current'] ?? 0, 'total' => $result['total'] ?? 0], 200);
+        }
+        return new WP_REST_Response([
+            'done'    => $result['done'] ?? false,
+            'count'   => $result['count'] ?? null,
+            'current' => $result['current'],
+            'total'   => $result['total'],
+        ], 200);
+    }
+
+    /**
+     * Lightweight start: set progress transient to (0, total) so the client can show "Processing 0 of N" immediately
+     * while the heavy run request may be queued. Called by the client before POST /run or /run-definition.
+     */
+    public static function run_start(WP_REST_Request $request): WP_REST_Response
+    {
+        $progress_key = $request->get_param('progress_key');
+        $preview = (bool) $request->get_param('preview');
+        $max_orders = $preview && class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)
+            ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT
+            : self::get_max_orders();
+        $total = (int) ceil($max_orders / self::get_order_batch_size());
+        $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+        set_transient($key, ['current' => 0, 'total' => $total], 300);
+        self::set_progress_file($progress_key, 0, $total);
+        return new WP_REST_Response([
+            'total' => $total,
+            'batches_per_chunk' => self::get_batches_per_chunk(),
+        ], 200);
+    }
+
+    public static function run_progress(WP_REST_Request $request): WP_REST_Response
+    {
+        $progress_key = $request->get_param('progress_key');
+        if (!is_string($progress_key) || $progress_key === '') {
+            $json = $request->get_json_params();
+            $progress_key = isset($json['progress_key']) ? (string) $json['progress_key'] : '';
+        }
+        $data = null;
+        if ($progress_key !== '') {
+            $data = self::get_progress_file($progress_key);
+        }
+        if ($data === null) {
+            $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            $data = get_transient($key);
+            $data = is_array($data) ? ['current' => (int) ($data['current'] ?? 0), 'total' => (int) ($data['total'] ?? 0)] : null;
+        }
+        if ($data === null) {
+            $response = new WP_REST_Response(['current' => 0, 'total' => 0], 200);
+        } else {
+            $response = new WP_REST_Response([
+                'current' => $data['current'],
+                'total' => $data['total'],
+            ], 200);
+        }
+        $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $response->header('Pragma', 'no-cache');
+        return $response;
+    }
+
+    /**
+     * Signal the running segment job to stop. Background process checks this between batches.
+     */
+    public static function run_abort(WP_REST_Request $request): WP_REST_Response
+    {
+        $progress_key = $request->get_param('progress_key');
+        if (!is_string($progress_key) || $progress_key === '') {
+            $json = $request->get_json_params();
+            $progress_key = isset($json['progress_key']) ? (string) $json['progress_key'] : '';
+        }
+        if ($progress_key !== '') {
+            $key = self::ABORT_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            set_transient($key, 1, 60);
+            $total_batches = (int) ceil(self::get_max_orders() / self::get_order_batch_size());
+            $num_chunks = (int) ceil($total_batches / self::get_batches_per_chunk());
+            self::delete_chunk_files($progress_key, $num_chunks);
+        }
+        return new WP_REST_Response(['aborted' => true], 200);
     }
 
     /**
@@ -287,21 +816,24 @@ class AudiencesEndpoint
         if (!$seg) {
             return new WP_Error('not_found', 'Segment not found.', ['status' => 404]);
         }
-        $def = json_decode($seg['filter_definition'], true);
-        if (!is_array($def)) {
-            return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
+        $rows = self::load_last_run_rows($id);
+        if ($rows === null) {
+            $def = json_decode($seg['filter_definition'], true);
+            if (!is_array($def)) {
+                return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
+            }
+            $result = self::run_definition_internal($def);
+            if (isset($result['error'])) {
+                return new WP_Error('run_failed', $result['error'], ['status' => 500]);
+            }
+            $rows = $result['rows'] ?? [];
+            self::save_last_run_rows($id, $rows);
+            $repo->set_last_run($id, count($rows));
         }
-        $result = self::run_definition_internal($def);
-        if (isset($result['error'])) {
-            return new WP_Error('run_failed', $result['error'], ['status' => 500]);
-        }
-        $rows = $result['rows'] ?? [];
         $csv = self::build_google_customer_match_csv($rows);
-        $repo->set_last_run($id, count($rows));
-
         return new WP_REST_Response([
-            'csv' => $csv,
-            'count' => count($rows),
+            'csv'      => $csv,
+            'count'    => count($rows),
             'filename' => 'audience-segment-' . (int) $id . '-' . gmdate('Y-m-d') . '.csv',
         ], 200);
     }
@@ -354,8 +886,9 @@ class AudiencesEndpoint
         if (!$seg) {
             return new WP_Error('not_found', 'Segment not found.', ['status' => 404]);
         }
+        $cached_rows = self::load_last_run_rows($id);
         try {
-            $result = GoogleAdsAudienceUpload::upload($id, $append, null);
+            $result = GoogleAdsAudienceUpload::upload($id, $append, null, $cached_rows);
         } catch (\Throwable $e) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('[HP-GMC] Audience upload exception: ' . $e->getMessage() . "\n" . $e->getTraceAsString());

@@ -349,6 +349,57 @@ class SettingsPage
                             </p>
                         </td>
                     </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_audience_batches_per_chunk"><?php esc_html_e('Batches per chunk', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="number"
+                                   id="hp_gmc_audience_batches_per_chunk"
+                                   name="hp_gmc_audience_batches_per_chunk"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_audience_batches_per_chunk', 100)); ?>"
+                                   min="25"
+                                   max="250"
+                                   class="small-text">
+                            <p class="description">
+                                <?php esc_html_e('How many batches each run-continue request runs. Smaller = more HTTP requests, shorter each; larger = fewer requests, longer each. Default: 100. Range: 25–250.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_audience_order_batch_size"><?php esc_html_e('Order batch size', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="number"
+                                   id="hp_gmc_audience_order_batch_size"
+                                   name="hp_gmc_audience_order_batch_size"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_audience_order_batch_size', 50)); ?>"
+                                   min="10"
+                                   max="200"
+                                   class="small-text">
+                            <p class="description">
+                                <?php esc_html_e('Order IDs fetched per batch inside the engine. Lower = less memory per batch, more DB round-trips. Default: 50. Range: 10–200.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_audience_max_orders"><?php esc_html_e('Max orders to scan', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="number"
+                                   id="hp_gmc_audience_max_orders"
+                                   name="hp_gmc_audience_max_orders"
+                                   value="<?php echo esc_attr(get_option('hp_gmc_audience_max_orders', 25000)); ?>"
+                                   min="1000"
+                                   max="100000"
+                                   class="small-text">
+                            <p class="description">
+                                <?php esc_html_e('Total orders considered per segment run. Total batches = ceil(max orders / order batch size). Default: 25000. Range: 1000–100000.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
                 </table>
 
                 <h2><?php esc_html_e('Connection Test', 'hp-gmc-manager'); ?></h2>

@@ -1738,7 +1738,11 @@ class Dashboard
                             ?>
                         </td>
                         <td>
-                            <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
+                            <span class="hp-gmc-audience-run-wrap" style="display:inline-flex;align-items:center;gap:6px;">
+                                <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
+                                <button type="button" class="button button-small hp-gmc-audience-abort" style="display:none;"><?php esc_html_e('Abort', 'hp-gmc-manager'); ?></button>
+                                <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text"><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>
+                            </span>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
                             <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id'] . '&_=' . time()) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
@@ -1752,6 +1756,7 @@ class Dashboard
                     <?php endif; ?>
                 </tbody>
             </table>
+            <p class="description" style="margin-top: 0.5em;"><?php esc_html_e('Count and Last run are from the last successful run.', 'hp-gmc-manager'); ?></p>
 
             <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
             <p><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></p>
@@ -1783,8 +1788,10 @@ class Dashboard
                 <p style="margin-top: 0.5em;">
                     <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
-                    <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
-                    <span id="hp-gmc-audience-preview-result"></span>
+                    <span style="display:inline-flex;align-items:center;gap:6px;">
+                        <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
+                        <span id="hp-gmc-audience-preview-result"></span>
+                    </span>
                 </p>
                 <p>
                     <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
@@ -2112,14 +2119,75 @@ class Dashboard
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
+                function startProgressPolling(progressKey, updateFn) {
+                    function poll() {
+                        fetch(restBase + '/run-progress', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                            body: JSON.stringify({ progress_key: progressKey }),
+                            cache: 'no-store'
+                        })
+                            .then(function(r) { return r.json(); })
+                            .then(function(d) {
+                                if (d && (d.total > 0 || d.current > 0)) {
+                                    if (typeof console !== 'undefined' && console.log) console.log('hp_gmc_progress', d.current, d.total);
+                                    updateFn(d.current || 0, d.total || 0);
+                                }
+                            })
+                            .catch(function(err) { if (typeof console !== 'undefined' && console.warn) console.warn('hp_gmc_progress poll failed', err); });
+                    }
+                    var firstId = setTimeout(poll, 400);
+                    var t = setInterval(poll, 1500);
+                    return function() { clearTimeout(firstId); clearInterval(t); };
+                }
+                function renderProgress(container, current, total) {
+                    if (!container) return;
+                    var textEl = container.querySelector && container.querySelector('.hp-gmc-audience-run-status-text');
+                    var barWrap = container.querySelector && container.querySelector('.hp-gmc-audience-run-progress-bar');
+                    var barInner = barWrap && barWrap.querySelector('span');
+                    if (total > 0 && textEl) {
+                        textEl.textContent = '<?php echo esc_js(__('Processing', 'hp-gmc-manager')); ?> ' + current + ' <?php echo esc_js(__('of', 'hp-gmc-manager')); ?> ' + total;
+                        if (barWrap) { barWrap.style.display = 'inline-block'; }
+                        if (barInner) { barInner.style.width = (total ? Math.min(100, (current / total) * 100) : 0) + '%'; }
+                    }
+                }
                 document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
                     var resultEl = document.getElementById('hp-gmc-audience-preview-result');
-                    resultEl.textContent = '…';
+                    var previewBtn = this;
+                    previewBtn.disabled = true;
+                    var progressKey = 'preview_' + Date.now();
+                    resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><span class="hp-gmc-audience-run-status-text"><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span>';
+                    var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(resultEl, cur, tot); });
                     var filterDefinition = getDefinition();
-                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition }) })
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) { resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error'); })
-                        .catch(function() { resultEl.textContent = 'Error'; });
+                    // #region agent log
+                    fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'Run preview clicked',data:{defKeys:Object.keys(filterDefinition||{}),combine:(filterDefinition&&filterDefinition.combine)},timestamp:Date.now(),hypothesisId:'preview-request'})}).catch(function(){});
+                    // #endregion
+                    fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: true }) })
+                        .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (d && d.total > 0) renderProgress(resultEl, 0, d.total); return fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) }); }); })
+                        .then(function(r) {
+                            return r.text().then(function(text) {
+                                var data;
+                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                // #region agent log
+                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-response',message:'Run preview response',data:{ok:r.ok,status:r.status,hasCount:!!(data&&data.count!==undefined),message:(data&&data.message)||null,code:(data&&data.code)||null},timestamp:Date.now(),hypothesisId:'preview-response'})}).catch(function(){});
+                                // #endregion
+                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
+                                return data;
+                            });
+                        })
+                        .then(function(data) {
+                            stopPolling();
+                            previewBtn.disabled = false;
+                            resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error');
+                        })
+                        .catch(function(e) {
+                            stopPolling();
+                            previewBtn.disabled = false;
+                            resultEl.textContent = e.message || 'Error';
+                            // #region agent log
+                            fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-catch',message:'Run preview catch',data:{errMessage:e.message},timestamp:Date.now(),hypothesisId:'preview-catch'})}).catch(function(){});
+                            // #endregion
+                        });
                 });
                 document.getElementById('hp-gmc-audience-save-as').addEventListener('click', function() {
                     var name = document.getElementById('hp-gmc-audience-save-name').value.trim();
@@ -2127,18 +2195,140 @@ class Dashboard
                     var payload = { name: name, filter_definition: JSON.stringify(getDefinition()) };
                     var url = restBase, method = 'POST';
                     if (currentEditId) { url = restBase + '/' + currentEditId; method = 'PUT'; }
+                    var btn = this;
+                    btn.disabled = true;
                     fetch(url, { method: method, headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(payload) })
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) { if (data.id || data.name) { location.href = location.pathname + '?page=hp-gmc-manager#audiences'; } else { alert(data.message || 'Failed'); } })
-                        .catch(function() { alert('Failed'); });
+                        .then(function(r) {
+                            return r.text().then(function(text) {
+                                var data;
+                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Save failed'));
+                                return data;
+                            });
+                        })
+                        .then(function(data) {
+                            if (data.id || data.name) {
+                                var notice = document.createElement('div');
+                                notice.className = 'notice notice-success is-dismissible';
+                                notice.style.marginTop = '8px';
+                                notice.innerHTML = '<p><?php echo esc_js(__('Segment saved. Refreshing list…', 'hp-gmc-manager')); ?></p>';
+                                var wrap = document.querySelector('.hp-gmc-audiences');
+                                if (wrap) wrap.insertBefore(notice, wrap.firstChild);
+                                location.reload();
+                            } else {
+                                btn.disabled = false;
+                                alert(data.message || 'Failed');
+                            }
+                        })
+                        .catch(function(e) {
+                            btn.disabled = false;
+                            alert(e.message || 'Failed');
+                        });
+                });
+                function resetRunUI(wrap) {
+                    if (!wrap) return;
+                    var runBtn = wrap.querySelector('.hp-gmc-audience-run');
+                    var abortBtn = wrap.querySelector('.hp-gmc-audience-abort');
+                    var statusEl = wrap.querySelector('.hp-gmc-audience-run-status');
+                    if (runBtn) { runBtn.disabled = false; runBtn.style.display = ''; }
+                    if (abortBtn) abortBtn.style.display = 'none';
+                    if (statusEl) statusEl.style.display = 'none';
+                    wrap._stopPolling = null;
+                    wrap._progressKey = null;
+                }
+                document.addEventListener('click', function(e) {
+                    var abortBtn = e.target && e.target.classList && e.target.classList.contains('hp-gmc-audience-abort') ? e.target : null;
+                    if (!abortBtn) return;
+                    var wrap = abortBtn.closest('.hp-gmc-audience-run-wrap');
+                    var stopPolling = wrap && wrap._stopPolling;
+                    var progressKey = wrap && wrap._progressKey;
+                    if (stopPolling) stopPolling();
+                    if (progressKey) {
+                        fetch(restBase + '/run-abort', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) }).catch(function() {});
+                    }
+                    resetRunUI(wrap);
                 });
                 document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
-                        fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) { if (data.count !== undefined) location.reload(); else alert(data.message || 'Error'); })
-                            .catch(function() { alert('Error'); });
+                        var runBtn = this;
+                        var wrap = runBtn.closest('.hp-gmc-audience-run-wrap');
+                        var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
+                        var abortBtn = wrap ? wrap.querySelector('.hp-gmc-audience-abort') : null;
+                        runBtn.disabled = true;
+                        runBtn.style.display = 'none';
+                        if (abortBtn) abortBtn.style.display = 'inline-block';
+                        if (statusEl) statusEl.style.display = 'inline';
+                        var progressKey = 'run_' + Date.now();
+                        var batchesPerChunk = 100;
+                        var nextChunkIndex = 1;
+                        var stopPolling = startProgressPolling(progressKey, function(cur, tot) {
+                            renderProgress(statusEl, cur, tot);
+                            if (tot > 0 && cur >= tot) {
+                                stopPolling();
+                                wrap._stopPolling = null;
+                                wrap._progressKey = null;
+                                setTimeout(function() { location.reload(); }, 2000);
+                                return;
+                            }
+                            var threshold = nextChunkIndex * batchesPerChunk;
+                            // #region agent log
+                            if (tot > 0 && cur >= threshold) {
+                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:progress_trigger_run_continue',message:'poll cur>=threshold',data:{cur:cur,tot:tot,nextChunkIndex:nextChunkIndex,batchesPerChunk:batchesPerChunk,threshold:threshold},timestamp:Date.now(),hypothesisId:'H2'})}).catch(function(){});
+                            }
+                            // #endregion
+                            if (tot > 0 && cur >= threshold) {
+                                var idx = nextChunkIndex++;
+                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_continue_call',message:'calling run-continue',data:{chunk_index:idx},timestamp:Date.now(),hypothesisId:'H2'})}).catch(function(){});
+                                fetch(restBase + '/run-continue', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ segment_id: id, progress_key: progressKey, chunk_index: idx }) })
+                                    .then(function(r) { return r.json(); })
+                                    .then(function(data) {
+                                        // #region agent log
+                                        fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_continue_response',message:'run-continue response',data:{done:!!data.done,current:data.current,total:data.total,error:data.error},timestamp:Date.now(),hypothesisId:'H3'})}).catch(function(){});
+                                        // #endregion
+                                        if (data.done) {
+                                            stopPolling();
+                                            wrap._stopPolling = null;
+                                            wrap._progressKey = null;
+                                            setTimeout(function() { location.reload(); }, 500);
+                                        }
+                                    })
+                                    .catch(function(err) {
+                                        fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_continue_catch',message:'run-continue failed',data:{err:String(err&&err.message||err)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(function(){});
+                                    });
+                            }
+                        });
+                        wrap._stopPolling = stopPolling;
+                        wrap._progressKey = progressKey;
+                        var runPayload = { progress_key: progressKey };
+                        fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
+                            .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run_start_resolved',message:'run-start response',data:{batches_per_chunk:d&&d.batches_per_chunk,total:d&&d.total},timestamp:Date.now(),hypothesisId:'H2'})}).catch(function(){}); return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
+                            .then(function(r) {
+                                return r.text().then(function(text) {
+                                    var data;
+                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                    if (r.status === 202) return data;
+                                    if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
+                                    return data;
+                                });
+                            })
+                            .then(function(data) {
+                                if (data.status === 'accepted') return;
+                                stopPolling();
+                                wrap._stopPolling = null;
+                                wrap._progressKey = null;
+                                if (data.count !== undefined) {
+                                    location.reload();
+                                } else {
+                                    resetRunUI(wrap);
+                                    alert(data.message || 'Error');
+                                }
+                            })
+                            .catch(function(e) {
+                                stopPolling();
+                                resetRunUI(wrap);
+                                alert(e.message || 'Error');
+                            });
                     });
                 });
                 document.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
