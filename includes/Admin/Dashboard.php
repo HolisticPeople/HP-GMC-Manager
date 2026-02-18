@@ -2120,11 +2120,20 @@ class Dashboard
                 });
                 function startProgressPolling(progressKey, updateFn) {
                     function poll() {
-                        var url = restBase + '/run-progress?progress_key=' + encodeURIComponent(progressKey) + '&_=' + Date.now();
-                        fetch(url, { headers: { 'X-WP-Nonce': nonce }, cache: 'no-store' })
+                        fetch(restBase + '/run-progress', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                            body: JSON.stringify({ progress_key: progressKey }),
+                            cache: 'no-store'
+                        })
                             .then(function(r) { return r.json(); })
-                            .then(function(d) { if (d && (d.total > 0 || d.current > 0)) updateFn(d.current || 0, d.total || 0); })
-                            .catch(function() {});
+                            .then(function(d) {
+                                if (d && (d.total > 0 || d.current > 0)) {
+                                    if (typeof console !== 'undefined' && console.log) console.log('hp_gmc_progress', d.current, d.total);
+                                    updateFn(d.current || 0, d.total || 0);
+                                }
+                            })
+                            .catch(function(err) { if (typeof console !== 'undefined' && console.warn) console.warn('hp_gmc_progress poll failed', err); });
                     }
                     var firstId = setTimeout(poll, 400);
                     var t = setInterval(poll, 1500);

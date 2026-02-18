@@ -108,7 +108,7 @@ class AudiencesEndpoint
         ]);
 
         register_rest_route($namespace, '/audiences/segments/run-progress', [
-            'methods' => 'GET',
+            'methods' => ['GET', 'POST'],
             'callback' => [self::class, 'run_progress'],
             'permission_callback' => [self::class, 'permission'],
             'args' => [
@@ -421,6 +421,10 @@ class AudiencesEndpoint
     public static function run_progress(WP_REST_Request $request): WP_REST_Response
     {
         $progress_key = $request->get_param('progress_key');
+        if (!is_string($progress_key) || $progress_key === '') {
+            $json = $request->get_json_params();
+            $progress_key = isset($json['progress_key']) ? (string) $json['progress_key'] : '';
+        }
         $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
         $data = get_transient($key);
         if (!is_array($data)) {
