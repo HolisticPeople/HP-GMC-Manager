@@ -268,6 +268,7 @@ class AudiencesEndpoint
             $total = (int) ceil(10000 / self::ORDER_ID_FETCH_BATCH);
             $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
             set_transient($key, ['current' => 0, 'total' => $total], 300);
+            self::set_progress_file($progress_key, 0, $total);
             self::server_log('run_segment_async_202', ['segment_id' => $id, 'total' => $total]);
             status_header(202);
             header('Content-Type: application/json; charset=' . get_option('blog_charset'));
@@ -336,6 +337,50 @@ class AudiencesEndpoint
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
     private const ORDER_ID_FETCH_BATCH = 50;
+    private const PROGRESS_FILE_DIR = 'hp-gmc-progress';
+
+    /** Progress file path (avoids DB/replica lag so poll always sees latest). */
+    private static function progress_file_path(string $progress_key): string
+    {
+        $upload = wp_upload_dir();
+        $dir = isset($upload['basedir']) ? $upload['basedir'] . '/' . self::PROGRESS_FILE_DIR : '';
+        if ($dir && !is_dir($dir)) {
+            wp_mkdir_p($dir);
+        }
+        $safe = preg_replace('/[^a-z0-9_\-]/', '', strtolower($progress_key)) ?: 'default';
+        return $dir . '/' . $safe . '.json';
+    }
+
+    private static function set_progress_file(string $progress_key, int $current, int $total): void
+    {
+        $path = self::progress_file_path($progress_key);
+        if ($path === '' || strpos($path, '..') !== false) {
+            return;
+        }
+        $data = json_encode(['current' => $current, 'total' => $total, 'ts' => time()]);
+        @file_put_contents($path, $data, LOCK_EX);
+    }
+
+    private static function get_progress_file(string $progress_key): ?array
+    {
+        $path = self::progress_file_path($progress_key);
+        if ($path === '' || !is_readable($path)) {
+            return null;
+        }
+        $raw = @file_get_contents($path);
+        if ($raw === false) {
+            return null;
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data) || !isset($data['current'], $data['total'])) {
+            return null;
+        }
+        if (isset($data['ts']) && (time() - (int) $data['ts']) > 600) {
+            @unlink($path);
+            return null;
+        }
+        return ['current' => (int) $data['current'], 'total' => (int) $data['total']];
+    }
 
     /** Log to server (error_log) and optionally to file. Include version for deploy verification. */
     private static function server_log(string $message, array $data = []): void
@@ -374,9 +419,11 @@ class AudiencesEndpoint
         if ($progress_key !== null && $progress_key !== '') {
             $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
             set_transient($key, ['current' => 0, 'total' => $estimated_total], 300);
+            self::set_progress_file($progress_key, 0, $estimated_total);
             self::server_log('progress_transient_set', ['total' => $estimated_total]);
-            $on_progress = static function (int $current, int $total) use ($key): void {
+            $on_progress = static function (int $current, int $total) use ($key, $progress_key): void {
                 set_transient($key, ['current' => $current, 'total' => $total], 300);
+                self::set_progress_file($progress_key, $current, $total);
                 if ($current <= 3 || $current % 10 === 0) {
                     self::server_log('batch_progress', ['current' => $current, 'total' => $total]);
                 }
@@ -415,6 +462,7 @@ class AudiencesEndpoint
         $total = (int) ceil($max_orders / self::ORDER_ID_FETCH_BATCH);
         $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
         set_transient($key, ['current' => 0, 'total' => $total], 300);
+        self::set_progress_file($progress_key, 0, $total);
         return new WP_REST_Response(['total' => $total], 200);
     }
 
@@ -425,14 +473,21 @@ class AudiencesEndpoint
             $json = $request->get_json_params();
             $progress_key = isset($json['progress_key']) ? (string) $json['progress_key'] : '';
         }
-        $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
-        $data = get_transient($key);
-        if (!is_array($data)) {
+        $data = null;
+        if ($progress_key !== '') {
+            $data = self::get_progress_file($progress_key);
+        }
+        if ($data === null) {
+            $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            $data = get_transient($key);
+            $data = is_array($data) ? ['current' => (int) ($data['current'] ?? 0), 'total' => (int) ($data['total'] ?? 0)] : null;
+        }
+        if ($data === null) {
             $response = new WP_REST_Response(['current' => 0, 'total' => 0], 200);
         } else {
             $response = new WP_REST_Response([
-                'current' => (int) ($data['current'] ?? 0),
-                'total' => (int) ($data['total'] ?? 0),
+                'current' => $data['current'],
+                'total' => $data['total'],
             ], 200);
         }
         $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
