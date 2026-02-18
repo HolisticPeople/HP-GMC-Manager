@@ -2223,7 +2223,13 @@ class Dashboard
                         runBtn.disabled = true;
                         if (statusEl) statusEl.style.display = 'inline';
                         var progressKey = 'run_' + Date.now();
-                        var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(statusEl, cur, tot); });
+                        var stopPolling = startProgressPolling(progressKey, function(cur, tot) {
+                            renderProgress(statusEl, cur, tot);
+                            if (tot > 0 && cur >= tot) {
+                                stopPolling();
+                                setTimeout(function() { location.reload(); }, 2000);
+                            }
+                        });
                         var runPayload = { progress_key: progressKey };
                         fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
                             .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
@@ -2231,11 +2237,13 @@ class Dashboard
                                 return r.text().then(function(text) {
                                     var data;
                                     try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                    if (r.status === 202) return data;
                                     if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
                                     return data;
                                 });
                             })
                             .then(function(data) {
+                                if (data.status === 'accepted') return;
                                 stopPolling();
                                 if (data.count !== undefined) {
                                     location.reload();

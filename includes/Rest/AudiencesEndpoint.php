@@ -245,9 +245,10 @@ class AudiencesEndpoint
     }
 
     /**
-     * Run segment by id; returns count and optionally updates last_run_*.
+     * Run segment by id. With progress_key: returns 202 immediately and runs in background (avoids timeout).
+     * Without progress_key: runs synchronously and returns 200 with count.
      */
-    public static function run_segment(WP_REST_Request $request): WP_REST_Response|WP_Error
+    public static function run_segment(WP_REST_Request $request): WP_REST_Response|WP_Error|null
     {
         $id = (int) $request->get_param('id');
         self::server_log('run_segment_start', ['segment_id' => $id]);
@@ -261,6 +262,30 @@ class AudiencesEndpoint
             return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
         }
         $progress_key = $request->get_param('progress_key');
+        $use_async = is_string($progress_key) && $progress_key !== '' && function_exists('fastcgi_finish_request');
+
+        if ($use_async) {
+            $total = (int) ceil(10000 / self::ORDER_ID_FETCH_BATCH);
+            $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            set_transient($key, ['current' => 0, 'total' => $total], 300);
+            self::server_log('run_segment_async_202', ['segment_id' => $id, 'total' => $total]);
+            status_header(202);
+            header('Content-Type: application/json; charset=' . get_option('blog_charset'));
+            echo wp_json_encode(['status' => 'accepted', 'progress_key' => $progress_key, 'total' => $total]);
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+            self::server_log('run_segment_background_start', ['segment_id' => $id]);
+            $result = self::run_definition_internal($def, false, $progress_key);
+            if (isset($result['error'])) {
+                self::server_log('run_segment_background_error', ['segment_id' => $id, 'error' => $result['error']]);
+            } else {
+                $repo->set_last_run($id, $result['count']);
+                self::server_log('run_segment_background_done', ['segment_id' => $id, 'count' => $result['count']]);
+            }
+            exit(0);
+        }
+
         self::server_log('run_segment_calling_internal', ['segment_id' => $id]);
         $result = self::run_definition_internal($def, false, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
