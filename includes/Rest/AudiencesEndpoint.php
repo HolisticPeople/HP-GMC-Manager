@@ -298,7 +298,7 @@ class AudiencesEndpoint
     }
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
-    private const ORDER_ID_FETCH_BATCH = 1000;
+    private const ORDER_ID_FETCH_BATCH = 500;
 
     private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
     {
@@ -315,7 +315,7 @@ class AudiencesEndpoint
             $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
-        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : 25000;
+        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : 10000;
         $estimated_total = (int) ceil($max_orders / self::ORDER_ID_FETCH_BATCH);
         $on_progress = null;
         if ($progress_key !== null && $progress_key !== '') {
