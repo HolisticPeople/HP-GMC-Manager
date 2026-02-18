@@ -1738,7 +1738,10 @@ class Dashboard
                             ?>
                         </td>
                         <td>
-                            <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
+                            <span class="hp-gmc-audience-run-wrap" style="display:inline-flex;align-items:center;gap:6px;">
+                                <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
+                                <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span>
+                            </span>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
                             <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id'] . '&_=' . time()) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
@@ -1783,8 +1786,10 @@ class Dashboard
                 <p style="margin-top: 0.5em;">
                     <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
-                    <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
-                    <span id="hp-gmc-audience-preview-result"></span>
+                    <span style="display:inline-flex;align-items:center;gap:6px;">
+                        <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
+                        <span id="hp-gmc-audience-preview-result"></span>
+                    </span>
                 </p>
                 <p>
                     <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
@@ -2114,7 +2119,9 @@ class Dashboard
                 });
                 document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
                     var resultEl = document.getElementById('hp-gmc-audience-preview-result');
-                    resultEl.textContent = '…';
+                    var previewBtn = this;
+                    previewBtn.disabled = true;
+                    resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?>';
                     var filterDefinition = getDefinition();
                     // #region agent log
                     fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'Run preview clicked',data:{defKeys:Object.keys(filterDefinition||{}),combine:(filterDefinition&&filterDefinition.combine)},timestamp:Date.now(),hypothesisId:'preview-request'})}).catch(function(){});
@@ -2132,9 +2139,11 @@ class Dashboard
                             });
                         })
                         .then(function(data) {
+                            previewBtn.disabled = false;
                             resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error');
                         })
                         .catch(function(e) {
+                            previewBtn.disabled = false;
                             resultEl.textContent = e.message || 'Error';
                             // #region agent log
                             fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-catch',message:'Run preview catch',data:{errMessage:e.message},timestamp:Date.now(),hypothesisId:'preview-catch'})}).catch(function(){});
@@ -2181,7 +2190,10 @@ class Dashboard
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
                         var runBtn = this;
+                        var wrap = runBtn.closest('.hp-gmc-audience-run-wrap');
+                        var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
                         runBtn.disabled = true;
+                        if (statusEl) statusEl.style.display = 'inline';
                         fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) {
                                 return r.text().then(function(text) {
@@ -2196,11 +2208,13 @@ class Dashboard
                                     location.reload();
                                 } else {
                                     runBtn.disabled = false;
+                                    if (statusEl) statusEl.style.display = 'none';
                                     alert(data.message || 'Error');
                                 }
                             })
                             .catch(function(e) {
                                 runBtn.disabled = false;
+                                if (statusEl) statusEl.style.display = 'none';
                                 alert(e.message || 'Error');
                             });
                     });
