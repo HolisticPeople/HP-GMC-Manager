@@ -120,6 +120,21 @@ composer install
 git push origin dev
 ```
 
+### Audience run server logs (v1.29.9+)
+
+When a segment run fails (e.g. critical error after "Processing 0 of 200"), the plugin logs to the PHP error log so you can see how far it got. Each line is prefixed with `hp_gmc_audience` and includes `version`, `message`, `memory_mb`, and `peak_mb`.
+
+**On Kinsta staging:** SSH in and run:
+```bash
+# Recent audience run entries (filter by plugin prefix)
+grep hp_gmc_audience /path/to/wp-content/debug.log | tail -100
+```
+If `WP_DEBUG_LOG` is not set, check the host’s PHP error log path (e.g. in Kinsta dashboard or `php.ini`).
+
+**Messages you’ll see:** `run_segment_start` → `run_segment_calling_internal` → `run_definition_internal_start` → `progress_transient_set` → `engine_run_before` → `batch_progress` (batch 1, 2, 3, then every 10). If it crashes before any batch, you’ll see up to `engine_run_before`; if it’s a PHP fatal (e.g. OOM), the last line in the log is the last step that completed.
+
+**Optional:** Set `HP_GMC_DEBUG_LOG` in `wp-config.php` to a writable path (e.g. `WP_CONTENT_DIR . '/uploads/hp-gmc-debug.log'`) to also write these lines to a dedicated file.
+
 ## File Structure
 
 ```

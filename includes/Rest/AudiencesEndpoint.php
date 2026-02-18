@@ -250,6 +250,7 @@ class AudiencesEndpoint
     public static function run_segment(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
         $id = (int) $request->get_param('id');
+        self::server_log('run_segment_start', ['segment_id' => $id]);
         $repo = new SavedSegmentsRepository();
         $seg = $repo->get($id);
         if (!$seg) {
@@ -260,6 +261,7 @@ class AudiencesEndpoint
             return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
         }
         $progress_key = $request->get_param('progress_key');
+        self::server_log('run_segment_calling_internal', ['segment_id' => $id]);
         $result = self::run_definition_internal($def, false, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
@@ -310,6 +312,22 @@ class AudiencesEndpoint
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
     private const ORDER_ID_FETCH_BATCH = 50;
 
+    /** Log to server (error_log) and optionally to file. Include version for deploy verification. */
+    private static function server_log(string $message, array $data = []): void
+    {
+        $version = defined('HP_GMC_VERSION') ? HP_GMC_VERSION : '0';
+        $payload = array_merge(['version' => $version, 'message' => $message, 'ts' => round(microtime(true) * 1000)], $data);
+        if (function_exists('memory_get_usage')) {
+            $payload['memory_mb'] = round(memory_get_usage(true) / 1024 / 1024, 2);
+            $payload['peak_mb'] = round(memory_get_peak_usage(true) / 1024 / 1024, 2);
+        }
+        $line = 'hp_gmc_audience ' . json_encode($payload);
+        error_log($line);
+        if (defined('HP_GMC_DEBUG_LOG') && HP_GMC_DEBUG_LOG !== '') {
+            @file_put_contents(HP_GMC_DEBUG_LOG, $line . "\n", FILE_APPEND | LOCK_EX);
+        }
+    }
+
     private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
     {
         $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
@@ -317,10 +335,10 @@ class AudiencesEndpoint
             $line = json_encode(['location' => 'AudiencesEndpoint::run_definition_internal', 'message' => $message, 'data' => $data, 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => $hypothesisId]);
             if ($log_path) {
                 @file_put_contents($log_path, $line . "\n", FILE_APPEND | LOCK_EX);
-            } else {
-                error_log('hp_gmc_audiences_debug: ' . $line);
             }
+            error_log('hp_gmc_audience ' . (defined('HP_GMC_VERSION') ? 'v' . HP_GMC_VERSION . ' ' : '') . $line);
         };
+        self::server_log('run_definition_internal_start', ['preview' => $preview, 'progress_key' => $progress_key ? 'set' : 'none']);
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
             $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
@@ -331,16 +349,28 @@ class AudiencesEndpoint
         if ($progress_key !== null && $progress_key !== '') {
             $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
             set_transient($key, ['current' => 0, 'total' => $estimated_total], 300);
+            self::server_log('progress_transient_set', ['total' => $estimated_total]);
             $on_progress = static function (int $current, int $total) use ($key): void {
                 set_transient($key, ['current' => $current, 'total' => $total], 300);
+                if ($current <= 3 || $current % 10 === 0) {
+                    self::server_log('batch_progress', ['current' => $current, 'total' => $total]);
+                }
             };
         }
         try {
+            self::server_log('engine_run_before', ['max_orders' => $max_orders]);
             $engine = new \HP_Abilities\Services\SegmentFilterEngine();
             $out = $engine->run($def, null, $max_orders, $on_progress);
+            self::server_log('engine_run_success', ['count' => $out['count'] ?? 0]);
             $write_log('success', ['count' => $out['count'] ?? 0], 'php-run-ok');
             return ['count' => $out['count'], 'rows' => $out['rows']];
         } catch (\Throwable $e) {
+            self::server_log('engine_run_exception', [
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             $write_log('exception', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 'php-run-exception');
             return ['error' => $e->getMessage(), 'count' => 0];
         }
