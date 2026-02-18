@@ -265,7 +265,7 @@ class AudiencesEndpoint
         $use_async = is_string($progress_key) && $progress_key !== '' && function_exists('fastcgi_finish_request');
 
         if ($use_async) {
-            $total = (int) ceil(10000 / self::ORDER_ID_FETCH_BATCH);
+            $total = (int) ceil(self::RUN_ORDER_LIMIT / self::ORDER_ID_FETCH_BATCH);
             $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
             set_transient($key, ['current' => 0, 'total' => $total], 300);
             self::set_progress_file($progress_key, 0, $total);
@@ -337,6 +337,8 @@ class AudiencesEndpoint
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
     private const ORDER_ID_FETCH_BATCH = 50;
+    /** Max orders to scan per segment run (covers ~20K+ orders; 25000/50 = 500 batches). */
+    private const RUN_ORDER_LIMIT = 25000;
     private const PROGRESS_FILE_DIR = 'hp-gmc-progress';
 
     /** Progress file path (avoids DB/replica lag so poll always sees latest). */
@@ -413,7 +415,7 @@ class AudiencesEndpoint
             $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
-        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : 10000;
+        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : self::RUN_ORDER_LIMIT;
         $estimated_total = (int) ceil($max_orders / self::ORDER_ID_FETCH_BATCH);
         $on_progress = null;
         if ($progress_key !== null && $progress_key !== '') {
@@ -458,7 +460,7 @@ class AudiencesEndpoint
         $preview = (bool) $request->get_param('preview');
         $max_orders = $preview && class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)
             ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT
-            : 10000;
+            : self::RUN_ORDER_LIMIT;
         $total = (int) ceil($max_orders / self::ORDER_ID_FETCH_BATCH);
         $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
         set_transient($key, ['current' => 0, 'total' => $total], 300);
