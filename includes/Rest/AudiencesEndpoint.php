@@ -81,7 +81,10 @@ class AudiencesEndpoint
             'methods' => 'POST',
             'callback' => [self::class, 'run_segment'],
             'permission_callback' => [self::class, 'permission'],
-            'args' => ['id' => ['required' => true, 'type' => 'integer', 'minimum' => 1]],
+            'args' => [
+                'id' => ['required' => true, 'type' => 'integer', 'minimum' => 1],
+                'progress_key' => ['type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
         ]);
 
         register_rest_route($namespace, '/audiences/segments/run-definition', [
@@ -90,6 +93,16 @@ class AudiencesEndpoint
             'permission_callback' => [self::class, 'permission'],
             'args' => [
                 'filter_definition' => ['required' => true],
+                'progress_key' => ['type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
+        ]);
+
+        register_rest_route($namespace, '/audiences/segments/run-progress', [
+            'methods' => 'GET',
+            'callback' => [self::class, 'run_progress'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'progress_key' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
             ],
         ]);
 
@@ -236,7 +249,8 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'Stored filter definition is invalid.', ['status' => 500]);
         }
-        $result = self::run_definition_internal($def);
+        $progress_key = $request->get_param('progress_key');
+        $result = self::run_definition_internal($def, false, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
@@ -267,7 +281,8 @@ class AudiencesEndpoint
             error_log('hp_gmc_audiences_debug: ' . $log_line);
         }
         // #endregion
-        $result = self::run_definition_internal($def, true);
+        $progress_key = $request->get_param('progress_key');
+        $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
             // #region agent log
             $err_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'error_result', 'data' => ['error' => $result['error']], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-err']);
@@ -282,7 +297,10 @@ class AudiencesEndpoint
         return new WP_REST_Response(['count' => $result['count']], 200);
     }
 
-    private static function run_definition_internal(array $def, bool $preview = false): array
+    private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
+    private const ORDER_ID_FETCH_BATCH = 1000;
+
+    private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
     {
         $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
         $write_log = static function (string $message, array $data, string $hypothesisId) use ($log_path): void {
@@ -297,16 +315,39 @@ class AudiencesEndpoint
             $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
+        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : 25000;
+        $estimated_total = (int) ceil($max_orders / self::ORDER_ID_FETCH_BATCH);
+        $on_progress = null;
+        if ($progress_key !== null && $progress_key !== '') {
+            $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            set_transient($key, ['current' => 0, 'total' => $estimated_total], 300);
+            $on_progress = static function (int $current, int $total) use ($key): void {
+                set_transient($key, ['current' => $current, 'total' => $total], 300);
+            };
+        }
         try {
             $engine = new \HP_Abilities\Services\SegmentFilterEngine();
-            $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : null;
-            $out = $engine->run($def, null, $max_orders);
+            $out = $engine->run($def, null, $max_orders, $on_progress);
             $write_log('success', ['count' => $out['count'] ?? 0], 'php-run-ok');
             return ['count' => $out['count'], 'rows' => $out['rows']];
         } catch (\Throwable $e) {
             $write_log('exception', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 'php-run-exception');
             return ['error' => $e->getMessage(), 'count' => 0];
         }
+    }
+
+    public static function run_progress(WP_REST_Request $request): WP_REST_Response
+    {
+        $progress_key = $request->get_param('progress_key');
+        $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
+        $data = get_transient($key);
+        if (!is_array($data)) {
+            return new WP_REST_Response(['current' => 0, 'total' => 0], 200);
+        }
+        return new WP_REST_Response([
+            'current' => (int) ($data['current'] ?? 0),
+            'total' => (int) ($data['total'] ?? 0),
+        ], 200);
     }
 
     /**

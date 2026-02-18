@@ -1740,7 +1740,7 @@ class Dashboard
                         <td>
                             <span class="hp-gmc-audience-run-wrap" style="display:inline-flex;align-items:center;gap:6px;">
                                 <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
-                                <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span>
+                                <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text"><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>
                             </span>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
                             <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id'] . '&_=' . time()) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
@@ -2117,16 +2117,38 @@ class Dashboard
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
+                function startProgressPolling(progressKey, updateFn) {
+                    var t = setInterval(function() {
+                        fetch(restBase + '/run-progress?progress_key=' + encodeURIComponent(progressKey), { headers: { 'X-WP-Nonce': nonce } })
+                            .then(function(r) { return r.json(); })
+                            .then(function(d) { if (d && (d.current > 0 || d.total > 0)) updateFn(d.current, d.total); })
+                            .catch(function() {});
+                    }, 1500);
+                    return function() { clearInterval(t); };
+                }
+                function renderProgress(container, current, total) {
+                    if (!container) return;
+                    var textEl = container.querySelector && container.querySelector('.hp-gmc-audience-run-status-text');
+                    var barWrap = container.querySelector && container.querySelector('.hp-gmc-audience-run-progress-bar');
+                    var barInner = barWrap && barWrap.querySelector('span');
+                    if (total > 0 && textEl) {
+                        textEl.textContent = '<?php echo esc_js(__('Processing', 'hp-gmc-manager')); ?> ' + current + ' <?php echo esc_js(__('of', 'hp-gmc-manager')); ?> ' + total;
+                        if (barWrap) { barWrap.style.display = 'inline-block'; }
+                        if (barInner) { barInner.style.width = (total ? Math.min(100, (current / total) * 100) : 0) + '%'; }
+                    }
+                }
                 document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
                     var resultEl = document.getElementById('hp-gmc-audience-preview-result');
                     var previewBtn = this;
                     previewBtn.disabled = true;
-                    resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?>';
+                    var progressKey = 'preview_' + Date.now();
+                    resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><span class="hp-gmc-audience-run-status-text"><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span>';
+                    var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(resultEl, cur, tot); });
                     var filterDefinition = getDefinition();
                     // #region agent log
                     fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'Run preview clicked',data:{defKeys:Object.keys(filterDefinition||{}),combine:(filterDefinition&&filterDefinition.combine)},timestamp:Date.now(),hypothesisId:'preview-request'})}).catch(function(){});
                     // #endregion
-                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition }) })
+                    fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) })
                         .then(function(r) {
                             return r.text().then(function(text) {
                                 var data;
@@ -2139,10 +2161,12 @@ class Dashboard
                             });
                         })
                         .then(function(data) {
+                            stopPolling();
                             previewBtn.disabled = false;
                             resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error');
                         })
                         .catch(function(e) {
+                            stopPolling();
                             previewBtn.disabled = false;
                             resultEl.textContent = e.message || 'Error';
                             // #region agent log
@@ -2194,7 +2218,9 @@ class Dashboard
                         var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
                         runBtn.disabled = true;
                         if (statusEl) statusEl.style.display = 'inline';
-                        fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'X-WP-Nonce': nonce } })
+                        var progressKey = 'run_' + Date.now();
+                        var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(statusEl, cur, tot); });
+                        fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
                             .then(function(r) {
                                 return r.text().then(function(text) {
                                     var data;
@@ -2204,6 +2230,7 @@ class Dashboard
                                 });
                             })
                             .then(function(data) {
+                                stopPolling();
                                 if (data.count !== undefined) {
                                     location.reload();
                                 } else {
@@ -2213,6 +2240,7 @@ class Dashboard
                                 }
                             })
                             .catch(function(e) {
+                                stopPolling();
                                 runBtn.disabled = false;
                                 if (statusEl) statusEl.style.display = 'none';
                                 alert(e.message || 'Error');
