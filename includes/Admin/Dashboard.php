@@ -2120,7 +2120,8 @@ class Dashboard
                 });
                 function startProgressPolling(progressKey, updateFn) {
                     function poll() {
-                        fetch(restBase + '/run-progress?progress_key=' + encodeURIComponent(progressKey), { headers: { 'X-WP-Nonce': nonce } })
+                        var url = restBase + '/run-progress?progress_key=' + encodeURIComponent(progressKey) + '&_=' + Date.now();
+                        fetch(url, { headers: { 'X-WP-Nonce': nonce }, cache: 'no-store' })
                             .then(function(r) { return r.json(); })
                             .then(function(d) { if (d && (d.total > 0 || d.current > 0)) updateFn(d.current || 0, d.total || 0); })
                             .catch(function() {});

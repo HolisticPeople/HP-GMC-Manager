@@ -424,12 +424,16 @@ class AudiencesEndpoint
         $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
         $data = get_transient($key);
         if (!is_array($data)) {
-            return new WP_REST_Response(['current' => 0, 'total' => 0], 200);
+            $response = new WP_REST_Response(['current' => 0, 'total' => 0], 200);
+        } else {
+            $response = new WP_REST_Response([
+                'current' => (int) ($data['current'] ?? 0),
+                'total' => (int) ($data['total'] ?? 0),
+            ], 200);
         }
-        return new WP_REST_Response([
-            'current' => (int) ($data['current'] ?? 0),
-            'total' => (int) ($data['total'] ?? 0),
-        ], 200);
+        $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        $response->header('Pragma', 'no-cache');
+        return $response;
     }
 
     /**
