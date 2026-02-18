@@ -116,6 +116,15 @@ class AudiencesEndpoint
             ],
         ]);
 
+        register_rest_route($namespace, '/audiences/segments/run-abort', [
+            'methods' => 'POST',
+            'callback' => [self::class, 'run_abort'],
+            'permission_callback' => [self::class, 'permission'],
+            'args' => [
+                'progress_key' => ['required' => false, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+            ],
+        ]);
+
         register_rest_route($namespace, '/audiences/segments/(?P<id>\d+)/export-csv', [
             'methods' => 'GET',
             'callback' => [self::class, 'export_csv'],
@@ -336,6 +345,7 @@ class AudiencesEndpoint
     }
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
+    private const ABORT_TRANSIENT_PREFIX = 'hp_gmc_audience_abort_';
     private const ORDER_ID_FETCH_BATCH = 50;
     /** Max orders to scan per segment run (covers ~20K+ orders; 25000/50 = 500 batches). */
     private const RUN_ORDER_LIMIT = 25000;
@@ -423,7 +433,12 @@ class AudiencesEndpoint
             set_transient($key, ['current' => 0, 'total' => $estimated_total], 300);
             self::set_progress_file($progress_key, 0, $estimated_total);
             self::server_log('progress_transient_set', ['total' => $estimated_total]);
-            $on_progress = static function (int $current, int $total) use ($key, $progress_key): void {
+            $abort_key = self::ABORT_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            $on_progress = static function (int $current, int $total) use ($key, $progress_key, $abort_key): void {
+                if (get_transient($abort_key)) {
+                    delete_transient($abort_key);
+                    throw new \RuntimeException('Run aborted by user');
+                }
                 set_transient($key, ['current' => $current, 'total' => $total], 300);
                 self::set_progress_file($progress_key, $current, $total);
                 if ($current <= 3 || $current % 10 === 0) {
@@ -495,6 +510,23 @@ class AudiencesEndpoint
         $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $response->header('Pragma', 'no-cache');
         return $response;
+    }
+
+    /**
+     * Signal the running segment job to stop. Background process checks this between batches.
+     */
+    public static function run_abort(WP_REST_Request $request): WP_REST_Response
+    {
+        $progress_key = $request->get_param('progress_key');
+        if (!is_string($progress_key) || $progress_key === '') {
+            $json = $request->get_json_params();
+            $progress_key = isset($json['progress_key']) ? (string) $json['progress_key'] : '';
+        }
+        if ($progress_key !== '') {
+            $key = self::ABORT_TRANSIENT_PREFIX . sanitize_key($progress_key);
+            set_transient($key, 1, 60);
+        }
+        return new WP_REST_Response(['aborted' => true], 200);
     }
 
     /**

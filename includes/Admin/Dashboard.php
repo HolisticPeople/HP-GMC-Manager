@@ -1740,6 +1740,7 @@ class Dashboard
                         <td>
                             <span class="hp-gmc-audience-run-wrap" style="display:inline-flex;align-items:center;gap:6px;">
                                 <button type="button" class="button button-small hp-gmc-audience-run" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Run', 'hp-gmc-manager'); ?></button>
+                                <button type="button" class="button button-small hp-gmc-audience-abort" style="display:none;"><?php esc_html_e('Abort', 'hp-gmc-manager'); ?></button>
                                 <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text"><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>
                             </span>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
@@ -2224,13 +2225,39 @@ class Dashboard
                             alert(e.message || 'Failed');
                         });
                 });
+                function resetRunUI(wrap) {
+                    if (!wrap) return;
+                    var runBtn = wrap.querySelector('.hp-gmc-audience-run');
+                    var abortBtn = wrap.querySelector('.hp-gmc-audience-abort');
+                    var statusEl = wrap.querySelector('.hp-gmc-audience-run-status');
+                    if (runBtn) { runBtn.disabled = false; runBtn.style.display = ''; }
+                    if (abortBtn) abortBtn.style.display = 'none';
+                    if (statusEl) statusEl.style.display = 'none';
+                    wrap._stopPolling = null;
+                    wrap._progressKey = null;
+                }
+                document.addEventListener('click', function(e) {
+                    var abortBtn = e.target && e.target.classList && e.target.classList.contains('hp-gmc-audience-abort') ? e.target : null;
+                    if (!abortBtn) return;
+                    var wrap = abortBtn.closest('.hp-gmc-audience-run-wrap');
+                    var stopPolling = wrap && wrap._stopPolling;
+                    var progressKey = wrap && wrap._progressKey;
+                    if (stopPolling) stopPolling();
+                    if (progressKey) {
+                        fetch(restBase + '/run-abort', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) }).catch(function() {});
+                    }
+                    resetRunUI(wrap);
+                });
                 document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
                         var runBtn = this;
                         var wrap = runBtn.closest('.hp-gmc-audience-run-wrap');
                         var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
+                        var abortBtn = wrap ? wrap.querySelector('.hp-gmc-audience-abort') : null;
                         runBtn.disabled = true;
+                        runBtn.style.display = 'none';
+                        if (abortBtn) abortBtn.style.display = 'inline-block';
                         if (statusEl) statusEl.style.display = 'inline';
                         var progressKey = 'run_' + Date.now();
                         var stopPolling = startProgressPolling(progressKey, function(cur, tot) {
@@ -2240,6 +2267,8 @@ class Dashboard
                                 setTimeout(function() { location.reload(); }, 2000);
                             }
                         });
+                        wrap._stopPolling = stopPolling;
+                        wrap._progressKey = progressKey;
                         var runPayload = { progress_key: progressKey };
                         fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
                             .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
@@ -2255,18 +2284,18 @@ class Dashboard
                             .then(function(data) {
                                 if (data.status === 'accepted') return;
                                 stopPolling();
+                                wrap._stopPolling = null;
+                                wrap._progressKey = null;
                                 if (data.count !== undefined) {
                                     location.reload();
                                 } else {
-                                    runBtn.disabled = false;
-                                    if (statusEl) statusEl.style.display = 'none';
+                                    resetRunUI(wrap);
                                     alert(data.message || 'Error');
                                 }
                             })
                             .catch(function(e) {
                                 stopPolling();
-                                runBtn.disabled = false;
-                                if (statusEl) statusEl.style.display = 'none';
+                                resetRunUI(wrap);
                                 alert(e.message || 'Error');
                             });
                     });
