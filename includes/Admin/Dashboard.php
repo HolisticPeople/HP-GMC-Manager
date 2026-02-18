@@ -2116,10 +2116,30 @@ class Dashboard
                     var resultEl = document.getElementById('hp-gmc-audience-preview-result');
                     resultEl.textContent = '…';
                     var filterDefinition = getDefinition();
+                    // #region agent log
+                    fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview',message:'Run preview clicked',data:{defKeys:Object.keys(filterDefinition||{}),combine:(filterDefinition&&filterDefinition.combine)},timestamp:Date.now(),hypothesisId:'preview-request'})}).catch(function(){});
+                    // #endregion
                     fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition }) })
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) { resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error'); })
-                        .catch(function() { resultEl.textContent = 'Error'; });
+                        .then(function(r) {
+                            return r.text().then(function(text) {
+                                var data;
+                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                // #region agent log
+                                fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-response',message:'Run preview response',data:{ok:r.ok,status:r.status,hasCount:!!(data&&data.count!==undefined),message:(data&&data.message)||null,code:(data&&data.code)||null},timestamp:Date.now(),hypothesisId:'preview-response'})}).catch(function(){});
+                                // #endregion
+                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
+                                return data;
+                            });
+                        })
+                        .then(function(data) {
+                            resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error');
+                        })
+                        .catch(function(e) {
+                            resultEl.textContent = e.message || 'Error';
+                            // #region agent log
+                            fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Dashboard.php:run-preview-catch',message:'Run preview catch',data:{errMessage:e.message},timestamp:Date.now(),hypothesisId:'preview-catch'})}).catch(function(){});
+                            // #endregion
+                        });
                 });
                 document.getElementById('hp-gmc-audience-save-as').addEventListener('click', function() {
                     var name = document.getElementById('hp-gmc-audience-save-name').value.trim();

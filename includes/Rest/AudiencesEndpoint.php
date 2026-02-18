@@ -258,8 +258,25 @@ class AudiencesEndpoint
         if (!is_array($def)) {
             return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
         }
+        // #region agent log
+        $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
+        $log_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'entry', 'data' => ['def_keys' => array_keys($def), 'combine' => $def['combine'] ?? null], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-def']);
+        if ($log_path) {
+            @file_put_contents($log_path, $log_line . "\n", FILE_APPEND | LOCK_EX);
+        } else {
+            error_log('hp_gmc_audiences_debug: ' . $log_line);
+        }
+        // #endregion
         $result = self::run_definition_internal($def, true);
         if (isset($result['error'])) {
+            // #region agent log
+            $err_line = json_encode(['location' => 'AudiencesEndpoint::run_definition', 'message' => 'error_result', 'data' => ['error' => $result['error']], 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => 'php-run-err']);
+            if ($log_path) {
+                @file_put_contents($log_path, $err_line . "\n", FILE_APPEND | LOCK_EX);
+            } else {
+                error_log('hp_gmc_audiences_debug: ' . $err_line);
+            }
+            // #endregion
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
         return new WP_REST_Response(['count' => $result['count']], 200);
@@ -267,13 +284,29 @@ class AudiencesEndpoint
 
     private static function run_definition_internal(array $def, bool $preview = false): array
     {
+        $log_path = defined('HP_GMC_DEBUG_LOG') ? HP_GMC_DEBUG_LOG : (file_exists('c:\\DEV\\.cursor\\debug.log') ? 'c:\\DEV\\.cursor\\debug.log' : null);
+        $write_log = static function (string $message, array $data, string $hypothesisId) use ($log_path): void {
+            $line = json_encode(['location' => 'AudiencesEndpoint::run_definition_internal', 'message' => $message, 'data' => $data, 'timestamp' => round(microtime(true) * 1000), 'hypothesisId' => $hypothesisId]);
+            if ($log_path) {
+                @file_put_contents($log_path, $line . "\n", FILE_APPEND | LOCK_EX);
+            } else {
+                error_log('hp_gmc_audiences_debug: ' . $line);
+            }
+        };
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
+            $write_log('engine_missing', ['class' => 'HP_Abilities\\Services\\SegmentFilterEngine'], 'php-engine-missing');
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
-        $engine = new \HP_Abilities\Services\SegmentFilterEngine();
-        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : null;
-        $out = $engine->run($def, null, $max_orders);
-        return ['count' => $out['count'], 'rows' => $out['rows']];
+        try {
+            $engine = new \HP_Abilities\Services\SegmentFilterEngine();
+            $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : null;
+            $out = $engine->run($def, null, $max_orders);
+            $write_log('success', ['count' => $out['count'] ?? 0], 'php-run-ok');
+            return ['count' => $out['count'], 'rows' => $out['rows']];
+        } catch (\Throwable $e) {
+            $write_log('exception', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 'php-run-exception');
+            return ['error' => $e->getMessage(), 'count' => 0];
+        }
     }
 
     /**
