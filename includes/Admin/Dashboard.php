@@ -2127,18 +2127,62 @@ class Dashboard
                     var payload = { name: name, filter_definition: JSON.stringify(getDefinition()) };
                     var url = restBase, method = 'POST';
                     if (currentEditId) { url = restBase + '/' + currentEditId; method = 'PUT'; }
+                    var btn = this;
+                    btn.disabled = true;
                     fetch(url, { method: method, headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(payload) })
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) { if (data.id || data.name) { location.href = location.pathname + '?page=hp-gmc-manager#audiences'; } else { alert(data.message || 'Failed'); } })
-                        .catch(function() { alert('Failed'); });
+                        .then(function(r) {
+                            return r.text().then(function(text) {
+                                var data;
+                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Save failed'));
+                                return data;
+                            });
+                        })
+                        .then(function(data) {
+                            if (data.id || data.name) {
+                                var notice = document.createElement('div');
+                                notice.className = 'notice notice-success is-dismissible';
+                                notice.style.marginTop = '8px';
+                                notice.innerHTML = '<p><?php echo esc_js(__('Segment saved. Refreshing list…', 'hp-gmc-manager')); ?></p>';
+                                var wrap = document.querySelector('.hp-gmc-audiences');
+                                if (wrap) wrap.insertBefore(notice, wrap.firstChild);
+                                location.reload();
+                            } else {
+                                btn.disabled = false;
+                                alert(data.message || 'Failed');
+                            }
+                        })
+                        .catch(function(e) {
+                            btn.disabled = false;
+                            alert(e.message || 'Failed');
+                        });
                 });
                 document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
+                        var runBtn = this;
+                        runBtn.disabled = true;
                         fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) { if (data.count !== undefined) location.reload(); else alert(data.message || 'Error'); })
-                            .catch(function() { alert('Error'); });
+                            .then(function(r) {
+                                return r.text().then(function(text) {
+                                    var data;
+                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
+                                    if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
+                                    return data;
+                                });
+                            })
+                            .then(function(data) {
+                                if (data.count !== undefined) {
+                                    location.reload();
+                                } else {
+                                    runBtn.disabled = false;
+                                    alert(data.message || 'Error');
+                                }
+                            })
+                            .catch(function(e) {
+                                runBtn.disabled = false;
+                                alert(e.message || 'Error');
+                            });
                     });
                 });
                 document.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
