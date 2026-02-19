@@ -1928,6 +1928,9 @@ class Dashboard
                     });
                     var tooltipEl = null;
                     var tooltipHideTimer = null;
+                    var currentHoverChip = null;
+                    if (typeof window.hpGmcSkuTooltipCache === 'undefined') window.hpGmcSkuTooltipCache = {};
+                    var tooltipCache = window.hpGmcSkuTooltipCache;
                     function showTooltip(chip, name, imageUrl) {
                         if (!tooltipEl) {
                             tooltipEl = document.createElement('div');
@@ -1947,15 +1950,26 @@ class Dashboard
                     }
                     function hideTooltip() {
                         if (tooltipEl) tooltipEl.style.display = 'none';
+                        currentHoverChip = null;
                     }
                     wrap.addEventListener('mouseover', function(e) {
                         var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
                         if (!chip) return;
+                        currentHoverChip = chip;
                         if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
                         var sku = chip.getAttribute('data-sku') || '';
+                        var skuKey = sku.toUpperCase();
                         var name = chip.getAttribute('data-name') || '';
                         var imageUrl = chip.getAttribute('data-image') || '';
                         if (name) {
+                            showTooltip(chip, name, imageUrl);
+                            return;
+                        }
+                        if (tooltipCache[skuKey]) {
+                            name = tooltipCache[skuKey].name || '';
+                            imageUrl = tooltipCache[skuKey].image_url || '';
+                            chip.setAttribute('data-name', name);
+                            chip.setAttribute('data-image', imageUrl);
                             showTooltip(chip, name, imageUrl);
                             return;
                         }
@@ -1971,17 +1985,27 @@ class Dashboard
                                 var d = (data && data.data) ? data.data : {};
                                 var n = (d && d.name) ? d.name : '';
                                 var img = (d && d.image_url) ? d.image_url : '';
+                                var displayName = n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>';
+                                tooltipCache[skuKey] = { name: displayName, image_url: img };
                                 if (ok && n) chip.setAttribute('data-name', n);
                                 if (ok && img) chip.setAttribute('data-image', img);
-                                showTooltip(chip, n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', img);
+                                if (chip === currentHoverChip) {
+                                    showTooltip(chip, displayName, img);
+                                }
                             })
-                            .catch(function() { showTooltip(chip, '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', ''); });
+                            .catch(function() {
+                                tooltipCache[skuKey] = { name: '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: '' };
+                                if (chip === currentHoverChip) {
+                                    showTooltip(chip, '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', '');
+                                }
+                            });
                     }, true);
                     wrap.addEventListener('mouseout', function(e) {
                         var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
                         if (!chip) return;
                         var related = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.cond-sku-chip') : null;
                         if (related === chip) return;
+                        if (!related) currentHoverChip = null;
                         tooltipHideTimer = setTimeout(hideTooltip, 100);
                     }, true);
                     function showList(items) {
