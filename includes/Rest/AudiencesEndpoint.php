@@ -87,23 +87,12 @@ class AudiencesEndpoint
             ],
         ]);
 
-        register_rest_route($namespace, '/audiences/segments/run-definition', [
-            'methods' => 'POST',
-            'callback' => [self::class, 'run_definition'],
-            'permission_callback' => [self::class, 'permission'],
-            'args' => [
-                'filter_definition' => ['required' => true],
-                'progress_key' => ['type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
-            ],
-        ]);
-
         register_rest_route($namespace, '/audiences/segments/run-start', [
             'methods' => 'POST',
             'callback' => [self::class, 'run_start'],
             'permission_callback' => [self::class, 'permission'],
             'args' => [
                 'progress_key' => ['required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
-                'preview' => ['type' => 'boolean', 'default' => false],
             ],
         ]);
 
@@ -307,7 +296,7 @@ class AudiencesEndpoint
         }
 
         self::server_log('run_segment_calling_internal', ['segment_id' => $id]);
-        $result = self::run_definition_internal($def, false, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
+        $result = self::run_definition_internal($def, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
         if (isset($result['error'])) {
             return new WP_Error('run_failed', $result['error'], ['status' => 500]);
         }
@@ -318,24 +307,6 @@ class AudiencesEndpoint
             'segment_id' => $id,
             'last_run_at' => current_time('mysql'),
         ], 200);
-    }
-
-    /**
-     * Run an inline filter definition (preview); returns count only.
-     */
-    public static function run_definition(WP_REST_Request $request): WP_REST_Response|WP_Error
-    {
-        $filter_definition = $request->get_param('filter_definition');
-        $def = is_string($filter_definition) ? json_decode($filter_definition, true) : $filter_definition;
-        if (!is_array($def)) {
-            return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
-        }
-        $progress_key = $request->get_param('progress_key');
-        $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
-        if (isset($result['error'])) {
-            return new WP_Error('run_failed', $result['error'], ['status' => 500]);
-        }
-        return new WP_REST_Response(['count' => $result['count']], 200);
     }
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
@@ -524,13 +495,20 @@ class AudiencesEndpoint
         }
     }
 
-    private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
+    private static function run_definition_internal(array $def, ?string $progress_key = null): array
     {
-        self::server_log('run_definition_internal_start', ['preview' => $preview, 'progress_key' => $progress_key ? 'set' : 'none']);
+        $def = [
+            'logic'     => isset($def['logic']) && in_array($def['logic'], ['and', 'or'], true) ? $def['logic'] : 'and',
+            'conditions' => isset($def['conditions']) && is_array($def['conditions']) ? $def['conditions'] : [],
+        ];
+        self::server_log('run_definition_internal_start', ['progress_key' => $progress_key ? 'set' : 'none']);
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
         }
-        $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : self::get_max_orders();
+        if (!function_exists('wc_get_order_statuses')) {
+            return ['error' => 'WooCommerce is not active or not loaded.', 'count' => 0];
+        }
+        $max_orders = self::get_max_orders();
         $estimated_total = (int) ceil($max_orders / self::get_order_batch_size());
         $on_progress = null;
         if ($progress_key !== null && $progress_key !== '') {
@@ -555,8 +533,14 @@ class AudiencesEndpoint
             self::server_log('engine_run_before', ['max_orders' => $max_orders]);
             $engine = new \HP_Abilities\Services\SegmentFilterEngine();
             $out = $engine->run($def, null, $max_orders, $on_progress);
-            self::server_log('engine_run_success', ['count' => $out['count'] ?? 0]);
-            return ['count' => $out['count'], 'rows' => $out['rows']];
+            $count = (int) ($out['count'] ?? 0);
+            $rows = $out['rows'] ?? [];
+            self::server_log('engine_run_success', ['count' => $count]);
+            unset($out, $engine);
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+            return ['count' => $count, 'rows' => $rows];
         } catch (\Throwable $e) {
             self::server_log('engine_run_exception', [
                 'error' => $e->getMessage(),
@@ -690,10 +674,7 @@ class AudiencesEndpoint
     public static function run_start(WP_REST_Request $request): WP_REST_Response
     {
         $progress_key = $request->get_param('progress_key');
-        $preview = (bool) $request->get_param('preview');
-        $max_orders = $preview && class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)
-            ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT
-            : self::get_max_orders();
+        $max_orders = self::get_max_orders();
         $total = (int) ceil($max_orders / self::get_order_batch_size());
         $key = self::PROGRESS_TRANSIENT_PREFIX . sanitize_key($progress_key);
         set_transient($key, ['current' => 0, 'total' => $total], 300);

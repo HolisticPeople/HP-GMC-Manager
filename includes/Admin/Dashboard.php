@@ -1744,7 +1744,7 @@ class Dashboard
                                 <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text"><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>
                             </span>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id'] . '&_=' . time()) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
+                            <button type="button" class="button button-small hp-gmc-audience-edit" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-delete" data-id="<?php echo esc_attr($seg['id']); ?>" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
                             <?php if (!$upload_disabled): ?>
@@ -1759,7 +1759,10 @@ class Dashboard
             <p class="description" style="margin-top: 0.5em;"><?php esc_html_e('Count and Last run are from the last successful run.', 'hp-gmc-manager'); ?></p>
 
             <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
-            <p><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></p>
+            <p style="display:flex;align-items:center;gap:1em;flex-wrap:wrap;">
+                <span><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></span>
+                <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
+            </p>
             <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
             <p>
                 <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
@@ -1788,10 +1791,6 @@ class Dashboard
                 <p style="margin-top: 0.5em;">
                     <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
-                    <span style="display:inline-flex;align-items:center;gap:6px;">
-                        <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
-                        <span id="hp-gmc-audience-preview-result"></span>
-                    </span>
                 </p>
                 <p>
                     <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
@@ -1816,6 +1815,7 @@ class Dashboard
                 var conditionTypeLabels = {
                     billing_address: 'Billing address',
                     shipping_address: 'Shipping address',
+                    country_related: 'Country related',
                     purchase_product: 'Purchase history: Bought product',
                     purchase_spend: 'Purchase history: Total spend',
                     purchase_orders: 'Purchase history: Number of orders',
@@ -1837,6 +1837,13 @@ class Dashboard
                             return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
                         }).join('');
                         return '<select class="cond-country" data-param="country" style="width:140px;max-width:100%;"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
+                    }
+                    if (type === 'country_related') {
+                        var countryOpts = Object.keys(audienceCountries).map(function(code) {
+                            var sel = (c.country === code) ? ' selected' : '';
+                            return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
+                        }).join('');
+                        return '<select class="cond-country" data-param="country" style="width:140px;max-width:100%;"><option value="">—</option>' + countryOpts + '</select> <span class="description">(billing or shipping or phone country)</span>';
                     }
                     if (type === 'purchase_product') {
                         var skuList = Array.isArray(c.skus) ? c.skus : (c.sku ? [c.sku] : []);
@@ -1885,7 +1892,15 @@ class Dashboard
                     if (!input || !list || !chipsContainer) return;
                     var debounce = null;
                     function hideList() { list.style.display = 'none'; list.innerHTML = ''; }
-                    function addChip(sku) {
+                    function getExistingSkus() {
+                        var set = {};
+                        chipsContainer.querySelectorAll('.cond-sku-chip').forEach(function(el) {
+                            var s = (el.getAttribute('data-sku') || '').toUpperCase();
+                            if (s) set[s] = true;
+                        });
+                        return set;
+                    }
+                    function addChip(sku, name, imageUrl) {
                         sku = String(sku || '').trim();
                         if (!sku) return;
                         var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
@@ -1893,6 +1908,8 @@ class Dashboard
                         var span = document.createElement('span');
                         span.className = 'cond-sku-chip';
                         span.setAttribute('data-sku', sku);
+                        if (name) span.setAttribute('data-name', name);
+                        if (imageUrl) span.setAttribute('data-image', imageUrl);
                         span.textContent = sku + ' ';
                         var btn = document.createElement('button');
                         btn.type = 'button';
@@ -1909,14 +1926,77 @@ class Dashboard
                             if (chip) chip.remove();
                         }
                     });
+                    var tooltipEl = null;
+                    var tooltipHideTimer = null;
+                    function showTooltip(chip, name, imageUrl) {
+                        if (!tooltipEl) {
+                            tooltipEl = document.createElement('div');
+                            tooltipEl.className = 'hp-gmc-sku-tooltip';
+                            tooltipEl.setAttribute('role', 'tooltip');
+                            document.body.appendChild(tooltipEl);
+                        }
+                        var html = '';
+                        if (imageUrl) html += '<img src="' + String(imageUrl).replace(/"/g, '&quot;').replace(/</g, '&lt;') + '" alt="">';
+                        html += '<div class="hp-gmc-sku-tooltip-name">' + (name ? String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '') + '</div>';
+                        tooltipEl.innerHTML = html;
+                        var rect = chip.getBoundingClientRect();
+                        tooltipEl.style.display = 'block';
+                        tooltipEl.style.left = Math.max(8, rect.left) + 'px';
+                        tooltipEl.style.top = (rect.top - 4) + 'px';
+                        tooltipEl.style.transform = 'translateY(-100%)';
+                    }
+                    function hideTooltip() {
+                        if (tooltipEl) tooltipEl.style.display = 'none';
+                    }
+                    wrap.addEventListener('mouseover', function(e) {
+                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
+                        if (!chip) return;
+                        if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+                        var sku = chip.getAttribute('data-sku') || '';
+                        var name = chip.getAttribute('data-name') || '';
+                        var imageUrl = chip.getAttribute('data-image') || '';
+                        if (name) {
+                            showTooltip(chip, name, imageUrl);
+                            return;
+                        }
+                        showTooltip(chip, '<?php echo esc_js(__('Loading…', 'hp-gmc-manager')); ?>', '');
+                        var form = new FormData();
+                        form.append('action', 'hp_gmc_get_product_by_sku');
+                        form.append('nonce', productSearchNonce);
+                        form.append('sku', sku);
+                        fetch(productSearchAjaxUrl, { method: 'POST', body: form })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                var ok = data && data.success;
+                                var d = (data && data.data) ? data.data : {};
+                                var n = (d && d.name) ? d.name : '';
+                                var img = (d && d.image_url) ? d.image_url : '';
+                                if (ok && n) chip.setAttribute('data-name', n);
+                                if (ok && img) chip.setAttribute('data-image', img);
+                                showTooltip(chip, n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', img);
+                            })
+                            .catch(function() { showTooltip(chip, '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', ''); });
+                    }, true);
+                    wrap.addEventListener('mouseout', function(e) {
+                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
+                        if (!chip) return;
+                        var related = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.cond-sku-chip') : null;
+                        if (related === chip) return;
+                        tooltipHideTimer = setTimeout(hideTooltip, 100);
+                    }, true);
                     function showList(items) {
+                        var existingSkus = getExistingSkus();
+                        items = items.filter(function(p) { return !existingSkus[(String(p.sku || '').toUpperCase())]; });
                         list.innerHTML = items.map(function(p) {
-                            return '<div class="hp-gmc-sku-item" data-sku="' + String(p.sku || '').replace(/"/g, '&quot;') + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
+                            var sku = String(p.sku || '').replace(/"/g, '&quot;');
+                            var name = String(p.name || '').replace(/"/g, '&quot;');
+                            var img = String(p.image_url || '').replace(/"/g, '&quot;');
+                            return '<div class="hp-gmc-sku-item" data-sku="' + sku + '" data-name="' + name + '" data-image="' + img + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
                         }).join('');
                         list.style.display = items.length ? 'block' : 'none';
                         list.querySelectorAll('.hp-gmc-sku-item').forEach(function(el) {
                             el.addEventListener('click', function() {
-                                addChip(el.getAttribute('data-sku') || '');
+                                addChip(el.getAttribute('data-sku') || '', el.getAttribute('data-name') || '', el.getAttribute('data-image') || '');
                                 input.value = '';
                                 hideList();
                                 input.focus();
@@ -1992,7 +2072,7 @@ class Dashboard
                         }
                         if (val !== '' && val !== null && val !== undefined) cond[param] = val;
                     });
-                    if ((type === 'billing_address' || type === 'shipping_address') && cond.country) return cond;
+                    if ((type === 'billing_address' || type === 'shipping_address' || type === 'country_related') && cond.country) return cond;
                     if (type === 'purchase_product') {
                         var chipSkus = [];
                         row.querySelectorAll('.cond-sku-chip').forEach(function(el) { var s = (el.getAttribute('data-sku') || '').trim(); if (s) chipSkus.push(s); });
@@ -2055,30 +2135,30 @@ class Dashboard
                         if (tr) tr.remove();
                     });
                 });
+                function applySegmentToForm(seg) {
+                    if (!seg) return;
+                    currentEditId = seg.id ? parseInt(seg.id, 10) : 0;
+                    var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                    if (nameEl) nameEl.value = seg.name || '';
+                    var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                    if (currentEditId && editIdInput) editIdInput.value = currentEditId;
+                    if (currentEditId && !editIdInput) {
+                        var p = document.getElementById('hp-gmc-audience-save-name');
+                        if (p && p.parentNode) {
+                            var hid = document.createElement('input');
+                            hid.type = 'hidden';
+                            hid.id = 'hp-gmc-audience-edit-id';
+                            hid.value = currentEditId;
+                            p.parentNode.appendChild(hid);
+                        }
+                    }
+                    if (!currentEditId && editIdInput) editIdInput.remove();
+                    var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                    if (saveBtn) saveBtn.textContent = currentEditId ? '<?php echo esc_js(__('Update', 'hp-gmc-manager')); ?>' : '<?php echo esc_js(__('Save as', 'hp-gmc-manager')); ?>';
+                }
                 (function applyInitialDefinition() {
                     var match = location.search.match(/[?&]edit=(\d+)/);
                     var urlEditId = match ? parseInt(match[1], 10) : 0;
-
-                    function applySegmentToForm(seg) {
-                        if (!seg) return;
-                        currentEditId = seg.id ? parseInt(seg.id, 10) : 0;
-                        var nameEl = document.getElementById('hp-gmc-audience-save-name');
-                        if (nameEl && seg.name) nameEl.value = seg.name;
-                        var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
-                        if (currentEditId && editIdInput) editIdInput.value = currentEditId;
-                        if (currentEditId && !editIdInput) {
-                            var p = document.getElementById('hp-gmc-audience-save-name');
-                            if (p && p.parentNode) {
-                                var hid = document.createElement('input');
-                                hid.type = 'hidden';
-                                hid.id = 'hp-gmc-audience-edit-id';
-                                hid.value = currentEditId;
-                                p.parentNode.appendChild(hid);
-                            }
-                        }
-                        var saveBtn = document.getElementById('hp-gmc-audience-save-as');
-                        if (saveBtn && currentEditId) saveBtn.textContent = 'Update';
-                    }
 
                     if (urlEditId && editId === urlEditId && editDefinition) {
                         setDefinition(editDefinition);
@@ -2088,27 +2168,25 @@ class Dashboard
                     } else if (urlEditId) {
                         addConditionRow({});
                         var fetchDone = false;
-                        var editFetchTimeout = setTimeout(function() {
-                            if (!fetchDone) { fetchDone = true; location.reload(); }
-                        }, 8000);
+                        var editFetchTimeout = setTimeout(function() { fetchDone = true; }, 5000);
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) {
                                 if (fetchDone) return null;
-                                if (!r.ok) { fetchDone = true; clearTimeout(editFetchTimeout); location.reload(); return null; }
+                                if (!r.ok) { fetchDone = true; clearTimeout(editFetchTimeout); return null; }
                                 return r.json();
                             })
                             .then(function(seg) {
                                 if (fetchDone) return;
                                 fetchDone = true;
                                 clearTimeout(editFetchTimeout);
-                                if (!seg || !seg.filter_definition) return;
-                                if (seg.code && seg.message) return;
+                                if (!seg || !seg.filter_definition) { return; }
+                                if (seg.code && seg.message) { return; }
                                 var def;
                                 try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (e) { return; }
                                 if (def && (def.conditions || def.logic)) { setDefinition(def); applySegmentToForm(seg); }
                             })
                             .catch(function() {
-                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); location.reload(); }
+                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); }
                             });
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
@@ -2116,6 +2194,31 @@ class Dashboard
                         addConditionRow({});
                     }
                 })();
+                document.querySelector('.hp-gmc-audiences').addEventListener('click', function(e) {
+                    var editBtn = e.target && e.target.closest && e.target.closest('.hp-gmc-audience-edit');
+                    if (!editBtn) return;
+                    e.preventDefault();
+                    var id = editBtn.getAttribute('data-id');
+                    if (!id) return;
+                    editBtn.disabled = true;
+                    fetch(restBase + '/' + id, { headers: { 'X-WP-Nonce': nonce } })
+                        .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Failed to load')); })
+                        .then(function(seg) {
+                            if (!seg || !seg.filter_definition) { editBtn.disabled = false; return; }
+                            var def;
+                            try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (err) { editBtn.disabled = false; return; }
+                            if (def && (def.conditions || def.logic)) {
+                                setDefinition(def);
+                                applySegmentToForm(seg);
+                                var url = new URL(location.href);
+                                url.searchParams.set('edit', id);
+                                url.hash = 'audiences';
+                                if (typeof history !== 'undefined' && history.replaceState) history.replaceState(null, '', url.pathname + url.search + (url.hash || ''));
+                            }
+                            editBtn.disabled = false;
+                        })
+                        .catch(function() { editBtn.disabled = false; });
+                });
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });
@@ -2151,35 +2254,6 @@ class Dashboard
                         if (barInner) { barInner.style.width = (total ? Math.min(100, (current / total) * 100) : 0) + '%'; }
                     }
                 }
-                document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
-                    var resultEl = document.getElementById('hp-gmc-audience-preview-result');
-                    var previewBtn = this;
-                    previewBtn.disabled = true;
-                    var progressKey = 'preview_' + Date.now();
-                    resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><span class="hp-gmc-audience-run-status-text"><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span>';
-                    var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(resultEl, cur, tot); });
-                    var filterDefinition = getDefinition();
-                    fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: true }) })
-                        .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (d && d.total > 0) renderProgress(resultEl, 0, d.total); return fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) }); }); })
-                        .then(function(r) {
-                            return r.text().then(function(text) {
-                                var data;
-                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
-                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
-                                return data;
-                            });
-                        })
-                        .then(function(data) {
-                            stopPolling();
-                            previewBtn.disabled = false;
-                            resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error');
-                        })
-                        .catch(function(e) {
-                            stopPolling();
-                            previewBtn.disabled = false;
-                            resultEl.textContent = e.message || 'Error';
-                        });
-                });
                 document.getElementById('hp-gmc-audience-save-as').addEventListener('click', function() {
                     var name = document.getElementById('hp-gmc-audience-save-name').value.trim();
                     if (!name) { alert('Enter a segment name'); return; }
@@ -2215,6 +2289,23 @@ class Dashboard
                             btn.disabled = false;
                             alert(e.message || 'Failed');
                         });
+                });
+                document.getElementById('hp-gmc-audience-create-new').addEventListener('click', function() {
+                    currentEditId = 0;
+                    var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                    if (editIdInput) editIdInput.remove();
+                    var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                    if (nameEl) nameEl.value = '';
+                    var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                    if (saveBtn) saveBtn.textContent = '<?php echo esc_js(__('Save as', 'hp-gmc-manager')); ?>';
+                    setDefinition({ logic: 'and', conditions: [] });
+                    addConditionRow({});
+                    if (typeof history !== 'undefined' && history.replaceState) {
+                        var q = new URLSearchParams(location.search);
+                        q.delete('edit');
+                        var newSearch = q.toString();
+                        history.replaceState(null, '', location.pathname + (newSearch ? '?' + newSearch : ''));
+                    }
                 });
                 function resetRunUI(wrap) {
                     if (!wrap) return;
@@ -2281,7 +2372,7 @@ class Dashboard
                         wrap._stopPolling = stopPolling;
                         wrap._progressKey = progressKey;
                         var runPayload = { progress_key: progressKey };
-                        fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
+                        fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
                             .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
                             .then(function(r) {
                                 return r.text().then(function(text) {

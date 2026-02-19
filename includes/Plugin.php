@@ -102,6 +102,7 @@ class Plugin
         add_action('wp_ajax_hp_gmc_add_product_to_feed', [self::class, 'ajax_add_product_to_feed']);
         add_action('wp_ajax_hp_gmc_remove_product_from_feed', [self::class, 'ajax_remove_product_from_feed']);
         add_action('wp_ajax_hp_gmc_search_products', [self::class, 'ajax_search_products']);
+        add_action('wp_ajax_hp_gmc_get_product_by_sku', [self::class, 'ajax_get_product_by_sku']);
         add_action('wp_ajax_hp_gmc_bulk_add_to_feed', [self::class, 'ajax_bulk_add_to_feed']);
         add_action('wp_ajax_hp_gmc_refresh_all_feed_statuses', [self::class, 'ajax_refresh_all_feed_statuses']);
         add_action('wp_ajax_hp_gmc_publish_feed', [self::class, 'ajax_publish_feed']);
@@ -2359,11 +2360,14 @@ class Plugin
         $results = [];
 
         foreach ($products as $product) {
+            $image_id = $product->get_image_id();
+            $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
             $results[] = [
                 'id' => $product->get_id(),
                 'sku' => $product->get_sku(),
                 'name' => $product->get_name(),
                 'label' => $product->get_sku() . ' - ' . $product->get_name(),
+                'image_url' => $image_url ?: '',
             ];
         }
 
@@ -2384,16 +2388,60 @@ class Plugin
                 }
             }
             if (!$exists) {
+                $image_id = $product->get_image_id();
+                $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
                 $results[] = [
                     'id' => $product->get_id(),
                     'sku' => $product->get_sku(),
                     'name' => $product->get_name(),
                     'label' => $product->get_sku() . ' - ' . $product->get_name(),
+                    'image_url' => $image_url ?: '',
                 ];
             }
         }
 
         wp_send_json_success(['products' => $results]);
+    }
+
+    /**
+     * AJAX: Get product name and thumbnail by SKU (for segment builder chip tooltips).
+     */
+    public static function ajax_get_product_by_sku(): void
+    {
+        check_ajax_referer('hp_gmc_admin', 'nonce');
+
+        if (!current_user_can('manage_woocommerce')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $sku = isset($_POST['sku']) ? trim(sanitize_text_field(wp_unslash($_POST['sku']))) : '';
+        if ($sku === '') {
+            wp_send_json_error(['message' => 'SKU required']);
+        }
+
+        $products = wc_get_products(['status' => 'publish', 'limit' => 1, 'sku' => $sku]);
+        $product = isset($products[0]) ? $products[0] : null;
+        if (!$product || $product->get_sku() !== $sku) {
+            $products = wc_get_products(['status' => 'publish', 'limit' => 50]);
+            $sku_lower = strtolower($sku);
+            foreach ($products as $p) {
+                if (strtolower((string) $p->get_sku()) === $sku_lower) {
+                    $product = $p;
+                    break;
+                }
+            }
+        }
+        if (!$product) {
+            wp_send_json_error(['message' => 'Product not found']);
+        }
+
+        $image_id = $product->get_image_id();
+        $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
+
+        wp_send_json_success([
+            'name' => $product->get_name(),
+            'image_url' => $image_url ?: '',
+        ]);
     }
 
     /**
