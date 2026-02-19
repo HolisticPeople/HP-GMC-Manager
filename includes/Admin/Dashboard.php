@@ -1703,9 +1703,18 @@ class Dashboard
 
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
             <div id="hp-gmc-audience-upload-message" class="hp-gmc-audience-upload-message" style="display:none; margin: 0.5em 0; padding: 0.75em; border-left: 4px solid #d63638; background: #fcf0f1; color: #1d2327;"></div>
-            <table class="wp-list-table widefat fixed striped">
+            <div id="hp-gmc-audience-bulk-actions" class="hp-gmc-audience-bulk-actions" style="display:none; margin-bottom: 8px; padding: 8px 12px; background: #f0f6fc; border: 1px solid #c3c4c7; border-radius: 4px;">
+                <span class="hp-gmc-audience-bulk-label"><?php esc_html_e('With selected:', 'hp-gmc-manager'); ?></span>
+                <button type="button" class="button button-small hp-gmc-audience-bulk-delete" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button button-small hp-gmc-audience-bulk-rerun"><?php esc_html_e('Re-run', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button button-small hp-gmc-audience-bulk-export"><?php esc_html_e('Export', 'hp-gmc-manager'); ?></button>
+            </div>
+            <table class="wp-list-table widefat fixed striped hp-gmc-audiences-table">
                 <thead>
                     <tr>
+                        <th class="check-column" style="width: 2.2em;">
+                            <input type="checkbox" id="hp-gmc-audience-select-all" title="<?php esc_attr_e('Select / deselect all', 'hp-gmc-manager'); ?>">
+                        </th>
                         <th><?php esc_html_e('Name', 'hp-gmc-manager'); ?></th>
                         <th><?php esc_html_e('Last run', 'hp-gmc-manager'); ?></th>
                         <th><?php esc_html_e('Count', 'hp-gmc-manager'); ?></th>
@@ -1715,10 +1724,11 @@ class Dashboard
                 </thead>
                 <tbody>
                     <?php if (empty($segments)): ?>
-                    <tr><td colspan="5"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
+                    <tr><td colspan="6"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
                     <?php else: ?>
                     <?php foreach ($segments as $seg): ?>
                     <tr data-segment-id="<?php echo esc_attr($seg['id']); ?>">
+                        <th scope="row" class="check-column"><input type="checkbox" class="hp-gmc-audience-row-cb" value="<?php echo esc_attr($seg['id']); ?>"></th>
                         <td><strong><?php echo esc_html($seg['name']); ?></strong></td>
                         <td><?php echo $seg['last_run_at'] ? esc_html($seg['last_run_at']) : '—'; ?></td>
                         <td><?php echo $seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : '—'; ?></td>
@@ -2448,6 +2458,83 @@ class Dashboard
                             .catch(function() { alert('Delete failed'); });
                     });
                 });
+                (function() {
+                    var bulkBar = document.getElementById('hp-gmc-audience-bulk-actions');
+                    var selectAll = document.getElementById('hp-gmc-audience-select-all');
+                    var rowCbs = document.querySelectorAll('.hp-gmc-audience-row-cb');
+                    function getSelectedIds() {
+                        return Array.prototype.map.call(document.querySelectorAll('.hp-gmc-audience-row-cb:checked'), function(cb) { return cb.value; });
+                    }
+                    function updateBulkBar() {
+                        var ids = getSelectedIds();
+                        if (bulkBar) bulkBar.style.display = ids.length ? 'block' : 'none';
+                        if (selectAll) {
+                            selectAll.checked = rowCbs.length > 0 && ids.length === rowCbs.length;
+                            selectAll.indeterminate = ids.length > 0 && ids.length < rowCbs.length;
+                        }
+                    }
+                    if (selectAll) {
+                        selectAll.addEventListener('change', function() {
+                            rowCbs.forEach(function(cb) { cb.checked = selectAll.checked; });
+                            updateBulkBar();
+                        });
+                    }
+                    rowCbs.forEach(function(cb) {
+                        cb.addEventListener('change', updateBulkBar);
+                    });
+                    if (bulkBar) {
+                        bulkBar.querySelector('.hp-gmc-audience-bulk-delete').addEventListener('click', function() {
+                            var ids = getSelectedIds();
+                            if (!ids.length) return;
+                            if (!confirm('Delete ' + ids.length + ' segment(s)? This cannot be undone.')) return;
+                            var done = 0;
+                            ids.forEach(function(id) {
+                                fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
+                                    .then(function(r) { return r.json(); })
+                                    .then(function(data) { if (data.deleted) { done++; if (done === ids.length) location.reload(); } })
+                                    .catch(function() { done++; if (done === ids.length) location.reload(); });
+                            });
+                        });
+                        bulkBar.querySelector('.hp-gmc-audience-bulk-rerun').addEventListener('click', function() {
+                            var ids = getSelectedIds();
+                            if (!ids.length) return;
+                            var btn = this;
+                            btn.disabled = true;
+                            var runNext = function(idx) {
+                                if (idx >= ids.length) { btn.disabled = false; setTimeout(function() { location.reload(); }, 800); return; }
+                                var id = ids[idx];
+                                var progressKey = 'bulk_' + Date.now() + '_' + idx;
+                                fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
+                                    .then(function(r) { return r.ok ? r.json() : Promise.resolve({}); })
+                                    .then(function() { return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) }); })
+                                    .then(function() { runNext(idx + 1); })
+                                    .catch(function() { runNext(idx + 1); });
+                            };
+                            runNext(0);
+                        });
+                        bulkBar.querySelector('.hp-gmc-audience-bulk-export').addEventListener('click', function() {
+                            var ids = getSelectedIds();
+                            if (!ids.length) return;
+                            var delay = 0;
+                            ids.forEach(function(id) {
+                                setTimeout(function() {
+                                    fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
+                                        .then(function(r) { return r.json(); })
+                                        .then(function(data) {
+                                            if (data.csv !== undefined) {
+                                                var a = document.createElement('a');
+                                                a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
+                                                a.download = data.filename || 'segment-' + id + '.csv';
+                                                a.click();
+                                            }
+                                        })
+                                        .catch(function() {});
+                                }, delay);
+                                delay += 400;
+                            });
+                        });
+                    }
+                })();
                 document.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;

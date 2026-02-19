@@ -760,10 +760,14 @@ class AudiencesEndpoint
             $repo->set_last_run($id, count($rows));
         }
         $csv = self::build_google_customer_match_csv($rows);
+        $safe_name = sanitize_file_name($seg['name']);
+        if ($safe_name === '') {
+            $safe_name = 'segment-' . (int) $id;
+        }
         return new WP_REST_Response([
             'csv'      => $csv,
             'count'    => count($rows),
-            'filename' => 'audience-segment-' . (int) $id . '-' . gmdate('Y-m-d') . '.csv',
+            'filename' => $safe_name . '-' . gmdate('Y-m-d') . '.csv',
         ], 200);
     }
 
