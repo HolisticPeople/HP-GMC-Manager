@@ -1797,6 +1797,7 @@ class Dashboard
                     <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
                     <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
                     <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
                     <?php if ($edit_segment): ?>
                     <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
                     <?php endif; ?>
@@ -2223,6 +2224,23 @@ class Dashboard
                             btn.disabled = false;
                             alert(e.message || 'Failed');
                         });
+                });
+                document.getElementById('hp-gmc-audience-create-new').addEventListener('click', function() {
+                    currentEditId = 0;
+                    var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                    if (editIdInput) editIdInput.remove();
+                    var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                    if (nameEl) nameEl.value = '';
+                    var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                    if (saveBtn) saveBtn.textContent = '<?php echo esc_js(__('Save as', 'hp-gmc-manager')); ?>';
+                    setDefinition({ logic: 'and', conditions: [] });
+                    addConditionRow({});
+                    if (typeof history !== 'undefined' && history.replaceState) {
+                        var q = new URLSearchParams(location.search);
+                        q.delete('edit');
+                        var newSearch = q.toString();
+                        history.replaceState(null, '', location.pathname + (newSearch ? '?' + newSearch : ''));
+                    }
                 });
                 function resetRunUI(wrap) {
                     if (!wrap) return;
