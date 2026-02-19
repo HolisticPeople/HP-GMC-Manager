@@ -325,17 +325,32 @@ class AudiencesEndpoint
      */
     public static function run_definition(WP_REST_Request $request): WP_REST_Response|WP_Error
     {
-        $filter_definition = $request->get_param('filter_definition');
-        $def = is_string($filter_definition) ? json_decode($filter_definition, true) : $filter_definition;
-        if (!is_array($def)) {
-            return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
+        try {
+            $filter_definition = $request->get_param('filter_definition');
+            $def = is_string($filter_definition) ? json_decode($filter_definition, true) : $filter_definition;
+            if (!is_array($def)) {
+                return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
+            }
+            if (!isset($def['conditions']) || !is_array($def['conditions'])) {
+                $def['conditions'] = [];
+            }
+            $logic = $def['logic'] ?? 'and';
+            if (!in_array($logic, ['and', 'or'], true)) {
+                $def['logic'] = 'and';
+            }
+            $progress_key = $request->get_param('progress_key');
+            $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
+            if (isset($result['error'])) {
+                return new WP_Error('run_failed', $result['error'], ['status' => 500]);
+            }
+            return new WP_REST_Response(['count' => $result['count']], 200);
+        } catch (\Throwable $e) {
+            return new WP_Error(
+                'run_failed',
+                'Preview failed: ' . $e->getMessage(),
+                ['status' => 500]
+            );
         }
-        $progress_key = $request->get_param('progress_key');
-        $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
-        if (isset($result['error'])) {
-            return new WP_Error('run_failed', $result['error'], ['status' => 500]);
-        }
-        return new WP_REST_Response(['count' => $result['count']], 200);
     }
 
     private const PROGRESS_TRANSIENT_PREFIX = 'hp_gmc_audience_progress_';
@@ -526,6 +541,10 @@ class AudiencesEndpoint
 
     private static function run_definition_internal(array $def, bool $preview = false, ?string $progress_key = null): array
     {
+        $def = [
+            'logic'     => isset($def['logic']) && in_array($def['logic'], ['and', 'or'], true) ? $def['logic'] : 'and',
+            'conditions' => isset($def['conditions']) && is_array($def['conditions']) ? $def['conditions'] : [],
+        ];
         self::server_log('run_definition_internal_start', ['preview' => $preview, 'progress_key' => $progress_key ? 'set' : 'none']);
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];

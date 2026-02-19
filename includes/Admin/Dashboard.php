@@ -1759,7 +1759,10 @@ class Dashboard
             <p class="description" style="margin-top: 0.5em;"><?php esc_html_e('Count and Last run are from the last successful run.', 'hp-gmc-manager'); ?></p>
 
             <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
-            <p><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></p>
+            <p style="display:flex;align-items:center;gap:1em;flex-wrap:wrap;">
+                <span><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></span>
+                <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
+            </p>
             <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
             <p>
                 <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
@@ -1797,7 +1800,6 @@ class Dashboard
                     <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
                     <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
                     <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
-                    <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
                     <?php if ($edit_segment): ?>
                     <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
                     <?php endif; ?>
