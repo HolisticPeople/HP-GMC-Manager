@@ -1744,7 +1744,7 @@ class Dashboard
                                 <span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text"><?php esc_html_e('Running…', 'hp-gmc-manager'); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>
                             </span>
                             <button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Duplicate', 'hp-gmc-manager'); ?></button>
-                            <a href="<?php echo esc_url(admin_url('admin.php?page=hp-gmc-manager&edit=' . (int) $seg['id'] . '&_=' . time()) . '#audiences'); ?>" class="button button-small"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></a>
+                            <button type="button" class="button button-small hp-gmc-audience-edit" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Edit', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-export" data-id="<?php echo esc_attr($seg['id']); ?>"><?php esc_html_e('Export CSV', 'hp-gmc-manager'); ?></button>
                             <button type="button" class="button button-small hp-gmc-audience-delete" data-id="<?php echo esc_attr($seg['id']); ?>" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
                             <?php if (!$upload_disabled): ?>
@@ -2066,30 +2066,30 @@ class Dashboard
                         if (tr) tr.remove();
                     });
                 });
+                function applySegmentToForm(seg) {
+                    if (!seg) return;
+                    currentEditId = seg.id ? parseInt(seg.id, 10) : 0;
+                    var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                    if (nameEl) nameEl.value = seg.name || '';
+                    var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                    if (currentEditId && editIdInput) editIdInput.value = currentEditId;
+                    if (currentEditId && !editIdInput) {
+                        var p = document.getElementById('hp-gmc-audience-save-name');
+                        if (p && p.parentNode) {
+                            var hid = document.createElement('input');
+                            hid.type = 'hidden';
+                            hid.id = 'hp-gmc-audience-edit-id';
+                            hid.value = currentEditId;
+                            p.parentNode.appendChild(hid);
+                        }
+                    }
+                    if (!currentEditId && editIdInput) editIdInput.remove();
+                    var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                    if (saveBtn) saveBtn.textContent = currentEditId ? '<?php echo esc_js(__('Update', 'hp-gmc-manager')); ?>' : '<?php echo esc_js(__('Save as', 'hp-gmc-manager')); ?>';
+                }
                 (function applyInitialDefinition() {
                     var match = location.search.match(/[?&]edit=(\d+)/);
                     var urlEditId = match ? parseInt(match[1], 10) : 0;
-
-                    function applySegmentToForm(seg) {
-                        if (!seg) return;
-                        currentEditId = seg.id ? parseInt(seg.id, 10) : 0;
-                        var nameEl = document.getElementById('hp-gmc-audience-save-name');
-                        if (nameEl && seg.name) nameEl.value = seg.name;
-                        var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
-                        if (currentEditId && editIdInput) editIdInput.value = currentEditId;
-                        if (currentEditId && !editIdInput) {
-                            var p = document.getElementById('hp-gmc-audience-save-name');
-                            if (p && p.parentNode) {
-                                var hid = document.createElement('input');
-                                hid.type = 'hidden';
-                                hid.id = 'hp-gmc-audience-edit-id';
-                                hid.value = currentEditId;
-                                p.parentNode.appendChild(hid);
-                            }
-                        }
-                        var saveBtn = document.getElementById('hp-gmc-audience-save-as');
-                        if (saveBtn && currentEditId) saveBtn.textContent = 'Update';
-                    }
 
                     if (urlEditId && editId === urlEditId && editDefinition) {
                         setDefinition(editDefinition);
@@ -2100,26 +2100,27 @@ class Dashboard
                         addConditionRow({});
                         var fetchDone = false;
                         var editFetchTimeout = setTimeout(function() {
-                            if (!fetchDone) { fetchDone = true; location.reload(); }
-                        }, 8000);
+                            if (!fetchDone) { fetchDone = true; document.getElementById('hp-gmc-audience-preview-result').textContent = '<?php echo esc_js(__('Loading segment…', 'hp-gmc-manager')); ?>'; }
+                        }, 5000);
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) {
                                 if (fetchDone) return null;
-                                if (!r.ok) { fetchDone = true; clearTimeout(editFetchTimeout); location.reload(); return null; }
+                                if (!r.ok) { fetchDone = true; clearTimeout(editFetchTimeout); return null; }
                                 return r.json();
                             })
                             .then(function(seg) {
                                 if (fetchDone) return;
                                 fetchDone = true;
                                 clearTimeout(editFetchTimeout);
-                                if (!seg || !seg.filter_definition) return;
-                                if (seg.code && seg.message) return;
+                                if (!seg || !seg.filter_definition) { document.getElementById('hp-gmc-audience-preview-result').textContent = ''; return; }
+                                if (seg.code && seg.message) { document.getElementById('hp-gmc-audience-preview-result').textContent = ''; return; }
                                 var def;
                                 try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (e) { return; }
                                 if (def && (def.conditions || def.logic)) { setDefinition(def); applySegmentToForm(seg); }
+                                document.getElementById('hp-gmc-audience-preview-result').textContent = '';
                             })
                             .catch(function() {
-                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); location.reload(); }
+                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); document.getElementById('hp-gmc-audience-preview-result').textContent = ''; }
                             });
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
@@ -2127,6 +2128,34 @@ class Dashboard
                         addConditionRow({});
                     }
                 })();
+                document.querySelector('.hp-gmc-audiences').addEventListener('click', function(e) {
+                    var editBtn = e.target && e.target.closest && e.target.closest('.hp-gmc-audience-edit');
+                    if (!editBtn) return;
+                    e.preventDefault();
+                    var id = editBtn.getAttribute('data-id');
+                    if (!id) return;
+                    var resultEl = document.getElementById('hp-gmc-audience-preview-result');
+                    resultEl.textContent = '<?php echo esc_js(__('Loading…', 'hp-gmc-manager')); ?>';
+                    editBtn.disabled = true;
+                    fetch(restBase + '/' + id, { headers: { 'X-WP-Nonce': nonce } })
+                        .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Failed to load')); })
+                        .then(function(seg) {
+                            if (!seg || !seg.filter_definition) { resultEl.textContent = ''; editBtn.disabled = false; return; }
+                            var def;
+                            try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (err) { resultEl.textContent = ''; editBtn.disabled = false; return; }
+                            if (def && (def.conditions || def.logic)) {
+                                setDefinition(def);
+                                applySegmentToForm(seg);
+                                var url = new URL(location.href);
+                                url.searchParams.set('edit', id);
+                                url.hash = 'audiences';
+                                if (typeof history !== 'undefined' && history.replaceState) history.replaceState(null, '', url.pathname + url.search + (url.hash || ''));
+                            }
+                            resultEl.textContent = '';
+                            editBtn.disabled = false;
+                        })
+                        .catch(function() { resultEl.textContent = ''; editBtn.disabled = false; });
+                });
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
                 });

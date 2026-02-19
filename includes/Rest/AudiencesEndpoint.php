@@ -327,6 +327,10 @@ class AudiencesEndpoint
     {
         try {
             $filter_definition = $request->get_param('filter_definition');
+            if ($filter_definition === null || $filter_definition === '') {
+                $json = $request->get_json_params();
+                $filter_definition = isset($json['filter_definition']) ? $json['filter_definition'] : null;
+            }
             $def = is_string($filter_definition) ? json_decode($filter_definition, true) : $filter_definition;
             if (!is_array($def)) {
                 return new WP_Error('invalid_definition', 'filter_definition must be valid JSON.', ['status' => 400]);
@@ -339,6 +343,9 @@ class AudiencesEndpoint
                 $def['logic'] = 'and';
             }
             $progress_key = $request->get_param('progress_key');
+            if (($progress_key === null || $progress_key === '') && is_array($json = $request->get_json_params())) {
+                $progress_key = isset($json['progress_key']) ? $json['progress_key'] : null;
+            }
             $result = self::run_definition_internal($def, true, is_string($progress_key) && $progress_key !== '' ? $progress_key : null);
             if (isset($result['error'])) {
                 return new WP_Error('run_failed', $result['error'], ['status' => 500]);
@@ -548,6 +555,9 @@ class AudiencesEndpoint
         self::server_log('run_definition_internal_start', ['preview' => $preview, 'progress_key' => $progress_key ? 'set' : 'none']);
         if (!class_exists(\HP_Abilities\Services\SegmentFilterEngine::class)) {
             return ['error' => 'Segment engine not available (HP Abilities plugin required).', 'count' => 0];
+        }
+        if (!function_exists('wc_get_order_statuses')) {
+            return ['error' => 'WooCommerce is not active or not loaded.', 'count' => 0];
         }
         $max_orders = $preview ? \HP_Abilities\Services\SegmentFilterEngine::PREVIEW_ORDER_LIMIT : self::get_max_orders();
         $estimated_total = (int) ceil($max_orders / self::get_order_batch_size());
