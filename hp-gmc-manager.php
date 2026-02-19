@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.30.11
+ * Version: 1.30.12
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later

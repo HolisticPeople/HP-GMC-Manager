@@ -102,58 +102,59 @@
     padding-left: 0;
 }
 
-/* Multi-SKU chips in segment builder */
+/* Multi-SKU chips in segment builder: thumbnail + SKU + name */
 .cond-sku-chip {
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 2px 6px;
+    gap: 8px;
+    padding: 4px 6px 4px 4px;
     background: #f0f0f1;
     border: 1px solid #c3c4c7;
-    border-radius: 3px;
+    border-radius: 4px;
     font-size: 12px;
+    max-width: 280px;
+}
+.hp-gmc-chip-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.hp-gmc-chip-thumb {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 3px;
+    background: #fff;
+}
+.hp-gmc-chip-sku {
+    font-weight: 600;
+    color: #1d2327;
+    flex-shrink: 0;
+}
+.hp-gmc-chip-name {
+    color: #50575e;
+    line-height: 1.25;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
 }
 .cond-sku-remove {
     padding: 0 2px;
     margin: 0;
+    margin-left: 2px;
     border: none;
     background: none;
     cursor: pointer;
     font-size: 14px;
     line-height: 1;
     color: #50575e;
+    flex-shrink: 0;
 }
 .cond-sku-remove:hover {
     color: #d63638;
-}
-
-/* SKU chip tooltip: full name + thumbnail */
-.hp-gmc-sku-tooltip {
-    position: fixed;
-    z-index: 100001;
-    max-width: 280px;
-    padding: 10px 12px;
-    background: #fff;
-    border: 1px solid #c3c4c7;
-    border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    font-size: 13px;
-    line-height: 1.4;
-    pointer-events: none;
-}
-.hp-gmc-sku-tooltip img {
-    display: block;
-    width: 50px;
-    height: 50px;
-    object-fit: contain;
-    margin-bottom: 6px;
-    border-radius: 3px;
-    background: #f0f0f1;
-}
-.hp-gmc-sku-tooltip-name {
-    word-wrap: break-word;
-    white-space: normal;
 }
 
 /* SKU search dropdown: thumbnail + SKU + name */

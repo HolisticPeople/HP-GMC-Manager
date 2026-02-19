@@ -1848,7 +1848,7 @@ class Dashboard
                     if (type === 'purchase_product') {
                         var skuList = Array.isArray(c.skus) ? c.skus : (c.sku ? [c.sku] : []);
                         var chipsHtml = skuList.map(function(s) {
-                            return '<span class="cond-sku-chip" data-sku="' + esc(s) + '">' + esc(s) + ' <button type="button" class="cond-sku-remove" aria-label="Remove">&times;</button></span>';
+                            return '<span class="cond-sku-chip" data-sku="' + esc(s) + '"><span class="hp-gmc-chip-content"><span class="hp-gmc-chip-sku">' + esc(s) + '</span></span> <button type="button" class="cond-sku-remove" aria-label="Remove">&times;</button></span>';
                         }).join('');
                         return 'SKUs <span class="hp-gmc-sku-wrap" style="position:relative;display:inline-block;vertical-align:middle;">' +
                             '<span class="hp-gmc-sku-chips" style="display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:28px;">' + chipsHtml + '</span>' +
@@ -1900,80 +1900,50 @@ class Dashboard
                         });
                         return set;
                     }
-                    function addChip(sku, name, imageUrl) {
-                        sku = String(sku || '').trim();
-                        if (!sku) return;
-                        var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
-                        for (var i = 0; i < existing.length; i++) { if ((existing[i].getAttribute('data-sku') || '').toUpperCase() === sku.toUpperCase()) return; }
-                        var span = document.createElement('span');
-                        span.className = 'cond-sku-chip';
-                        span.setAttribute('data-sku', sku);
-                        if (name) span.setAttribute('data-name', name);
-                        if (imageUrl) span.setAttribute('data-image', imageUrl);
-                        span.textContent = sku + ' ';
+                    if (typeof window.hpGmcSkuProductCache === 'undefined') window.hpGmcSkuProductCache = {};
+                    var productCache = window.hpGmcSkuProductCache;
+                    function renderChipContent(chip) {
+                        var sku = chip.getAttribute('data-sku') || '';
+                        var name = chip.getAttribute('data-name') || '';
+                        var imageUrl = chip.getAttribute('data-image') || '';
+                        var content = document.createElement('span');
+                        content.className = 'hp-gmc-chip-content';
+                        if (imageUrl) {
+                            var img = document.createElement('img');
+                            img.className = 'hp-gmc-chip-thumb';
+                            img.src = imageUrl;
+                            img.alt = '';
+                            content.appendChild(img);
+                        }
+                        var skuSpan = document.createElement('span');
+                        skuSpan.className = 'hp-gmc-chip-sku';
+                        skuSpan.textContent = sku;
+                        content.appendChild(skuSpan);
+                        if (name) {
+                            var nameSpan = document.createElement('span');
+                            nameSpan.className = 'hp-gmc-chip-name';
+                            nameSpan.textContent = name;
+                            content.appendChild(nameSpan);
+                        }
                         var btn = document.createElement('button');
                         btn.type = 'button';
                         btn.className = 'cond-sku-remove';
                         btn.setAttribute('aria-label', 'Remove');
                         btn.innerHTML = '&times;';
-                        btn.addEventListener('click', function() { span.remove(); });
-                        span.appendChild(btn);
-                        chipsContainer.appendChild(span);
+                        chip.innerHTML = '';
+                        chip.appendChild(content);
+                        chip.appendChild(btn);
                     }
-                    wrap.addEventListener('click', function(e) {
-                        if (e.target && e.target.classList.contains('cond-sku-remove')) {
-                            var chip = e.target.closest('.cond-sku-chip');
-                            if (chip) chip.remove();
-                        }
-                    });
-                    var tooltipEl = null;
-                    var tooltipHideTimer = null;
-                    var currentHoverChip = null;
-                    if (typeof window.hpGmcSkuTooltipCache === 'undefined') window.hpGmcSkuTooltipCache = {};
-                    var tooltipCache = window.hpGmcSkuTooltipCache;
-                    function showTooltip(chip, name, imageUrl) {
-                        if (!tooltipEl) {
-                            tooltipEl = document.createElement('div');
-                            tooltipEl.className = 'hp-gmc-sku-tooltip';
-                            tooltipEl.setAttribute('role', 'tooltip');
-                            document.body.appendChild(tooltipEl);
-                        }
-                        var html = '';
-                        if (imageUrl) html += '<img src="' + String(imageUrl).replace(/"/g, '&quot;').replace(/</g, '&lt;') + '" alt="">';
-                        html += '<div class="hp-gmc-sku-tooltip-name">' + (name ? String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '') + '</div>';
-                        tooltipEl.innerHTML = html;
-                        var rect = chip.getBoundingClientRect();
-                        tooltipEl.style.display = 'block';
-                        tooltipEl.style.left = Math.max(8, rect.left) + 'px';
-                        tooltipEl.style.top = (rect.top - 4) + 'px';
-                        tooltipEl.style.transform = 'translateY(-100%)';
-                    }
-                    function hideTooltip() {
-                        if (tooltipEl) tooltipEl.style.display = 'none';
-                        currentHoverChip = null;
-                    }
-                    wrap.addEventListener('mouseover', function(e) {
-                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
-                        if (!chip) return;
-                        currentHoverChip = chip;
-                        if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+                    function ensureChipProduct(chip) {
                         var sku = chip.getAttribute('data-sku') || '';
                         var skuKey = sku.toUpperCase();
-                        var name = chip.getAttribute('data-name') || '';
-                        var imageUrl = chip.getAttribute('data-image') || '';
-                        if (name) {
-                            showTooltip(chip, name, imageUrl);
+                        if (chip.getAttribute('data-name')) return;
+                        if (productCache[skuKey]) {
+                            chip.setAttribute('data-name', productCache[skuKey].name || '');
+                            chip.setAttribute('data-image', productCache[skuKey].image_url || '');
+                            renderChipContent(chip);
                             return;
                         }
-                        if (tooltipCache[skuKey]) {
-                            name = tooltipCache[skuKey].name || '';
-                            imageUrl = tooltipCache[skuKey].image_url || '';
-                            chip.setAttribute('data-name', name);
-                            chip.setAttribute('data-image', imageUrl);
-                            showTooltip(chip, name, imageUrl);
-                            return;
-                        }
-                        showTooltip(chip, '<?php echo esc_js(__('Loading…', 'hp-gmc-manager')); ?>', '');
                         var form = new FormData();
                         form.append('action', 'hp_gmc_get_product_by_sku');
                         form.append('nonce', productSearchNonce);
@@ -1985,29 +1955,41 @@ class Dashboard
                                 var d = (data && data.data) ? data.data : {};
                                 var n = (d && d.name) ? d.name : '';
                                 var img = (d && d.image_url) ? d.image_url : '';
-                                var displayName = n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>';
-                                tooltipCache[skuKey] = { name: displayName, image_url: img };
-                                if (ok && n) chip.setAttribute('data-name', n);
-                                if (ok && img) chip.setAttribute('data-image', img);
-                                if (chip === currentHoverChip) {
-                                    showTooltip(chip, displayName, img);
-                                }
+                                productCache[skuKey] = { name: n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: img };
+                                chip.setAttribute('data-name', n || '');
+                                chip.setAttribute('data-image', img || '');
+                                renderChipContent(chip);
                             })
                             .catch(function() {
-                                tooltipCache[skuKey] = { name: '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: '' };
-                                if (chip === currentHoverChip) {
-                                    showTooltip(chip, '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', '');
-                                }
+                                productCache[skuKey] = { name: '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: '' };
+                                chip.setAttribute('data-name', '');
+                                chip.setAttribute('data-image', '');
+                                renderChipContent(chip);
                             });
-                    }, true);
-                    wrap.addEventListener('mouseout', function(e) {
-                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
-                        if (!chip) return;
-                        var related = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.cond-sku-chip') : null;
-                        if (related === chip) return;
-                        currentHoverChip = null;
-                        tooltipHideTimer = setTimeout(hideTooltip, 100);
-                    }, true);
+                    }
+                    function addChip(sku, name, imageUrl) {
+                        sku = String(sku || '').trim();
+                        if (!sku) return;
+                        var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
+                        for (var i = 0; i < existing.length; i++) { if ((existing[i].getAttribute('data-sku') || '').toUpperCase() === sku.toUpperCase()) return; }
+                        var span = document.createElement('span');
+                        span.className = 'cond-sku-chip';
+                        span.setAttribute('data-sku', sku);
+                        span.setAttribute('data-name', name || '');
+                        span.setAttribute('data-image', imageUrl || '');
+                        renderChipContent(span);
+                        chipsContainer.appendChild(span);
+                    }
+                    wrap.addEventListener('click', function(e) {
+                        if (e.target && e.target.classList.contains('cond-sku-remove')) {
+                            var chip = e.target.closest('.cond-sku-chip');
+                            if (chip) chip.remove();
+                        }
+                    });
+                    chipsContainer.querySelectorAll('.cond-sku-chip').forEach(function(chip) {
+                        if (!chip.getAttribute('data-name')) ensureChipProduct(chip);
+                        else renderChipContent(chip);
+                    });
                     function showList(items) {
                         var existingSkus = getExistingSkus();
                         items = items.filter(function(p) { return !existingSkus[(String(p.sku || '').toUpperCase())]; });
