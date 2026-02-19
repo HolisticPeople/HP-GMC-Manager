@@ -584,8 +584,20 @@ class AudiencesEndpoint
             self::server_log('engine_run_before', ['max_orders' => $max_orders]);
             $engine = new \HP_Abilities\Services\SegmentFilterEngine();
             $out = $engine->run($def, null, $max_orders, $on_progress);
-            self::server_log('engine_run_success', ['count' => $out['count'] ?? 0]);
-            return ['count' => $out['count'], 'rows' => $out['rows']];
+            $count = (int) ($out['count'] ?? 0);
+            $rows = $out['rows'] ?? [];
+            self::server_log('engine_run_success', ['count' => $count]);
+            unset($out, $engine);
+            if ($preview) {
+                unset($rows);
+            }
+            if (function_exists('gc_collect_cycles')) {
+                gc_collect_cycles();
+            }
+            if ($preview) {
+                return ['count' => $count];
+            }
+            return ['count' => $count, 'rows' => $rows];
         } catch (\Throwable $e) {
             self::server_log('engine_run_exception', [
                 'error' => $e->getMessage(),
