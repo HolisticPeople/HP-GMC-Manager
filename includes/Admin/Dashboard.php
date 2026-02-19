@@ -2343,6 +2343,7 @@ class Dashboard
                     var wrap = abortBtn.closest('.hp-gmc-audience-run-wrap');
                     var stopPolling = wrap && wrap._stopPolling;
                     var progressKey = wrap && wrap._progressKey;
+                    if (wrap && wrap._bulkResolve) { wrap._bulkResolve(); wrap._bulkResolve = null; }
                     if (stopPolling) stopPolling();
                     if (progressKey) {
                         fetch(restBase + '/run-abort', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) }).catch(function() {});
@@ -2499,17 +2500,73 @@ class Dashboard
                             var ids = getSelectedIds();
                             if (!ids.length) return;
                             var btn = this;
+                            var table = document.querySelector('.hp-gmc-audiences-table');
+                            if (!table) return;
                             btn.disabled = true;
-                            var runNext = function(idx) {
+                            function runOneSegment(id) {
+                                return new Promise(function(resolveSegment) {
+                                    var row = table.querySelector('tr[data-segment-id="' + id + '"]');
+                                    if (!row) { resolveSegment(); return; }
+                                    var wrap = row.querySelector('.hp-gmc-audience-run-wrap');
+                                    var runBtn = wrap ? wrap.querySelector('.hp-gmc-audience-run') : null;
+                                    var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
+                                    var abortBtn = wrap ? wrap.querySelector('.hp-gmc-audience-abort') : null;
+                                    if (!wrap || !runBtn) { resolveSegment(); return; }
+                                    runBtn.disabled = true;
+                                    runBtn.style.display = 'none';
+                                    if (abortBtn) abortBtn.style.display = 'inline-block';
+                                    if (statusEl) statusEl.style.display = 'inline';
+                                    var progressKey = 'bulk_' + Date.now() + '_' + id;
+                                    var batchesPerChunk = 100;
+                                    var nextChunkIndex = 1;
+                                    function done() {
+                                        if (wrap._stopPolling) wrap._stopPolling();
+                                        wrap._stopPolling = null;
+                                        wrap._progressKey = null;
+                                        wrap._bulkResolve = null;
+                                        resetRunUI(wrap);
+                                        resolveSegment();
+                                    }
+                                    wrap._bulkResolve = resolveSegment;
+                                    var stopPolling = startProgressPolling(progressKey, function(cur, tot) {
+                                        renderProgress(statusEl, cur, tot);
+                                        if (tot > 0 && cur >= tot) { done(); return; }
+                                        var threshold = nextChunkIndex * batchesPerChunk;
+                                        if (tot > 0 && cur >= threshold) {
+                                            var idx = nextChunkIndex++;
+                                            fetch(restBase + '/run-continue', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ segment_id: id, progress_key: progressKey, chunk_index: idx }) })
+                                                .then(function(r) { return r.json(); })
+                                                .then(function(data) { if (data && data.done) done(); })
+                                                .catch(function() {});
+                                        }
+                                    });
+                                    wrap._stopPolling = stopPolling;
+                                    wrap._progressKey = progressKey;
+                                    var runPayload = { progress_key: progressKey };
+                                    fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
+                                        .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
+                                        .then(function(r) {
+                                            return r.text().then(function(text) {
+                                                var data;
+                                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+                                                if (r.status === 202) return data;
+                                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
+                                                return data;
+                                            });
+                                        })
+                                        .then(function(data) {
+                                            if (data && data.status === 'accepted') return;
+                                            done();
+                                            if (data && data.count !== undefined) return;
+                                            alert(data && data.message ? data.message : 'Error');
+                                        })
+                                        .catch(function(e) { done(); alert(e.message || 'Error'); });
+                                });
+                            }
+                            function runNext(idx) {
                                 if (idx >= ids.length) { btn.disabled = false; setTimeout(function() { location.reload(); }, 800); return; }
-                                var id = ids[idx];
-                                var progressKey = 'bulk_' + Date.now() + '_' + idx;
-                                fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
-                                    .then(function(r) { return r.ok ? r.json() : Promise.resolve({}); })
-                                    .then(function() { return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) }); })
-                                    .then(function() { runNext(idx + 1); })
-                                    .catch(function() { runNext(idx + 1); });
-                            };
+                                runOneSegment(ids[idx]).then(function() { runNext(idx + 1); });
+                            }
                             runNext(0);
                         });
                         bulkBar.querySelector('.hp-gmc-audience-bulk-export').addEventListener('click', function() {
