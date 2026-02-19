@@ -1791,10 +1791,6 @@ class Dashboard
                 <p style="margin-top: 0.5em;">
                     <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
                     <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
-                    <span style="display:inline-flex;align-items:center;gap:6px;">
-                        <button type="button" class="button button-primary" id="hp-gmc-audience-run-preview"><?php esc_html_e('Run (preview count)', 'hp-gmc-manager'); ?></button>
-                        <span id="hp-gmc-audience-preview-result"></span>
-                    </span>
                 </p>
                 <p>
                     <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
@@ -2099,9 +2095,7 @@ class Dashboard
                     } else if (urlEditId) {
                         addConditionRow({});
                         var fetchDone = false;
-                        var editFetchTimeout = setTimeout(function() {
-                            if (!fetchDone) { fetchDone = true; document.getElementById('hp-gmc-audience-preview-result').textContent = '<?php echo esc_js(__('Loading segment…', 'hp-gmc-manager')); ?>'; }
-                        }, 5000);
+                        var editFetchTimeout = setTimeout(function() { fetchDone = true; }, 5000);
                         fetch(restBase + '/' + urlEditId, { headers: { 'X-WP-Nonce': nonce } })
                             .then(function(r) {
                                 if (fetchDone) return null;
@@ -2112,15 +2106,14 @@ class Dashboard
                                 if (fetchDone) return;
                                 fetchDone = true;
                                 clearTimeout(editFetchTimeout);
-                                if (!seg || !seg.filter_definition) { document.getElementById('hp-gmc-audience-preview-result').textContent = ''; return; }
-                                if (seg.code && seg.message) { document.getElementById('hp-gmc-audience-preview-result').textContent = ''; return; }
+                                if (!seg || !seg.filter_definition) { return; }
+                                if (seg.code && seg.message) { return; }
                                 var def;
                                 try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (e) { return; }
                                 if (def && (def.conditions || def.logic)) { setDefinition(def); applySegmentToForm(seg); }
-                                document.getElementById('hp-gmc-audience-preview-result').textContent = '';
                             })
                             .catch(function() {
-                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); document.getElementById('hp-gmc-audience-preview-result').textContent = ''; }
+                                if (!fetchDone) { fetchDone = true; clearTimeout(editFetchTimeout); }
                             });
                     } else if (editDefinition) {
                         setDefinition(editDefinition);
@@ -2134,15 +2127,13 @@ class Dashboard
                     e.preventDefault();
                     var id = editBtn.getAttribute('data-id');
                     if (!id) return;
-                    var resultEl = document.getElementById('hp-gmc-audience-preview-result');
-                    resultEl.textContent = '<?php echo esc_js(__('Loading…', 'hp-gmc-manager')); ?>';
                     editBtn.disabled = true;
                     fetch(restBase + '/' + id, { headers: { 'X-WP-Nonce': nonce } })
                         .then(function(r) { return r.ok ? r.json() : Promise.reject(new Error('Failed to load')); })
                         .then(function(seg) {
-                            if (!seg || !seg.filter_definition) { resultEl.textContent = ''; editBtn.disabled = false; return; }
+                            if (!seg || !seg.filter_definition) { editBtn.disabled = false; return; }
                             var def;
-                            try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (err) { resultEl.textContent = ''; editBtn.disabled = false; return; }
+                            try { def = typeof seg.filter_definition === 'string' ? JSON.parse(seg.filter_definition) : seg.filter_definition; } catch (err) { editBtn.disabled = false; return; }
                             if (def && (def.conditions || def.logic)) {
                                 setDefinition(def);
                                 applySegmentToForm(seg);
@@ -2151,10 +2142,9 @@ class Dashboard
                                 url.hash = 'audiences';
                                 if (typeof history !== 'undefined' && history.replaceState) history.replaceState(null, '', url.pathname + url.search + (url.hash || ''));
                             }
-                            resultEl.textContent = '';
                             editBtn.disabled = false;
                         })
-                        .catch(function() { resultEl.textContent = ''; editBtn.disabled = false; });
+                        .catch(function() { editBtn.disabled = false; });
                 });
                 document.querySelectorAll('.hp-gmc-audience-template').forEach(function(btn) {
                     btn.addEventListener('click', function() { setDefinition(templates[this.dataset.template] || {}); });
@@ -2191,35 +2181,6 @@ class Dashboard
                         if (barInner) { barInner.style.width = (total ? Math.min(100, (current / total) * 100) : 0) + '%'; }
                     }
                 }
-                document.getElementById('hp-gmc-audience-run-preview').addEventListener('click', function() {
-                    var resultEl = document.getElementById('hp-gmc-audience-preview-result');
-                    var previewBtn = this;
-                    previewBtn.disabled = true;
-                    var progressKey = 'preview_' + Date.now();
-                    resultEl.innerHTML = '<span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin-right:6px;"></span><span class="hp-gmc-audience-run-status-text"><?php echo esc_js(__('Running…', 'hp-gmc-manager')); ?></span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span>';
-                    var stopPolling = startProgressPolling(progressKey, function(cur, tot) { renderProgress(resultEl, cur, tot); });
-                    var filterDefinition = getDefinition();
-                    fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: true }) })
-                        .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (d && d.total > 0) renderProgress(resultEl, 0, d.total); return fetch(restBase + '/run-definition', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ filter_definition: filterDefinition, progress_key: progressKey }) }); }); })
-                        .then(function(r) {
-                            return r.text().then(function(text) {
-                                var data;
-                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'Invalid response' }; }
-                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
-                                return data;
-                            });
-                        })
-                        .then(function(data) {
-                            stopPolling();
-                            previewBtn.disabled = false;
-                            resultEl.textContent = data.count !== undefined ? 'Count: ' + data.count : (data.message || 'Error');
-                        })
-                        .catch(function(e) {
-                            stopPolling();
-                            previewBtn.disabled = false;
-                            resultEl.textContent = e.message || 'Error';
-                        });
-                });
                 document.getElementById('hp-gmc-audience-save-as').addEventListener('click', function() {
                     var name = document.getElementById('hp-gmc-audience-save-name').value.trim();
                     if (!name) { alert('Enter a segment name'); return; }
@@ -2338,7 +2299,7 @@ class Dashboard
                         wrap._stopPolling = stopPolling;
                         wrap._progressKey = progressKey;
                         var runPayload = { progress_key: progressKey };
-                        fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey, preview: false }) })
+                        fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
                             .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
                             .then(function(r) {
                                 return r.text().then(function(text) {
