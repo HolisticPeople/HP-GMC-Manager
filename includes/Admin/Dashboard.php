@@ -1816,6 +1816,7 @@ class Dashboard
                 var conditionTypeLabels = {
                     billing_address: 'Billing address',
                     shipping_address: 'Shipping address',
+                    country_related: 'Country related',
                     purchase_product: 'Purchase history: Bought product',
                     purchase_spend: 'Purchase history: Total spend',
                     purchase_orders: 'Purchase history: Number of orders',
@@ -1837,6 +1838,13 @@ class Dashboard
                             return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
                         }).join('');
                         return '<select class="cond-country" data-param="country" style="width:140px;max-width:100%;"><option value="">—</option>' + countryOpts + '</select> <input type="text" class="cond-zip" data-param="zip" placeholder="Zip (optional)" value="' + esc(c.zip) + '" style="width:100px">';
+                    }
+                    if (type === 'country_related') {
+                        var countryOpts = Object.keys(audienceCountries).map(function(code) {
+                            var sel = (c.country === code) ? ' selected' : '';
+                            return '<option value="' + esc(code) + '"' + sel + '>' + esc(audienceCountries[code]) + '</option>';
+                        }).join('');
+                        return '<select class="cond-country" data-param="country" style="width:140px;max-width:100%;"><option value="">—</option>' + countryOpts + '</select> <span class="description">(billing or shipping or phone country)</span>';
                     }
                     if (type === 'purchase_product') {
                         var skuList = Array.isArray(c.skus) ? c.skus : (c.sku ? [c.sku] : []);
@@ -1992,7 +2000,7 @@ class Dashboard
                         }
                         if (val !== '' && val !== null && val !== undefined) cond[param] = val;
                     });
-                    if ((type === 'billing_address' || type === 'shipping_address') && cond.country) return cond;
+                    if ((type === 'billing_address' || type === 'shipping_address' || type === 'country_related') && cond.country) return cond;
                     if (type === 'purchase_product') {
                         var chipSkus = [];
                         row.querySelectorAll('.cond-sku-chip').forEach(function(el) { var s = (el.getAttribute('data-sku') || '').trim(); if (s) chipSkus.push(s); });
