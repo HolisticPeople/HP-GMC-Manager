@@ -2419,19 +2419,16 @@ class Plugin
             wp_send_json_error(['message' => 'SKU required']);
         }
 
-        $products = wc_get_products(['status' => 'publish', 'limit' => 1, 'sku' => $sku]);
-        $product = isset($products[0]) ? $products[0] : null;
-        if (!$product || $product->get_sku() !== $sku) {
-            $products = wc_get_products(['status' => 'publish', 'limit' => 50]);
-            $sku_lower = strtolower($sku);
-            foreach ($products as $p) {
-                if (strtolower((string) $p->get_sku()) === $sku_lower) {
-                    $product = $p;
-                    break;
-                }
-            }
+        global $wpdb;
+        $product_id = $wpdb->get_var($wpdb->prepare(
+            "SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_sku' AND meta_value = %s LIMIT 1",
+            $sku
+        ));
+        $product = $product_id ? wc_get_product((int) $product_id) : null;
+        if (!$product || !$product->is_visible()) {
+            $product = null;
         }
-        if (!$product) {
+        if (!$product || (string) $product->get_sku() !== $sku) {
             wp_send_json_error(['message' => 'Product not found']);
         }
 
@@ -2439,6 +2436,7 @@ class Plugin
         $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
 
         wp_send_json_success([
+            'sku' => $product->get_sku(),
             'name' => $product->get_name(),
             'image_url' => $image_url ?: '',
         ]);

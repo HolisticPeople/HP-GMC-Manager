@@ -1703,9 +1703,18 @@ class Dashboard
 
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
             <div id="hp-gmc-audience-upload-message" class="hp-gmc-audience-upload-message" style="display:none; margin: 0.5em 0; padding: 0.75em; border-left: 4px solid #d63638; background: #fcf0f1; color: #1d2327;"></div>
-            <table class="wp-list-table widefat fixed striped">
+            <div id="hp-gmc-audience-bulk-actions" class="hp-gmc-audience-bulk-actions" style="display:none; margin-bottom: 8px; padding: 8px 12px; background: #f0f6fc; border: 1px solid #c3c4c7; border-radius: 4px;">
+                <span class="hp-gmc-audience-bulk-label"><?php esc_html_e('With selected:', 'hp-gmc-manager'); ?></span>
+                <button type="button" class="button button-small hp-gmc-audience-bulk-delete" style="color:#b32d2e;"><?php esc_html_e('Delete', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button button-small hp-gmc-audience-bulk-rerun"><?php esc_html_e('Re-run', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button button-small hp-gmc-audience-bulk-export"><?php esc_html_e('Export', 'hp-gmc-manager'); ?></button>
+            </div>
+            <table class="wp-list-table widefat fixed striped hp-gmc-audiences-table">
                 <thead>
                     <tr>
+                        <th class="check-column" style="width: 2.2em;">
+                            <input type="checkbox" id="hp-gmc-audience-select-all" title="<?php esc_attr_e('Select / deselect all', 'hp-gmc-manager'); ?>">
+                        </th>
                         <th><?php esc_html_e('Name', 'hp-gmc-manager'); ?></th>
                         <th><?php esc_html_e('Last run', 'hp-gmc-manager'); ?></th>
                         <th><?php esc_html_e('Count', 'hp-gmc-manager'); ?></th>
@@ -1715,10 +1724,11 @@ class Dashboard
                 </thead>
                 <tbody>
                     <?php if (empty($segments)): ?>
-                    <tr><td colspan="5"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
+                    <tr><td colspan="6"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
                     <?php else: ?>
                     <?php foreach ($segments as $seg): ?>
                     <tr data-segment-id="<?php echo esc_attr($seg['id']); ?>">
+                        <th scope="row" class="check-column"><input type="checkbox" class="hp-gmc-audience-row-cb" value="<?php echo esc_attr($seg['id']); ?>"></th>
                         <td><strong><?php echo esc_html($seg['name']); ?></strong></td>
                         <td><?php echo $seg['last_run_at'] ? esc_html($seg['last_run_at']) : '—'; ?></td>
                         <td><?php echo $seg['last_run_count'] !== null ? (int) $seg['last_run_count'] : '—'; ?></td>
@@ -1848,7 +1858,7 @@ class Dashboard
                     if (type === 'purchase_product') {
                         var skuList = Array.isArray(c.skus) ? c.skus : (c.sku ? [c.sku] : []);
                         var chipsHtml = skuList.map(function(s) {
-                            return '<span class="cond-sku-chip" data-sku="' + esc(s) + '">' + esc(s) + ' <button type="button" class="cond-sku-remove" aria-label="Remove">&times;</button></span>';
+                            return '<span class="cond-sku-chip" data-sku="' + esc(s) + '"><span class="hp-gmc-chip-content"><span class="hp-gmc-chip-sku">' + esc(s) + '</span></span> <button type="button" class="cond-sku-remove" aria-label="Remove">&times;</button></span>';
                         }).join('');
                         return 'SKUs <span class="hp-gmc-sku-wrap" style="position:relative;display:inline-block;vertical-align:middle;">' +
                             '<span class="hp-gmc-sku-chips" style="display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:28px;">' + chipsHtml + '</span>' +
@@ -1900,66 +1910,50 @@ class Dashboard
                         });
                         return set;
                     }
-                    function addChip(sku, name, imageUrl) {
-                        sku = String(sku || '').trim();
-                        if (!sku) return;
-                        var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
-                        for (var i = 0; i < existing.length; i++) { if ((existing[i].getAttribute('data-sku') || '').toUpperCase() === sku.toUpperCase()) return; }
-                        var span = document.createElement('span');
-                        span.className = 'cond-sku-chip';
-                        span.setAttribute('data-sku', sku);
-                        if (name) span.setAttribute('data-name', name);
-                        if (imageUrl) span.setAttribute('data-image', imageUrl);
-                        span.textContent = sku + ' ';
+                    if (typeof window.hpGmcSkuProductCache === 'undefined') window.hpGmcSkuProductCache = {};
+                    var productCache = window.hpGmcSkuProductCache;
+                    function renderChipContent(chip) {
+                        var sku = chip.getAttribute('data-sku') || '';
+                        var name = chip.getAttribute('data-name') || '';
+                        var imageUrl = chip.getAttribute('data-image') || '';
+                        var content = document.createElement('span');
+                        content.className = 'hp-gmc-chip-content';
+                        if (imageUrl) {
+                            var img = document.createElement('img');
+                            img.className = 'hp-gmc-chip-thumb';
+                            img.src = imageUrl;
+                            img.alt = '';
+                            content.appendChild(img);
+                        }
+                        var skuSpan = document.createElement('span');
+                        skuSpan.className = 'hp-gmc-chip-sku';
+                        skuSpan.textContent = sku;
+                        content.appendChild(skuSpan);
+                        if (name) {
+                            var nameSpan = document.createElement('span');
+                            nameSpan.className = 'hp-gmc-chip-name';
+                            nameSpan.textContent = name;
+                            content.appendChild(nameSpan);
+                        }
                         var btn = document.createElement('button');
                         btn.type = 'button';
                         btn.className = 'cond-sku-remove';
                         btn.setAttribute('aria-label', 'Remove');
                         btn.innerHTML = '&times;';
-                        btn.addEventListener('click', function() { span.remove(); });
-                        span.appendChild(btn);
-                        chipsContainer.appendChild(span);
+                        chip.innerHTML = '';
+                        chip.appendChild(content);
+                        chip.appendChild(btn);
                     }
-                    wrap.addEventListener('click', function(e) {
-                        if (e.target && e.target.classList.contains('cond-sku-remove')) {
-                            var chip = e.target.closest('.cond-sku-chip');
-                            if (chip) chip.remove();
-                        }
-                    });
-                    var tooltipEl = null;
-                    var tooltipHideTimer = null;
-                    function showTooltip(chip, name, imageUrl) {
-                        if (!tooltipEl) {
-                            tooltipEl = document.createElement('div');
-                            tooltipEl.className = 'hp-gmc-sku-tooltip';
-                            tooltipEl.setAttribute('role', 'tooltip');
-                            document.body.appendChild(tooltipEl);
-                        }
-                        var html = '';
-                        if (imageUrl) html += '<img src="' + String(imageUrl).replace(/"/g, '&quot;').replace(/</g, '&lt;') + '" alt="">';
-                        html += '<div class="hp-gmc-sku-tooltip-name">' + (name ? String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '') + '</div>';
-                        tooltipEl.innerHTML = html;
-                        var rect = chip.getBoundingClientRect();
-                        tooltipEl.style.display = 'block';
-                        tooltipEl.style.left = Math.max(8, rect.left) + 'px';
-                        tooltipEl.style.top = (rect.top - 4) + 'px';
-                        tooltipEl.style.transform = 'translateY(-100%)';
-                    }
-                    function hideTooltip() {
-                        if (tooltipEl) tooltipEl.style.display = 'none';
-                    }
-                    wrap.addEventListener('mouseover', function(e) {
-                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
-                        if (!chip) return;
-                        if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+                    function ensureChipProduct(chip) {
                         var sku = chip.getAttribute('data-sku') || '';
-                        var name = chip.getAttribute('data-name') || '';
-                        var imageUrl = chip.getAttribute('data-image') || '';
-                        if (name) {
-                            showTooltip(chip, name, imageUrl);
+                        var skuKey = sku.toUpperCase();
+                        if (chip.getAttribute('data-name')) return;
+                        if (productCache[skuKey]) {
+                            chip.setAttribute('data-name', productCache[skuKey].name || '');
+                            chip.setAttribute('data-image', productCache[skuKey].image_url || '');
+                            renderChipContent(chip);
                             return;
                         }
-                        showTooltip(chip, '<?php echo esc_js(__('Loading…', 'hp-gmc-manager')); ?>', '');
                         var form = new FormData();
                         form.append('action', 'hp_gmc_get_product_by_sku');
                         form.append('nonce', productSearchNonce);
@@ -1969,29 +1963,54 @@ class Dashboard
                             .then(function(data) {
                                 var ok = data && data.success;
                                 var d = (data && data.data) ? data.data : {};
+                                var returnedSku = (d && d.sku) ? String(d.sku).trim() : '';
+                                if (returnedSku && returnedSku.toUpperCase() !== skuKey) { return; }
                                 var n = (d && d.name) ? d.name : '';
                                 var img = (d && d.image_url) ? d.image_url : '';
-                                if (ok && n) chip.setAttribute('data-name', n);
-                                if (ok && img) chip.setAttribute('data-image', img);
-                                showTooltip(chip, n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', img);
+                                productCache[skuKey] = { name: n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: img };
+                                chip.setAttribute('data-name', n || '');
+                                chip.setAttribute('data-image', img || '');
+                                renderChipContent(chip);
                             })
-                            .catch(function() { showTooltip(chip, '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', ''); });
-                    }, true);
-                    wrap.addEventListener('mouseout', function(e) {
-                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
-                        if (!chip) return;
-                        var related = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.cond-sku-chip') : null;
-                        if (related === chip) return;
-                        tooltipHideTimer = setTimeout(hideTooltip, 100);
-                    }, true);
+                            .catch(function() {
+                                productCache[skuKey] = { name: '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: '' };
+                                chip.setAttribute('data-name', '');
+                                chip.setAttribute('data-image', '');
+                                renderChipContent(chip);
+                            });
+                    }
+                    function addChip(sku, name, imageUrl) {
+                        sku = String(sku || '').trim();
+                        if (!sku) return;
+                        var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
+                        for (var i = 0; i < existing.length; i++) { if ((existing[i].getAttribute('data-sku') || '').toUpperCase() === sku.toUpperCase()) return; }
+                        var span = document.createElement('span');
+                        span.className = 'cond-sku-chip';
+                        span.setAttribute('data-sku', sku);
+                        span.setAttribute('data-name', name || '');
+                        span.setAttribute('data-image', imageUrl || '');
+                        renderChipContent(span);
+                        chipsContainer.appendChild(span);
+                    }
+                    wrap.addEventListener('click', function(e) {
+                        if (e.target && e.target.classList.contains('cond-sku-remove')) {
+                            var chip = e.target.closest('.cond-sku-chip');
+                            if (chip) chip.remove();
+                        }
+                    });
+                    chipsContainer.querySelectorAll('.cond-sku-chip').forEach(function(chip) {
+                        if (!chip.getAttribute('data-name')) ensureChipProduct(chip);
+                        else renderChipContent(chip);
+                    });
                     function showList(items) {
                         var existingSkus = getExistingSkus();
                         items = items.filter(function(p) { return !existingSkus[(String(p.sku || '').toUpperCase())]; });
                         list.innerHTML = items.map(function(p) {
-                            var sku = String(p.sku || '').replace(/"/g, '&quot;');
-                            var name = String(p.name || '').replace(/"/g, '&quot;');
+                            var sku = String(p.sku || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            var name = String(p.name || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/&/g, '&amp;');
                             var img = String(p.image_url || '').replace(/"/g, '&quot;');
-                            return '<div class="hp-gmc-sku-item" data-sku="' + sku + '" data-name="' + name + '" data-image="' + img + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
+                            var imgHtml = img ? '<img src="' + img + '" alt="" class="hp-gmc-sku-item-thumb">' : '<span class="hp-gmc-sku-item-thumb hp-gmc-sku-item-no-thumb"></span>';
+                            return '<div class="hp-gmc-sku-item" data-sku="' + sku + '" data-name="' + name + '" data-image="' + img + '">' + imgHtml + '<span class="hp-gmc-sku-item-text"><span class="hp-gmc-sku-item-sku">' + sku + '</span><span class="hp-gmc-sku-item-name">' + name + '</span></span></div>';
                         }).join('');
                         list.style.display = items.length ? 'block' : 'none';
                         list.querySelectorAll('.hp-gmc-sku-item').forEach(function(el) {
@@ -2324,6 +2343,7 @@ class Dashboard
                     var wrap = abortBtn.closest('.hp-gmc-audience-run-wrap');
                     var stopPolling = wrap && wrap._stopPolling;
                     var progressKey = wrap && wrap._progressKey;
+                    if (wrap && wrap._bulkResolve) { wrap._bulkResolve(); wrap._bulkResolve = null; }
                     if (stopPolling) stopPolling();
                     if (progressKey) {
                         fetch(restBase + '/run-abort', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) }).catch(function() {});
@@ -2439,6 +2459,139 @@ class Dashboard
                             .catch(function() { alert('Delete failed'); });
                     });
                 });
+                (function() {
+                    var bulkBar = document.getElementById('hp-gmc-audience-bulk-actions');
+                    var selectAll = document.getElementById('hp-gmc-audience-select-all');
+                    var rowCbs = document.querySelectorAll('.hp-gmc-audience-row-cb');
+                    function getSelectedIds() {
+                        return Array.prototype.map.call(document.querySelectorAll('.hp-gmc-audience-row-cb:checked'), function(cb) { return cb.value; });
+                    }
+                    function updateBulkBar() {
+                        var ids = getSelectedIds();
+                        if (bulkBar) bulkBar.style.display = ids.length ? 'block' : 'none';
+                        if (selectAll) {
+                            selectAll.checked = rowCbs.length > 0 && ids.length === rowCbs.length;
+                            selectAll.indeterminate = ids.length > 0 && ids.length < rowCbs.length;
+                        }
+                    }
+                    if (selectAll) {
+                        selectAll.addEventListener('change', function() {
+                            rowCbs.forEach(function(cb) { cb.checked = selectAll.checked; });
+                            updateBulkBar();
+                        });
+                    }
+                    rowCbs.forEach(function(cb) {
+                        cb.addEventListener('change', updateBulkBar);
+                    });
+                    if (bulkBar) {
+                        bulkBar.querySelector('.hp-gmc-audience-bulk-delete').addEventListener('click', function() {
+                            var ids = getSelectedIds();
+                            if (!ids.length) return;
+                            if (!confirm('Delete ' + ids.length + ' segment(s)? This cannot be undone.')) return;
+                            var done = 0;
+                            ids.forEach(function(id) {
+                                fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
+                                    .then(function(r) { return r.json(); })
+                                    .then(function(data) { if (data.deleted) { done++; if (done === ids.length) location.reload(); } })
+                                    .catch(function() { done++; if (done === ids.length) location.reload(); });
+                            });
+                        });
+                        bulkBar.querySelector('.hp-gmc-audience-bulk-rerun').addEventListener('click', function() {
+                            var ids = getSelectedIds();
+                            if (!ids.length) return;
+                            var btn = this;
+                            var table = document.querySelector('.hp-gmc-audiences-table');
+                            if (!table) return;
+                            btn.disabled = true;
+                            function runOneSegment(id) {
+                                return new Promise(function(resolveSegment) {
+                                    var row = table.querySelector('tr[data-segment-id="' + id + '"]');
+                                    if (!row) { resolveSegment(); return; }
+                                    var wrap = row.querySelector('.hp-gmc-audience-run-wrap');
+                                    var runBtn = wrap ? wrap.querySelector('.hp-gmc-audience-run') : null;
+                                    var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
+                                    var abortBtn = wrap ? wrap.querySelector('.hp-gmc-audience-abort') : null;
+                                    if (!wrap || !runBtn) { resolveSegment(); return; }
+                                    runBtn.disabled = true;
+                                    runBtn.style.display = 'none';
+                                    if (abortBtn) abortBtn.style.display = 'inline-block';
+                                    if (statusEl) statusEl.style.display = 'inline';
+                                    var progressKey = 'bulk_' + Date.now() + '_' + id;
+                                    var batchesPerChunk = 100;
+                                    var nextChunkIndex = 1;
+                                    function done() {
+                                        if (wrap._stopPolling) wrap._stopPolling();
+                                        wrap._stopPolling = null;
+                                        wrap._progressKey = null;
+                                        wrap._bulkResolve = null;
+                                        resetRunUI(wrap);
+                                        resolveSegment();
+                                    }
+                                    wrap._bulkResolve = resolveSegment;
+                                    var stopPolling = startProgressPolling(progressKey, function(cur, tot) {
+                                        renderProgress(statusEl, cur, tot);
+                                        if (tot > 0 && cur >= tot) { done(); return; }
+                                        var threshold = nextChunkIndex * batchesPerChunk;
+                                        if (tot > 0 && cur >= threshold) {
+                                            var idx = nextChunkIndex++;
+                                            fetch(restBase + '/run-continue', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ segment_id: id, progress_key: progressKey, chunk_index: idx }) })
+                                                .then(function(r) { return r.json(); })
+                                                .then(function(data) { if (data && data.done) done(); })
+                                                .catch(function() {});
+                                        }
+                                    });
+                                    wrap._stopPolling = stopPolling;
+                                    wrap._progressKey = progressKey;
+                                    var runPayload = { progress_key: progressKey };
+                                    fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
+                                        .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
+                                        .then(function(r) {
+                                            return r.text().then(function(text) {
+                                                var data;
+                                                try { data = text ? JSON.parse(text) : {}; } catch (e) { data = {}; }
+                                                if (r.status === 202) return data;
+                                                if (!r.ok) return Promise.reject(new Error(data.message || data.code || 'Run failed'));
+                                                return data;
+                                            });
+                                        })
+                                        .then(function(data) {
+                                            if (data && data.status === 'accepted') return;
+                                            done();
+                                            if (data && data.count !== undefined) return;
+                                            alert(data && data.message ? data.message : 'Error');
+                                        })
+                                        .catch(function(e) { done(); alert(e.message || 'Error'); });
+                                });
+                            }
+                            function runNext(idx) {
+                                if (idx >= ids.length) { btn.disabled = false; setTimeout(function() { location.reload(); }, 800); return; }
+                                runOneSegment(ids[idx]).then(function() { runNext(idx + 1); });
+                            }
+                            runNext(0);
+                        });
+                        bulkBar.querySelector('.hp-gmc-audience-bulk-export').addEventListener('click', function() {
+                            var ids = getSelectedIds();
+                            if (!ids.length) return;
+                            var delay = 0;
+                            ids.forEach(function(id) {
+                                setTimeout(function() {
+                                    fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
+                                        .then(function(r) { return r.json(); })
+                                        .then(function(data) {
+                                            if (data.csv !== undefined) {
+                                                var a = document.createElement('a');
+                                                a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
+                                                a.download = data.filename || 'segment-' + id + '.csv';
+                                                a.click();
+                                            }
+                                        })
+                                        .catch(function() {});
+                                }, delay);
+                                delay += 400;
+                            });
+                        });
+                    }
+                })();
                 document.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
