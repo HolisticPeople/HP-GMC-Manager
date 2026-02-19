@@ -2005,7 +2005,7 @@ class Dashboard
                         if (!chip) return;
                         var related = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.cond-sku-chip') : null;
                         if (related === chip) return;
-                        if (!related) currentHoverChip = null;
+                        currentHoverChip = null;
                         tooltipHideTimer = setTimeout(hideTooltip, 100);
                     }, true);
                     function showList(items) {
