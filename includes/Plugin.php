@@ -2414,7 +2414,7 @@ class Plugin
             wp_send_json_error(['message' => 'Unauthorized']);
         }
 
-        $sku = isset($_POST['sku']) ? sanitize_text_field(wp_unslash($_POST['sku'])) : '';
+        $sku = isset($_POST['sku']) ? trim(sanitize_text_field(wp_unslash($_POST['sku']))) : '';
         if ($sku === '') {
             wp_send_json_error(['message' => 'SKU required']);
         }
@@ -2422,6 +2422,16 @@ class Plugin
         $products = wc_get_products(['status' => 'publish', 'limit' => 1, 'sku' => $sku]);
         $product = isset($products[0]) ? $products[0] : null;
         if (!$product || $product->get_sku() !== $sku) {
+            $products = wc_get_products(['status' => 'publish', 'limit' => 50]);
+            $sku_lower = strtolower($sku);
+            foreach ($products as $p) {
+                if (strtolower((string) $p->get_sku()) === $sku_lower) {
+                    $product = $p;
+                    break;
+                }
+            }
+        }
+        if (!$product) {
             wp_send_json_error(['message' => 'Product not found']);
         }
 

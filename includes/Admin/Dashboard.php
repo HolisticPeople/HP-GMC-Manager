@@ -1967,14 +1967,15 @@ class Dashboard
                         fetch(productSearchAjaxUrl, { method: 'POST', body: form })
                             .then(function(r) { return r.json(); })
                             .then(function(data) {
+                                var ok = data && data.success;
                                 var d = (data && data.data) ? data.data : {};
-                                var n = d.name || '';
-                                var img = d.image_url || '';
-                                if (n) chip.setAttribute('data-name', n);
-                                if (img) chip.setAttribute('data-image', img);
-                                showTooltip(chip, n, img);
+                                var n = (d && d.name) ? d.name : '';
+                                var img = (d && d.image_url) ? d.image_url : '';
+                                if (ok && n) chip.setAttribute('data-name', n);
+                                if (ok && img) chip.setAttribute('data-image', img);
+                                showTooltip(chip, n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', img);
                             })
-                            .catch(function() { hideTooltip(); });
+                            .catch(function() { showTooltip(chip, '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', ''); });
                     }, true);
                     wrap.addEventListener('mouseout', function(e) {
                         var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
