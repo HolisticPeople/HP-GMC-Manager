@@ -1892,7 +1892,15 @@ class Dashboard
                     if (!input || !list || !chipsContainer) return;
                     var debounce = null;
                     function hideList() { list.style.display = 'none'; list.innerHTML = ''; }
-                    function addChip(sku) {
+                    function getExistingSkus() {
+                        var set = {};
+                        chipsContainer.querySelectorAll('.cond-sku-chip').forEach(function(el) {
+                            var s = (el.getAttribute('data-sku') || '').toUpperCase();
+                            if (s) set[s] = true;
+                        });
+                        return set;
+                    }
+                    function addChip(sku, name, imageUrl) {
                         sku = String(sku || '').trim();
                         if (!sku) return;
                         var existing = chipsContainer.querySelectorAll('.cond-sku-chip');
@@ -1900,6 +1908,8 @@ class Dashboard
                         var span = document.createElement('span');
                         span.className = 'cond-sku-chip';
                         span.setAttribute('data-sku', sku);
+                        if (name) span.setAttribute('data-name', name);
+                        if (imageUrl) span.setAttribute('data-image', imageUrl);
                         span.textContent = sku + ' ';
                         var btn = document.createElement('button');
                         btn.type = 'button';
@@ -1916,14 +1926,76 @@ class Dashboard
                             if (chip) chip.remove();
                         }
                     });
+                    var tooltipEl = null;
+                    var tooltipHideTimer = null;
+                    function showTooltip(chip, name, imageUrl) {
+                        if (!tooltipEl) {
+                            tooltipEl = document.createElement('div');
+                            tooltipEl.className = 'hp-gmc-sku-tooltip';
+                            tooltipEl.setAttribute('role', 'tooltip');
+                            document.body.appendChild(tooltipEl);
+                        }
+                        var html = '';
+                        if (imageUrl) html += '<img src="' + String(imageUrl).replace(/"/g, '&quot;').replace(/</g, '&lt;') + '" alt="">';
+                        html += '<div class="hp-gmc-sku-tooltip-name">' + (name ? String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') : '') + '</div>';
+                        tooltipEl.innerHTML = html;
+                        var rect = chip.getBoundingClientRect();
+                        tooltipEl.style.display = 'block';
+                        tooltipEl.style.left = Math.max(8, rect.left) + 'px';
+                        tooltipEl.style.top = (rect.top - 4) + 'px';
+                        tooltipEl.style.transform = 'translateY(-100%)';
+                    }
+                    function hideTooltip() {
+                        if (tooltipEl) tooltipEl.style.display = 'none';
+                    }
+                    wrap.addEventListener('mouseover', function(e) {
+                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
+                        if (!chip) return;
+                        if (tooltipHideTimer) { clearTimeout(tooltipHideTimer); tooltipHideTimer = null; }
+                        var sku = chip.getAttribute('data-sku') || '';
+                        var name = chip.getAttribute('data-name') || '';
+                        var imageUrl = chip.getAttribute('data-image') || '';
+                        if (name) {
+                            showTooltip(chip, name, imageUrl);
+                            return;
+                        }
+                        showTooltip(chip, '<?php echo esc_js(__('Loading…', 'hp-gmc-manager')); ?>', '');
+                        var form = new FormData();
+                        form.append('action', 'hp_gmc_get_product_by_sku');
+                        form.append('nonce', productSearchNonce);
+                        form.append('sku', sku);
+                        fetch(productSearchAjaxUrl, { method: 'POST', body: form })
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                var d = (data && data.data) ? data.data : {};
+                                var n = d.name || '';
+                                var img = d.image_url || '';
+                                if (n) chip.setAttribute('data-name', n);
+                                if (img) chip.setAttribute('data-image', img);
+                                showTooltip(chip, n, img);
+                            })
+                            .catch(function() { hideTooltip(); });
+                    }, true);
+                    wrap.addEventListener('mouseout', function(e) {
+                        var chip = e.target && e.target.closest ? e.target.closest('.cond-sku-chip') : null;
+                        if (!chip) return;
+                        var related = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.cond-sku-chip') : null;
+                        if (related === chip) return;
+                        tooltipHideTimer = setTimeout(hideTooltip, 100);
+                    }, true);
                     function showList(items) {
+                        var existingSkus = getExistingSkus();
+                        items = items.filter(function(p) { return !existingSkus[(String(p.sku || '').toUpperCase())]; });
                         list.innerHTML = items.map(function(p) {
-                            return '<div class="hp-gmc-sku-item" data-sku="' + String(p.sku || '').replace(/"/g, '&quot;') + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
+                            var sku = String(p.sku || '').replace(/"/g, '&quot;');
+                            var name = String(p.name || '').replace(/"/g, '&quot;');
+                            var img = String(p.image_url || '').replace(/"/g, '&quot;');
+                            return '<div class="hp-gmc-sku-item" data-sku="' + sku + '" data-name="' + name + '" data-image="' + img + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
                         }).join('');
                         list.style.display = items.length ? 'block' : 'none';
                         list.querySelectorAll('.hp-gmc-sku-item').forEach(function(el) {
                             el.addEventListener('click', function() {
-                                addChip(el.getAttribute('data-sku') || '');
+                                addChip(el.getAttribute('data-sku') || '', el.getAttribute('data-name') || '', el.getAttribute('data-image') || '');
                                 input.value = '';
                                 hideList();
                                 input.focus();
