@@ -2012,10 +2012,11 @@ class Dashboard
                         var existingSkus = getExistingSkus();
                         items = items.filter(function(p) { return !existingSkus[(String(p.sku || '').toUpperCase())]; });
                         list.innerHTML = items.map(function(p) {
-                            var sku = String(p.sku || '').replace(/"/g, '&quot;');
-                            var name = String(p.name || '').replace(/"/g, '&quot;');
+                            var sku = String(p.sku || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            var name = String(p.name || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/&/g, '&amp;');
                             var img = String(p.image_url || '').replace(/"/g, '&quot;');
-                            return '<div class="hp-gmc-sku-item" data-sku="' + sku + '" data-name="' + name + '" data-image="' + img + '" style="padding:6px 10px;cursor:pointer;white-space:nowrap;">' + String(p.label || p.sku || '').replace(/</g, '&lt;') + '</div>';
+                            var imgHtml = img ? '<img src="' + img + '" alt="" class="hp-gmc-sku-item-thumb">' : '<span class="hp-gmc-sku-item-thumb hp-gmc-sku-item-no-thumb"></span>';
+                            return '<div class="hp-gmc-sku-item" data-sku="' + sku + '" data-name="' + name + '" data-image="' + img + '">' + imgHtml + '<span class="hp-gmc-sku-item-text"><span class="hp-gmc-sku-item-sku">' + sku + '</span><span class="hp-gmc-sku-item-name">' + name + '</span></span></div>';
                         }).join('');
                         list.style.display = items.length ? 'block' : 'none';
                         list.querySelectorAll('.hp-gmc-sku-item').forEach(function(el) {
