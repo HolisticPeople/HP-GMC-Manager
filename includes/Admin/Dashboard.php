@@ -1953,6 +1953,8 @@ class Dashboard
                             .then(function(data) {
                                 var ok = data && data.success;
                                 var d = (data && data.data) ? data.data : {};
+                                var returnedSku = (d && d.sku) ? String(d.sku).trim() : '';
+                                if (returnedSku && returnedSku.toUpperCase() !== skuKey) { return; }
                                 var n = (d && d.name) ? d.name : '';
                                 var img = (d && d.image_url) ? d.image_url : '';
                                 productCache[skuKey] = { name: n || '<?php echo esc_js(__('Product not found', 'hp-gmc-manager')); ?>', image_url: img };
