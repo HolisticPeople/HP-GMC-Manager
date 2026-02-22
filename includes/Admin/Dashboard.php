@@ -1781,17 +1781,14 @@ class Dashboard
                 <button type="button" class="button hp-gmc-audience-template" data-template="last_7_days"><?php esc_html_e('Buyers in last 7 days', 'hp-gmc-manager'); ?></button>
             </p>
             <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
-                <label><?php esc_html_e('Combine conditions:', 'hp-gmc-manager'); ?></label>
-                <select id="hp-gmc-audience-logic">
-                    <option value="and">AND</option>
-                    <option value="or">OR</option>
-                </select>
+                <p class="description" style="margin-bottom: 0.5em;"><?php esc_html_e('First row is the base; each following row combines with the previous result using AND or OR.', 'hp-gmc-manager'); ?></p>
                 <table class="wp-list-table widefat fixed striped hp-gmc-audience-conditions-table" style="margin-top: 0.5em;">
                     <thead>
                         <tr>
                             <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
-                            <th style="width: 18%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 52%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 8%;"><?php esc_html_e('With previous', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 16%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 48%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
                             <th style="width: 10%;"><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
                             <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
                         </tr>
@@ -2108,24 +2105,39 @@ class Dashboard
                     return null;
                 }
                 function getDefinition() {
-                    var logic = document.getElementById('hp-gmc-audience-logic').value;
                     var conditions = [];
-                    document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition').forEach(function(row) {
+                    var rows = document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition');
+                    rows.forEach(function(row, idx) {
                         var c = getConditionFromRow(row);
-                        if (c) conditions.push(c);
+                        if (c) {
+                            if (idx > 0) {
+                                var sel = row.querySelector('.cond-combine');
+                                c.combine_with_previous = (sel && sel.value) ? sel.value : 'and';
+                            }
+                            conditions.push(c);
+                        }
                     });
-                    return { logic: logic, conditions: conditions };
+                    return { conditions: conditions };
                 }
                 function setDefinition(def) {
-                    document.getElementById('hp-gmc-audience-logic').value = def.logic || 'and';
                     var cont = document.getElementById('hp-gmc-audience-conditions');
                     cont.innerHTML = '';
-                    (def.conditions || []).forEach(function(c) { addConditionRow(c); });
+                    var defaultLogic = (def.logic === 'or' || def.logic === 'and') ? def.logic : 'and';
+                    (def.conditions || []).forEach(function(c, i) {
+                        if (i > 0 && (c.combine_with_previous === undefined || c.combine_with_previous === null)) c.combine_with_previous = defaultLogic;
+                        addConditionRow(c);
+                    });
                 }
                 function addConditionRow(c) {
                     c = c || {};
                     var type = c.type || 'billing_address';
                     var includeVal = (c.include === false) ? 'exclude' : 'include';
+                    var tbody = document.getElementById('hp-gmc-audience-conditions');
+                    var isFirst = tbody.children.length === 0;
+                    var combineVal = (c.combine_with_previous === 'or') ? 'or' : 'and';
+                    var combineCell = isFirst
+                        ? '<td class="cond-combine-cell" style="vertical-align:middle;"><span class="description">—</span></td>'
+                        : '<td class="cond-combine-cell"><select class="cond-combine" aria-label="Combine with previous"><option value="and"' + (combineVal === 'and' ? ' selected' : '') + '>AND</option><option value="or"' + (combineVal === 'or' ? ' selected' : '') + '>OR</option></select></td>';
                     var row = document.createElement('tr');
                     row.className = 'hp-gmc-condition';
                     var typeOpts = Object.keys(conditionTypeLabels).map(function(t) {
@@ -2133,6 +2145,7 @@ class Dashboard
                     }).join('');
                     row.innerHTML =
                         '<td class="check-column"><input type="checkbox" class="cond-delete" aria-label="Select for deletion"></td>' +
+                        combineCell +
                         '<td><select class="cond-type">' + typeOpts + '</select></td>' +
                         '<td><span class="cond-fields">' + buildConditionFields(type, c) + '</span></td>' +
                         '<td><select class="cond-include-exclude"><option value="include"' + (includeVal === 'include' ? ' selected' : '') + '>Include</option><option value="exclude"' + (includeVal === 'exclude' ? ' selected' : '') + '>Exclude</option></select></td>' +
@@ -2145,7 +2158,33 @@ class Dashboard
                         row.querySelector('.cond-fields').innerHTML = buildConditionFields(newType, {});
                         if (newType === 'purchase_product') initSkuAutocomplete(row);
                     });
-                    row.querySelector('.cond-remove').addEventListener('click', function() { row.remove(); });
+                    row.querySelector('.cond-remove').addEventListener('click', function() {
+                        row.remove();
+                        updateCombineColumn();
+                    });
+                }
+                function updateCombineColumn() {
+                    var rows = document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition');
+                    rows.forEach(function(r, idx) {
+                        var cell = r.querySelector('.cond-combine-cell');
+                        if (!cell) return;
+                        var isFirst = (idx === 0);
+                        var currentSelect = cell.querySelector('.cond-combine');
+                        var currentSpan = cell.querySelector('.description');
+                        if (isFirst) {
+                            if (currentSelect) { currentSelect.remove(); cell.appendChild(document.createElement('span')).className = 'description'; cell.querySelector('.description').textContent = '—'; }
+                            else if (currentSpan) currentSpan.textContent = '—';
+                        } else {
+                            if (currentSpan) currentSpan.remove();
+                            if (!currentSelect) {
+                                var sel = document.createElement('select');
+                                sel.className = 'cond-combine';
+                                sel.setAttribute('aria-label', 'Combine with previous');
+                                sel.innerHTML = '<option value="and">AND</option><option value="or">OR</option>';
+                                cell.appendChild(sel);
+                            }
+                        }
+                    });
                 }
                 document.getElementById('hp-gmc-audience-add-condition').addEventListener('click', function() { addConditionRow({}); });
                 document.getElementById('hp-gmc-audience-delete-selected').addEventListener('click', function() {
@@ -2153,6 +2192,7 @@ class Dashboard
                         var tr = cb.closest('tr');
                         if (tr) tr.remove();
                     });
+                    updateCombineColumn();
                 });
                 function applySegmentToForm(seg) {
                     if (!seg) return;
