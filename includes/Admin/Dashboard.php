@@ -1638,7 +1638,7 @@ class Dashboard
     }
 
     /**
-     * Render the Audiences tab (saved segments, segment builder, templates, export, upload).
+     * Render the Audiences tab (segment builder, saved segments, templates, export, upload).
      */
     private static function render_audiences_tab(): void
     {
@@ -1701,6 +1701,47 @@ class Dashboard
             }
             ?>
 
+            <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
+            <p style="display:flex;align-items:center;gap:1em;flex-wrap:wrap;">
+                <span><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></span>
+                <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
+            </p>
+            <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
+            <p>
+                <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="high_ltv"><?php esc_html_e('High LTV (≥ $100)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="lapsed"><?php esc_html_e('Lapsed (no order in 90 days)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="last_7_days"><?php esc_html_e('Buyers in last 7 days', 'hp-gmc-manager'); ?></button>
+            </p>
+            <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
+                <p class="description" style="margin-bottom: 0.5em;"><?php esc_html_e('First row is the base; each following row combines with the previous result using AND or OR.', 'hp-gmc-manager'); ?></p>
+                <table class="wp-list-table widefat fixed striped hp-gmc-audience-conditions-table" style="margin-top: 0.5em;">
+                    <thead>
+                        <tr>
+                            <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
+                            <th style="width: 8%;"><?php esc_html_e('With previous', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 16%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 48%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 10%;"><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="hp-gmc-audience-conditions"></tbody>
+                </table>
+                <p style="margin-top: 0.5em;">
+                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
+                </p>
+                <p>
+                    <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
+                    <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
+                    <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
+                    <?php if ($edit_segment): ?>
+                    <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
+                    <?php endif; ?>
+                </p>
+            </div>
+
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
             <div id="hp-gmc-audience-upload-message" class="hp-gmc-audience-upload-message" style="display:none; margin: 0.5em 0; padding: 0.75em; border-left: 4px solid #d63638; background: #fcf0f1; color: #1d2327;"></div>
             <div id="hp-gmc-audience-bulk-actions" class="hp-gmc-audience-bulk-actions" style="display:none; margin-bottom: 8px; padding: 8px 12px; background: #f0f6fc; border: 1px solid #c3c4c7; border-radius: 4px;">
@@ -1724,7 +1765,7 @@ class Dashboard
                 </thead>
                 <tbody>
                     <?php if (empty($segments)): ?>
-                    <tr><td colspan="6"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
+                    <tr><td colspan="6"><?php esc_html_e('No saved segments yet. Use the builder above and "Save as".', 'hp-gmc-manager'); ?></td></tr>
                     <?php else: ?>
                     <?php foreach ($segments as $seg): ?>
                     <tr data-segment-id="<?php echo esc_attr($seg['id']); ?>">
@@ -1768,46 +1809,6 @@ class Dashboard
             </table>
             <p class="description" style="margin-top: 0.5em;"><?php esc_html_e('Count and Last run are from the last successful run.', 'hp-gmc-manager'); ?></p>
 
-            <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
-            <p style="display:flex;align-items:center;gap:1em;flex-wrap:wrap;">
-                <span><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></span>
-                <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
-            </p>
-            <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
-            <p>
-                <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="high_ltv"><?php esc_html_e('High LTV (≥ $100)', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="lapsed"><?php esc_html_e('Lapsed (no order in 90 days)', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="last_7_days"><?php esc_html_e('Buyers in last 7 days', 'hp-gmc-manager'); ?></button>
-            </p>
-            <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
-                <p class="description" style="margin-bottom: 0.5em;"><?php esc_html_e('First row is the base; each following row combines with the previous result using AND or OR.', 'hp-gmc-manager'); ?></p>
-                <table class="wp-list-table widefat fixed striped hp-gmc-audience-conditions-table" style="margin-top: 0.5em;">
-                    <thead>
-                        <tr>
-                            <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
-                            <th style="width: 8%;"><?php esc_html_e('With previous', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 16%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 48%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 10%;"><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="hp-gmc-audience-conditions"></tbody>
-                </table>
-                <p style="margin-top: 0.5em;">
-                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
-                    <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
-                </p>
-                <p>
-                    <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
-                    <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
-                    <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
-                    <?php if ($edit_segment): ?>
-                    <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
-                    <?php endif; ?>
-                </p>
-            </div>
             <script>
             (function() {
                 var restBase = <?php echo wp_json_encode($rest_base); ?>;
