@@ -2345,6 +2345,7 @@ class Plugin
         }
 
         $term = sanitize_text_field($_POST['term'] ?? '');
+        $term_lower = mb_strtolower($term);
 
         if (strlen($term) < 2) {
             wp_send_json_success(['products' => []]);
@@ -2358,12 +2359,12 @@ class Plugin
         ];
 
         $products = wc_get_products($args);
-        $results = [];
+        $by_id = [];
 
         foreach ($products as $product) {
             $image_id = $product->get_image_id();
             $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
-            $results[] = [
+            $by_id[$product->get_id()] = [
                 'id' => $product->get_id(),
                 'sku' => $product->get_sku(),
                 'name' => $product->get_name(),
@@ -2379,19 +2380,12 @@ class Plugin
             'sku' => $term,
         ];
         $skuProducts = wc_get_products($skuArgs);
-        
+
         foreach ($skuProducts as $product) {
-            $exists = false;
-            foreach ($results as $r) {
-                if ($r['id'] === $product->get_id()) {
-                    $exists = true;
-                    break;
-                }
-            }
-            if (!$exists) {
+            if (!isset($by_id[$product->get_id()])) {
                 $image_id = $product->get_image_id();
                 $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
-                $results[] = [
+                $by_id[$product->get_id()] = [
                     'id' => $product->get_id(),
                     'sku' => $product->get_sku(),
                     'name' => $product->get_name(),
@@ -2400,6 +2394,39 @@ class Plugin
                 ];
             }
         }
+
+        // Sort by relevance: exact SKU first, then SKU starts with, then name starts with, then contains.
+        $results = array_values($by_id);
+        usort($results, function ($a, $b) use ($term_lower) {
+            $score = function ($row) use ($term_lower) {
+                $sku = mb_strtolower((string) $row['sku']);
+                $name = mb_strtolower((string) $row['name']);
+                if ($sku === $term_lower) {
+                    return 400;
+                }
+                if ($sku !== '' && mb_strpos($sku, $term_lower) === 0) {
+                    return 300;
+                }
+                if ($name === $term_lower) {
+                    return 250;
+                }
+                if ($name !== '' && mb_strpos($name, $term_lower) === 0) {
+                    return 200;
+                }
+                if ($sku !== '' && mb_strpos($sku, $term_lower) !== false) {
+                    return 100;
+                }
+                if ($name !== '' && mb_strpos($name, $term_lower) !== false) {
+                    return 50;
+                }
+                return 0;
+            };
+            $diff = $score($b) - $score($a);
+            if ($diff !== 0) {
+                return $diff;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
 
         wp_send_json_success(['products' => $results]);
     }
