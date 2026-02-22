@@ -2481,16 +2481,21 @@ class Dashboard
                     // #endregion
                     var table = document.querySelector('.hp-gmc-audiences-table');
                     if (!table) return;
-                    table.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
+                    // Run: single delegated click on table (attach once so save/refresh does not double-bind)
+                    if (!table._hpGmcRunDelegated) {
+                        table._hpGmcRunDelegated = true;
+                    table.addEventListener('click', function(e) {
+                        var runBtn = e.target && e.target.classList && e.target.classList.contains('hp-gmc-audience-run') ? e.target : null;
+                        if (!runBtn) return;
+                        var id = runBtn.dataset.id;
+                        if (!id) return;
                         // #region agent log
-                        (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(typeof debugLogUrl!=='undefined'&&debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:run-click',message:'Run click handler fired',data:{id:id,hasWrap:!!this.closest('.hp-gmc-audience-run-wrap')},timestamp:Date.now(),hypothesisId:'H3'});
+                        (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(typeof debugLogUrl!=='undefined'&&debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:run-click',message:'Run click handler fired',data:{id:id,hasWrap:!!runBtn.closest('.hp-gmc-audience-run-wrap')},timestamp:Date.now(),hypothesisId:'H3'});
                         // #endregion
-                        var runBtn = this;
                         var wrap = runBtn.closest('.hp-gmc-audience-run-wrap');
-                        var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
-                        var abortBtn = wrap ? wrap.querySelector('.hp-gmc-audience-abort') : null;
+                        if (!wrap) return;
+                        var statusEl = wrap.querySelector('.hp-gmc-audience-run-status');
+                        var abortBtn = wrap.querySelector('.hp-gmc-audience-abort');
                         runBtn.disabled = true;
                         runBtn.style.display = 'none';
                         if (abortBtn) abortBtn.style.display = 'inline-block';
@@ -2561,101 +2566,100 @@ class Dashboard
                                 alert(e.message || 'Error');
                             });
                     });
+                    }
                     table.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) { if (data.id) location.reload(); else alert(data.message || 'Failed'); })
+                        btn.addEventListener('click', function() {
+                            fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) { if (data.id) location.reload(); else alert(data.message || 'Failed'); })
                                 .catch(function() { alert('Failed'); });
-                    });
-                });
+                        });
                     });
                     table.querySelectorAll('.hp-gmc-audience-export').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.csv !== undefined) {
-                                    var a = document.createElement('a');
-                                    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
-                                    a.download = data.filename || 'segment.csv';
-                                    a.click();
-                                } else { alert(data.message || 'Failed'); }
-                            })
-                            .catch(function() { alert('Error'); });
-                    });
-                });
+                        btn.addEventListener('click', function() {
+                            var id = this.dataset.id;
+                            fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.csv !== undefined) {
+                                        var a = document.createElement('a');
+                                        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
+                                        a.download = data.filename || 'segment.csv';
+                                        a.click();
+                                    } else { alert(data.message || 'Failed'); }
+                                })
+                                .catch(function() { alert('Error'); });
+                        });
                     });
                     table.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        if (!confirm('Delete this segment? This cannot be undone.')) return;
-                        fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.deleted) location.reload();
-                                else alert(data.message || 'Delete failed');
-                            })
-                            .catch(function() { alert('Delete failed'); });
-                    });
+                        btn.addEventListener('click', function() {
+                            var id = this.dataset.id;
+                            if (!confirm('Delete this segment? This cannot be undone.')) return;
+                            fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.deleted) location.reload();
+                                    else alert(data.message || 'Delete failed');
+                                })
+                                .catch(function() { alert('Delete failed'); });
+                        });
                     });
                     table.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        var count = parseInt(this.dataset.count, 10) || 0;
-                        if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
-                            return;
-                        }
-                        var msgEl = document.getElementById('hp-gmc-audience-upload-message');
-                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
-                        btn.disabled = true;
-                        fetch(restBase + '/' + id + '/upload', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
-                            body: JSON.stringify({ append: false })
-                        })
-                            .then(function(r) {
-                                return r.text().then(function(text) {
-                                    var data;
-                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
-                                    return { ok: r.ok, status: r.status, data: data };
-                                });
+                        btn.addEventListener('click', function() {
+                            var id = this.dataset.id;
+                            var count = parseInt(this.dataset.count, 10) || 0;
+                            if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
+                                return;
+                            }
+                            var msgEl = document.getElementById('hp-gmc-audience-upload-message');
+                            if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+                            btn.disabled = true;
+                            fetch(restBase + '/' + id + '/upload', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                                body: JSON.stringify({ append: false })
                             })
-                            .then(function(res) {
-                                if (res.ok && res.data.success) {
-                                    var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
-                                    if (statusCell) {
-                                        statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
-                                    }
-                                    if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
-                                } else {
-                                    var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
-                                    if (res.status === 404) {
-                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
-                                    } else if (res.status === 403) {
-                                        msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                .then(function(r) {
+                                    return r.text().then(function(text) {
+                                        var data;
+                                        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
+                                        return { ok: r.ok, status: r.status, data: data };
+                                    });
+                                })
+                                .then(function(res) {
+                                    if (res.ok && res.data.success) {
+                                        var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
+                                        if (statusCell) {
+                                            statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
+                                        }
+                                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
                                     } else {
-                                        msg = 'HTTP ' + res.status + ': ' + msg;
+                                        var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
+                                        if (res.status === 404) {
+                                            msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
+                                        } else if (res.status === 403) {
+                                            msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                        } else {
+                                            msg = 'HTTP ' + res.status + ': ' + msg;
+                                        }
+                                        if (msgEl) {
+                                            msgEl.textContent = msg;
+                                            msgEl.style.display = 'block';
+                                            msgEl.style.borderLeftColor = '#d63638';
+                                            msgEl.style.background = '#fcf0f1';
+                                        }
                                     }
+                                })
+                                .catch(function(err) {
                                     if (msgEl) {
-                                        msgEl.textContent = msg;
+                                        msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
                                         msgEl.style.display = 'block';
                                         msgEl.style.borderLeftColor = '#d63638';
                                         msgEl.style.background = '#fcf0f1';
                                     }
-                                }
-                            })
-                            .catch(function(err) {
-                                if (msgEl) {
-                                    msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
-                                    msgEl.style.display = 'block';
-                                    msgEl.style.borderLeftColor = '#d63638';
-                                    msgEl.style.background = '#fcf0f1';
-                                }
-                            })
-                            .finally(function() { btn.disabled = false; });
-                    });
+                                })
+                                .finally(function() { btn.disabled = false; });
+                        });
                     });
                 }
                 attachAudienceActionHandlers();
