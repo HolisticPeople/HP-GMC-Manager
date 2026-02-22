@@ -1813,11 +1813,61 @@ class Dashboard
             (function() {
                 var restBase = <?php echo wp_json_encode($rest_base); ?>;
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
+                var uploadDisabled = <?php echo $upload_disabled ? 'true' : 'false'; ?>;
                 var productSearchAjaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
                 var currentEditId = editId;
+                var i18n = {
+                    run: <?php echo wp_json_encode(__('Run', 'hp-gmc-manager')); ?>,
+                    abort: <?php echo wp_json_encode(__('Abort', 'hp-gmc-manager')); ?>,
+                    running: <?php echo wp_json_encode(__('Running…', 'hp-gmc-manager')); ?>,
+                    processing: <?php echo wp_json_encode(__('Processing', 'hp-gmc-manager')); ?>,
+                    of: <?php echo wp_json_encode(__('of', 'hp-gmc-manager')); ?>,
+                    duplicate: <?php echo wp_json_encode(__('Duplicate', 'hp-gmc-manager')); ?>,
+                    edit: <?php echo wp_json_encode(__('Edit', 'hp-gmc-manager')); ?>,
+                    exportCsv: <?php echo wp_json_encode(__('Export CSV', 'hp-gmc-manager')); ?>,
+                    delete: <?php echo wp_json_encode(__('Delete', 'hp-gmc-manager')); ?>,
+                    upload: <?php echo wp_json_encode(__('Upload to Google Ads', 'hp-gmc-manager')); ?>,
+                    job: <?php echo wp_json_encode(__('job', 'hp-gmc-manager')); ?>
+                };
+                function escAttr(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+                function renderSavedSegmentsBody(segments) {
+                    if (!segments || segments.length === 0) {
+                        return '<tr><td colspan="6"><?php echo esc_js(__('No saved segments yet. Use the builder above and "Save as".', 'hp-gmc-manager')); ?></td></tr>';
+                    }
+                    return segments.map(function(seg) {
+                        var lastRun = seg.last_run_at ? escAttr(seg.last_run_at) : '—';
+                        var count = seg.last_run_count !== null && seg.last_run_count !== undefined ? Number(seg.last_run_count) : '—';
+                        var uploadHtml = '—';
+                        if (seg.last_upload_status) {
+                            uploadHtml = escAttr(seg.last_upload_status.charAt(0).toUpperCase() + seg.last_upload_status.slice(1));
+                            if (seg.last_upload_job_id) uploadHtml += ' <span class="hp-gmc-job-id" title="' + escAttr(seg.last_upload_job_id) + '">(' + i18n.job + ')</span>';
+                            if (seg.last_upload_at) uploadHtml += ' ' + escAttr(seg.last_upload_at);
+                        }
+                        var uploadBtn = '';
+                        if (!uploadDisabled) {
+                            uploadBtn = '<button type="button" class="button button-small button-secondary hp-gmc-audience-upload" data-id="' + seg.id + '" data-count="' + escAttr(seg.last_run_count != null ? seg.last_run_count : '') + '">' + i18n.upload + '</button>';
+                        }
+                        return '<tr data-segment-id="' + seg.id + '">' +
+                            '<th scope="row" class="check-column"><input type="checkbox" class="hp-gmc-audience-row-cb" value="' + seg.id + '"></th>' +
+                            '<td><strong>' + escAttr(seg.name) + '</strong></td>' +
+                            '<td>' + lastRun + '</td>' +
+                            '<td>' + count + '</td>' +
+                            '<td class="hp-gmc-audience-upload-status" data-segment-id="' + seg.id + '">' + uploadHtml + '</td>' +
+                            '<td><span class="hp-gmc-audience-run-wrap" style="display:inline-flex;align-items:center;gap:6px;">' +
+                            '<button type="button" class="button button-small hp-gmc-audience-run" data-id="' + seg.id + '">' + i18n.run + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-abort" style="display:none;">' + i18n.abort + '</button>' +
+                            '<span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text">' + i18n.running + '</span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>' +
+                            '</span>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="' + seg.id + '">' + i18n.duplicate + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-edit" data-id="' + seg.id + '">' + i18n.edit + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-export" data-id="' + seg.id + '">' + i18n.exportCsv + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-delete" data-id="' + seg.id + '" style="color:#b32d2e;">' + i18n.delete + '</button>' +
+                            uploadBtn + '</td></tr>';
+                    }).join('');
+                }
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
@@ -2336,10 +2386,39 @@ class Dashboard
                                 var notice = document.createElement('div');
                                 notice.className = 'notice notice-success is-dismissible';
                                 notice.style.marginTop = '8px';
-                                notice.innerHTML = '<p><?php echo esc_js(__('Segment saved. Refreshing list…', 'hp-gmc-manager')); ?></p>';
+                                notice.innerHTML = '<p><?php echo esc_js(__('Segment saved.', 'hp-gmc-manager')); ?></p>';
                                 var wrap = document.querySelector('.hp-gmc-audiences');
                                 if (wrap) wrap.insertBefore(notice, wrap.firstChild);
-                                location.reload();
+                                fetch(restBase, { headers: { 'X-WP-Nonce': nonce } })
+                                    .then(function(r) { return r.ok ? r.json() : Promise.resolve({}); })
+                                    .then(function(listData) {
+                                        var list = listData.segments || [];
+                                        var tbody = document.querySelector('.hp-gmc-audiences-table tbody');
+                                        if (tbody) tbody.innerHTML = renderSavedSegmentsBody(list);
+                                        if (typeof attachAudienceActionHandlers === 'function') attachAudienceActionHandlers();
+                                        var bulkBar = document.getElementById('hp-gmc-audience-bulk-actions');
+                                        var selectAll = document.getElementById('hp-gmc-audience-select-all');
+                                        if (selectAll) selectAll.checked = false;
+                                        if (bulkBar) bulkBar.style.display = 'none';
+                                    })
+                                    .catch(function() {});
+                                if (data.id) {
+                                    currentEditId = data.id;
+                                    var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                                    if (nameEl) nameEl.value = data.name || nameEl.value;
+                                    var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                                    if (saveBtn) saveBtn.textContent = '<?php echo esc_js(__('Update', 'hp-gmc-manager')); ?>';
+                                    var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                                    if (!editIdInput) {
+                                        editIdInput = document.createElement('input');
+                                        editIdInput.type = 'hidden';
+                                        editIdInput.id = 'hp-gmc-audience-edit-id';
+                                        var saveP = document.getElementById('hp-gmc-audience-save-name');
+                                        if (saveP && saveP.closest('p')) saveP.closest('p').appendChild(editIdInput);
+                                    }
+                                    if (editIdInput) editIdInput.value = data.id;
+                                }
+                                btn.disabled = false;
                             } else {
                                 btn.disabled = false;
                                 alert(data.message || 'Failed');
@@ -2391,7 +2470,10 @@ class Dashboard
                     }
                     resetRunUI(wrap);
                 });
-                document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
+                function attachAudienceActionHandlers() {
+                    var table = document.querySelector('.hp-gmc-audiences-table');
+                    if (!table) return;
+                    table.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
                         var runBtn = this;
@@ -2463,7 +2545,8 @@ class Dashboard
                             });
                     });
                 });
-                document.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
+                    });
+                    table.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
                             .then(function(r) { return r.json(); })
@@ -2471,7 +2554,8 @@ class Dashboard
                                 .catch(function() { alert('Failed'); });
                     });
                 });
-                document.querySelectorAll('.hp-gmc-audience-export').forEach(function(btn) {
+                    });
+                    table.querySelectorAll('.hp-gmc-audience-export').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
                         fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
@@ -2487,7 +2571,8 @@ class Dashboard
                             .catch(function() { alert('Error'); });
                     });
                 });
-                document.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
+                    });
+                    table.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         var id = this.dataset.id;
                         if (!confirm('Delete this segment? This cannot be undone.')) return;
@@ -2499,15 +2584,75 @@ class Dashboard
                             })
                             .catch(function() { alert('Delete failed'); });
                     });
-                });
+                    });
+                    table.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
+                    btn.addEventListener('click', function() {
+                        var id = this.dataset.id;
+                        var count = parseInt(this.dataset.count, 10) || 0;
+                        if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
+                            return;
+                        }
+                        var msgEl = document.getElementById('hp-gmc-audience-upload-message');
+                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+                        btn.disabled = true;
+                        fetch(restBase + '/' + id + '/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                            body: JSON.stringify({ append: false })
+                        })
+                            .then(function(r) {
+                                return r.text().then(function(text) {
+                                    var data;
+                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
+                                    return { ok: r.ok, status: r.status, data: data };
+                                });
+                            })
+                            .then(function(res) {
+                                if (res.ok && res.data.success) {
+                                    var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
+                                    if (statusCell) {
+                                        statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
+                                    }
+                                    if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+                                } else {
+                                    var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
+                                    if (res.status === 404) {
+                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
+                                    } else if (res.status === 403) {
+                                        msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                    } else {
+                                        msg = 'HTTP ' + res.status + ': ' + msg;
+                                    }
+                                    if (msgEl) {
+                                        msgEl.textContent = msg;
+                                        msgEl.style.display = 'block';
+                                        msgEl.style.borderLeftColor = '#d63638';
+                                        msgEl.style.background = '#fcf0f1';
+                                    }
+                                }
+                            })
+                            .catch(function(err) {
+                                if (msgEl) {
+                                    msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
+                                    msgEl.style.display = 'block';
+                                    msgEl.style.borderLeftColor = '#d63638';
+                                    msgEl.style.background = '#fcf0f1';
+                                }
+                            })
+                            .finally(function() { btn.disabled = false; });
+                    });
+                    });
+                }
+                attachAudienceActionHandlers();
                 (function() {
                     var bulkBar = document.getElementById('hp-gmc-audience-bulk-actions');
                     var selectAll = document.getElementById('hp-gmc-audience-select-all');
-                    var rowCbs = document.querySelectorAll('.hp-gmc-audience-row-cb');
+                    var table = document.querySelector('.hp-gmc-audiences-table');
                     function getSelectedIds() {
                         return Array.prototype.map.call(document.querySelectorAll('.hp-gmc-audience-row-cb:checked'), function(cb) { return cb.value; });
                     }
                     function updateBulkBar() {
+                        var rowCbs = document.querySelectorAll('.hp-gmc-audience-row-cb');
                         var ids = getSelectedIds();
                         if (bulkBar) bulkBar.style.display = ids.length ? 'block' : 'none';
                         if (selectAll) {
@@ -2517,12 +2662,12 @@ class Dashboard
                     }
                     if (selectAll) {
                         selectAll.addEventListener('change', function() {
-                            rowCbs.forEach(function(cb) { cb.checked = selectAll.checked; });
+                            document.querySelectorAll('.hp-gmc-audience-row-cb').forEach(function(cb) { cb.checked = selectAll.checked; });
                             updateBulkBar();
                         });
                     }
-                    rowCbs.forEach(function(cb) {
-                        cb.addEventListener('change', updateBulkBar);
+                    if (table) table.addEventListener('change', function(e) {
+                        if (e.target && e.target.classList && e.target.classList.contains('hp-gmc-audience-row-cb')) updateBulkBar();
                     });
                     if (bulkBar) {
                         bulkBar.querySelector('.hp-gmc-audience-bulk-delete').addEventListener('click', function() {
@@ -2633,63 +2778,6 @@ class Dashboard
                         });
                     }
                 })();
-                document.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        var count = parseInt(this.dataset.count, 10) || 0;
-                        if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
-                            return;
-                        }
-                        var msgEl = document.getElementById('hp-gmc-audience-upload-message');
-                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
-                        btn.disabled = true;
-                        fetch(restBase + '/' + id + '/upload', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
-                            body: JSON.stringify({ append: false })
-                        })
-                            .then(function(r) {
-                                return r.text().then(function(text) {
-                                    var data;
-                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
-                                    return { ok: r.ok, status: r.status, data: data };
-                                });
-                            })
-                            .then(function(res) {
-                                if (res.ok && res.data.success) {
-                                    var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
-                                    if (statusCell) {
-                                        statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
-                                    }
-                                    if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
-                                } else {
-                                    var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
-                                    if (res.status === 404) {
-                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
-                                    } else if (res.status === 403) {
-                                        msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
-                                    } else {
-                                        msg = 'HTTP ' + res.status + ': ' + msg;
-                                    }
-                                    if (msgEl) {
-                                        msgEl.textContent = msg;
-                                        msgEl.style.display = 'block';
-                                        msgEl.style.borderLeftColor = '#d63638';
-                                        msgEl.style.background = '#fcf0f1';
-                                    }
-                                }
-                            })
-                            .catch(function(err) {
-                                if (msgEl) {
-                                    msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
-                                    msgEl.style.display = 'block';
-                                    msgEl.style.borderLeftColor = '#d63638';
-                                    msgEl.style.background = '#fcf0f1';
-                                }
-                            })
-                            .finally(function() { btn.disabled = false; });
-                    });
-                });
             })();
             </script>
         </div>
