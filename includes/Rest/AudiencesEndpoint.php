@@ -151,29 +151,6 @@ class AudiencesEndpoint
                 'job_resource_name' => ['type' => 'string', 'description' => 'Optional job resource name to check; defaults to segment’s last upload job'],
             ],
         ]);
-
-        register_rest_route($namespace, '/debug-log', [
-            'methods' => 'POST',
-            'callback' => [self::class, 'debug_log'],
-            'permission_callback' => [self::class, 'permission'],
-        ]);
-    }
-
-    public static function debug_log(WP_REST_Request $request): WP_REST_Response
-    {
-        $body = $request->get_body();
-        $log_file = WP_CONTENT_DIR . '/hp-gmc-debug-690972.log';
-        if (is_string($body) && $body !== '') {
-            $line = $body . "\n";
-            $dir = dirname($log_file);
-            if (!is_dir($dir) && function_exists('wp_mkdir_p')) {
-                wp_mkdir_p($dir);
-            }
-            if (is_writable($log_file) || (!file_exists($log_file) && is_writable($dir))) {
-                file_put_contents($log_file, $line, FILE_APPEND | LOCK_EX);
-            }
-        }
-        return new WP_REST_Response(['ok' => true], 200);
     }
 
     public static function list_segments(WP_REST_Request $request): WP_REST_Response

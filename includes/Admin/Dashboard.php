@@ -1646,7 +1646,6 @@ class Dashboard
         $segments = $repo->list_all();
         $upload_disabled = (bool) get_option('hp_gmc_audience_upload_disabled', false);
         $rest_base = rest_url('hp-gmc/v1/audiences/segments');
-        $debug_log_url = rest_url('hp-gmc/v1/debug-log');
         $nonce = wp_create_nonce('wp_rest');
         $edit_id = isset($_GET['edit']) ? absint($_GET['edit']) : 0;
         $edit_segment = $edit_id ? $repo->get($edit_id) : null;
@@ -1813,11 +1812,7 @@ class Dashboard
             <script>
             (function() {
                 var restBase = <?php echo wp_json_encode($rest_base); ?>;
-                var debugLogUrl = <?php echo wp_json_encode($debug_log_url); ?>;
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
-                // #region agent log
-                (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:script-init',message:'Audiences script loaded',data:{restBase:restBase},timestamp:Date.now(),hypothesisId:'H2'});
-                // #endregion
                 var uploadDisabled = <?php echo $upload_disabled ? 'true' : 'false'; ?>;
                 var productSearchAjaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
@@ -2476,9 +2471,6 @@ class Dashboard
                     resetRunUI(wrap);
                 });
                 function attachAudienceActionHandlers() {
-                    // #region agent log
-                    (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(typeof debugLogUrl!=='undefined'&&debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:attachAudienceActionHandlers',message:'attachAudienceActionHandlers called',data:{hasTable:!!document.querySelector('.hp-gmc-audiences-table'),runCount:document.querySelector('.hp-gmc-audiences-table')?(document.querySelectorAll('.hp-gmc-audience-run').length):0},timestamp:Date.now(),hypothesisId:'H1-H2-H5'});
-                    // #endregion
                     var table = document.querySelector('.hp-gmc-audiences-table');
                     if (!table) return;
                     // Run: single delegated click on table (attach once so save/refresh does not double-bind)
@@ -2489,9 +2481,6 @@ class Dashboard
                         if (!runBtn) return;
                         var id = runBtn.dataset.id;
                         if (!id) return;
-                        // #region agent log
-                        (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(typeof debugLogUrl!=='undefined'&&debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:run-click',message:'Run click handler fired',data:{id:id,hasWrap:!!runBtn.closest('.hp-gmc-audience-run-wrap')},timestamp:Date.now(),hypothesisId:'H3'});
-                        // #endregion
                         var wrap = runBtn.closest('.hp-gmc-audience-run-wrap');
                         if (!wrap) return;
                         var statusEl = wrap.querySelector('.hp-gmc-audience-run-status');
@@ -2531,9 +2520,6 @@ class Dashboard
                         wrap._stopPolling = stopPolling;
                         wrap._progressKey = progressKey;
                         var runPayload = { progress_key: progressKey };
-                        // #region agent log
-                        (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(typeof debugLogUrl!=='undefined'&&debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:before-run-start',message:'Before run-start fetch',data:{id:id,restBase:restBase},timestamp:Date.now(),hypothesisId:'H4'});
-                        // #endregion
                         fetch(restBase + '/run-start', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ progress_key: progressKey }) })
                             .then(function(r) { var p = r.ok ? r.json() : Promise.resolve({}); return p.then(function(d) { if (statusEl && d && d.total > 0) renderProgress(statusEl, 0, d.total); if (d && d.batches_per_chunk > 0) batchesPerChunk = d.batches_per_chunk; return fetch(restBase + '/' + id + '/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify(runPayload) }); }); })
                             .then(function(r) {
@@ -2558,9 +2544,6 @@ class Dashboard
                                 }
                             })
                             .catch(function(e) {
-                                // #region agent log
-                                (function(p){fetch('http://127.0.0.1:7244/ingest/883cdba7-7d8c-43b7-b3c5-130324c67d2b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'690972'},body:JSON.stringify(p)}).catch(function(){});if(typeof debugLogUrl!=='undefined'&&debugLogUrl)fetch(debugLogUrl,{method:'POST',headers:{'Content-Type':'application/json','X-WP-Nonce':nonce},body:JSON.stringify(p)}).catch(function(){});})({sessionId:'690972',location:'Dashboard.php:run-catch',message:'Run handler catch',data:{errMsg:(e&&e.message)||String(e)},timestamp:Date.now(),hypothesisId:'H4'});
-                                // #endregion
                                 stopPolling();
                                 resetRunUI(wrap);
                                 alert(e.message || 'Error');
