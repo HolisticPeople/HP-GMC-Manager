@@ -2470,6 +2470,25 @@ class Dashboard
                     }
                     resetRunUI(wrap);
                 });
+                function refreshAudiencesTable() {
+                    fetch(restBase, { headers: { 'X-WP-Nonce': nonce } })
+                        .then(function(r) { return r.ok ? r.json() : Promise.resolve({}); })
+                        .then(function(listData) {
+                            var list = listData.segments || [];
+                            var tbody = document.querySelector('.hp-gmc-audiences-table tbody');
+                            if (tbody) tbody.innerHTML = renderSavedSegmentsBody(list);
+                            if (typeof attachAudienceActionHandlers === 'function') attachAudienceActionHandlers();
+                            var wrap = document.querySelector('.hp-gmc-audiences');
+                            if (wrap) {
+                                var notice = document.createElement('div');
+                                notice.className = 'notice notice-success is-dismissible';
+                                notice.style.marginTop = '8px';
+                                notice.innerHTML = '<p><?php echo esc_js(__('Run completed.', 'hp-gmc-manager')); ?></p>';
+                                wrap.insertBefore(notice, wrap.firstChild);
+                            }
+                        })
+                        .catch(function() {});
+                }
                 function attachAudienceActionHandlers() {
                     var table = document.querySelector('.hp-gmc-audiences-table');
                     if (!table) return;
@@ -2498,7 +2517,7 @@ class Dashboard
                                 stopPolling();
                                 wrap._stopPolling = null;
                                 wrap._progressKey = null;
-                                setTimeout(function() { location.reload(); }, 2000);
+                                setTimeout(refreshAudiencesTable, 1500);
                                 return;
                             }
                             var threshold = nextChunkIndex * batchesPerChunk;
@@ -2511,7 +2530,7 @@ class Dashboard
                                             stopPolling();
                                             wrap._stopPolling = null;
                                             wrap._progressKey = null;
-                                            setTimeout(function() { location.reload(); }, 500);
+                                            setTimeout(refreshAudiencesTable, 500);
                                         }
                                     })
                                     .catch(function() {});
@@ -2537,7 +2556,7 @@ class Dashboard
                                 wrap._stopPolling = null;
                                 wrap._progressKey = null;
                                 if (data.count !== undefined) {
-                                    location.reload();
+                                    refreshAudiencesTable();
                                 } else {
                                     resetRunUI(wrap);
                                     alert(data.message || 'Error');
