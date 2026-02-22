@@ -1638,7 +1638,7 @@ class Dashboard
     }
 
     /**
-     * Render the Audiences tab (saved segments, segment builder, templates, export, upload).
+     * Render the Audiences tab (segment builder, saved segments, templates, export, upload).
      */
     private static function render_audiences_tab(): void
     {
@@ -1701,6 +1701,47 @@ class Dashboard
             }
             ?>
 
+            <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
+            <p style="display:flex;align-items:center;gap:1em;flex-wrap:wrap;">
+                <span><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></span>
+                <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
+            </p>
+            <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
+            <p>
+                <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="high_ltv"><?php esc_html_e('High LTV (≥ $100)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="lapsed"><?php esc_html_e('Lapsed (no order in 90 days)', 'hp-gmc-manager'); ?></button>
+                <button type="button" class="button hp-gmc-audience-template" data-template="last_7_days"><?php esc_html_e('Buyers in last 7 days', 'hp-gmc-manager'); ?></button>
+            </p>
+            <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
+                <p class="description" style="margin-bottom: 0.5em;"><?php esc_html_e('First row is the base; each following row combines with the previous result using AND or OR.', 'hp-gmc-manager'); ?></p>
+                <table class="wp-list-table widefat fixed striped hp-gmc-audience-conditions-table" style="margin-top: 0.5em;">
+                    <thead>
+                        <tr>
+                            <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
+                            <th style="width: 8%;"><?php esc_html_e('With previous', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 16%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 48%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 10%;"><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
+                            <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="hp-gmc-audience-conditions"></tbody>
+                </table>
+                <p style="margin-top: 0.5em;">
+                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
+                    <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
+                </p>
+                <p>
+                    <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
+                    <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
+                    <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
+                    <?php if ($edit_segment): ?>
+                    <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
+                    <?php endif; ?>
+                </p>
+            </div>
+
             <h3><?php esc_html_e('Saved segments', 'hp-gmc-manager'); ?></h3>
             <div id="hp-gmc-audience-upload-message" class="hp-gmc-audience-upload-message" style="display:none; margin: 0.5em 0; padding: 0.75em; border-left: 4px solid #d63638; background: #fcf0f1; color: #1d2327;"></div>
             <div id="hp-gmc-audience-bulk-actions" class="hp-gmc-audience-bulk-actions" style="display:none; margin-bottom: 8px; padding: 8px 12px; background: #f0f6fc; border: 1px solid #c3c4c7; border-radius: 4px;">
@@ -1724,7 +1765,7 @@ class Dashboard
                 </thead>
                 <tbody>
                     <?php if (empty($segments)): ?>
-                    <tr><td colspan="6"><?php esc_html_e('No saved segments yet. Use the builder below and "Save as".', 'hp-gmc-manager'); ?></td></tr>
+                    <tr><td colspan="6"><?php esc_html_e('No saved segments yet. Use the builder above and "Save as".', 'hp-gmc-manager'); ?></td></tr>
                     <?php else: ?>
                     <?php foreach ($segments as $seg): ?>
                     <tr data-segment-id="<?php echo esc_attr($seg['id']); ?>">
@@ -1768,58 +1809,65 @@ class Dashboard
             </table>
             <p class="description" style="margin-top: 0.5em;"><?php esc_html_e('Count and Last run are from the last successful run.', 'hp-gmc-manager'); ?></p>
 
-            <h3><?php esc_html_e('Segment builder', 'hp-gmc-manager'); ?></h3>
-            <p style="display:flex;align-items:center;gap:1em;flex-wrap:wrap;">
-                <span><?php esc_html_e('Start by choosing a template below or click Add condition to build from scratch.', 'hp-gmc-manager'); ?></span>
-                <button type="button" class="button button-secondary" id="hp-gmc-audience-create-new"><?php esc_html_e('Create new segment', 'hp-gmc-manager'); ?></button>
-            </p>
-            <p><?php esc_html_e('Prebuilt templates:', 'hp-gmc-manager'); ?></p>
-            <p>
-                <button type="button" class="button hp-gmc-audience-template" data-template="past_90"><?php esc_html_e('Past 90-day buyers', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="high_ltv"><?php esc_html_e('High LTV (≥ $100)', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="lapsed"><?php esc_html_e('Lapsed (no order in 90 days)', 'hp-gmc-manager'); ?></button>
-                <button type="button" class="button hp-gmc-audience-template" data-template="last_7_days"><?php esc_html_e('Buyers in last 7 days', 'hp-gmc-manager'); ?></button>
-            </p>
-            <div class="hp-gmc-audience-builder" style="margin-top: 1em;">
-                <label><?php esc_html_e('Combine conditions:', 'hp-gmc-manager'); ?></label>
-                <select id="hp-gmc-audience-logic">
-                    <option value="and">AND</option>
-                    <option value="or">OR</option>
-                </select>
-                <table class="wp-list-table widefat fixed striped hp-gmc-audience-conditions-table" style="margin-top: 0.5em;">
-                    <thead>
-                        <tr>
-                            <th class="check-column" style="width: 2em;"><span class="screen-reader-text"><?php esc_html_e('Select for deletion', 'hp-gmc-manager'); ?></span></th>
-                            <th style="width: 18%;"><?php esc_html_e('Condition type', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 52%;"><?php esc_html_e('Parameters', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 10%;"><?php esc_html_e('Include / Exclude', 'hp-gmc-manager'); ?></th>
-                            <th style="width: 6em;"><?php esc_html_e('Remove', 'hp-gmc-manager'); ?></th>
-                        </tr>
-                    </thead>
-                    <tbody id="hp-gmc-audience-conditions"></tbody>
-                </table>
-                <p style="margin-top: 0.5em;">
-                    <button type="button" class="button" id="hp-gmc-audience-add-condition"><?php esc_html_e('Add condition', 'hp-gmc-manager'); ?></button>
-                    <button type="button" class="button button-secondary" id="hp-gmc-audience-delete-selected"><?php esc_html_e('Delete selected', 'hp-gmc-manager'); ?></button>
-                </p>
-                <p>
-                    <label><?php esc_html_e('Save as (name):', 'hp-gmc-manager'); ?></label>
-                    <input type="text" id="hp-gmc-audience-save-name" placeholder="<?php esc_attr_e('Segment name', 'hp-gmc-manager'); ?>" style="width: 240px;" value="<?php echo $edit_segment ? esc_attr($edit_segment['name']) : ''; ?>">
-                    <button type="button" class="button" id="hp-gmc-audience-save-as"><?php echo $edit_segment ? esc_html__('Update', 'hp-gmc-manager') : esc_html__('Save as', 'hp-gmc-manager'); ?></button>
-                    <?php if ($edit_segment): ?>
-                    <input type="hidden" id="hp-gmc-audience-edit-id" value="<?php echo esc_attr($edit_segment['id']); ?>">
-                    <?php endif; ?>
-                </p>
-            </div>
             <script>
             (function() {
                 var restBase = <?php echo wp_json_encode($rest_base); ?>;
                 var nonce = <?php echo wp_json_encode($nonce); ?>;
+                var uploadDisabled = <?php echo $upload_disabled ? 'true' : 'false'; ?>;
                 var productSearchAjaxUrl = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
                 var productSearchNonce = <?php echo wp_json_encode(wp_create_nonce('hp_gmc_admin')); ?>;
                 var editDefinition = <?php echo $edit_segment && !empty($edit_segment['filter_definition']) ? wp_json_encode(json_decode($edit_segment['filter_definition'], true)) : 'null'; ?>;
                 var editId = <?php echo $edit_segment ? (int) $edit_segment['id'] : '0'; ?>;
                 var currentEditId = editId;
+                var i18n = {
+                    run: <?php echo wp_json_encode(__('Run', 'hp-gmc-manager')); ?>,
+                    abort: <?php echo wp_json_encode(__('Abort', 'hp-gmc-manager')); ?>,
+                    running: <?php echo wp_json_encode(__('Running…', 'hp-gmc-manager')); ?>,
+                    processing: <?php echo wp_json_encode(__('Processing', 'hp-gmc-manager')); ?>,
+                    of: <?php echo wp_json_encode(__('of', 'hp-gmc-manager')); ?>,
+                    duplicate: <?php echo wp_json_encode(__('Duplicate', 'hp-gmc-manager')); ?>,
+                    edit: <?php echo wp_json_encode(__('Edit', 'hp-gmc-manager')); ?>,
+                    exportCsv: <?php echo wp_json_encode(__('Export CSV', 'hp-gmc-manager')); ?>,
+                    delete: <?php echo wp_json_encode(__('Delete', 'hp-gmc-manager')); ?>,
+                    upload: <?php echo wp_json_encode(__('Upload to Google Ads', 'hp-gmc-manager')); ?>,
+                    job: <?php echo wp_json_encode(__('job', 'hp-gmc-manager')); ?>
+                };
+                function escAttr(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+                function renderSavedSegmentsBody(segments) {
+                    if (!segments || segments.length === 0) {
+                        return '<tr><td colspan="6"><?php echo esc_js(__('No saved segments yet. Use the builder above and "Save as".', 'hp-gmc-manager')); ?></td></tr>';
+                    }
+                    return segments.map(function(seg) {
+                        var lastRun = seg.last_run_at ? escAttr(seg.last_run_at) : '—';
+                        var count = seg.last_run_count !== null && seg.last_run_count !== undefined ? Number(seg.last_run_count) : '—';
+                        var uploadHtml = '—';
+                        if (seg.last_upload_status) {
+                            uploadHtml = escAttr(seg.last_upload_status.charAt(0).toUpperCase() + seg.last_upload_status.slice(1));
+                            if (seg.last_upload_job_id) uploadHtml += ' <span class="hp-gmc-job-id" title="' + escAttr(seg.last_upload_job_id) + '">(' + i18n.job + ')</span>';
+                            if (seg.last_upload_at) uploadHtml += ' ' + escAttr(seg.last_upload_at);
+                        }
+                        var uploadBtn = '';
+                        if (!uploadDisabled) {
+                            uploadBtn = '<button type="button" class="button button-small button-secondary hp-gmc-audience-upload" data-id="' + seg.id + '" data-count="' + escAttr(seg.last_run_count != null ? seg.last_run_count : '') + '">' + i18n.upload + '</button>';
+                        }
+                        return '<tr data-segment-id="' + seg.id + '">' +
+                            '<th scope="row" class="check-column"><input type="checkbox" class="hp-gmc-audience-row-cb" value="' + seg.id + '"></th>' +
+                            '<td><strong>' + escAttr(seg.name) + '</strong></td>' +
+                            '<td>' + lastRun + '</td>' +
+                            '<td>' + count + '</td>' +
+                            '<td class="hp-gmc-audience-upload-status" data-segment-id="' + seg.id + '">' + uploadHtml + '</td>' +
+                            '<td><span class="hp-gmc-audience-run-wrap" style="display:inline-flex;align-items:center;gap:6px;">' +
+                            '<button type="button" class="button button-small hp-gmc-audience-run" data-id="' + seg.id + '">' + i18n.run + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-abort" style="display:none;">' + i18n.abort + '</button>' +
+                            '<span class="hp-gmc-audience-run-status" style="display:none;" aria-live="polite"><span class="spinner is-active" style="float:none;display:inline-block;vertical-align:middle;margin:0 4px 0 0;"></span><span class="hp-gmc-audience-run-status-text">' + i18n.running + '</span><span class="hp-gmc-audience-run-progress-bar" style="display:none;margin-left:8px;width:80px;height:6px;background:#ddd;border-radius:3px;overflow:hidden;vertical-align:middle;"><span style="display:block;height:100%;width:0%;background:#2271b1;border-radius:3px;"></span></span></span>' +
+                            '</span>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-duplicate" data-id="' + seg.id + '">' + i18n.duplicate + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-edit" data-id="' + seg.id + '">' + i18n.edit + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-export" data-id="' + seg.id + '">' + i18n.exportCsv + '</button>' +
+                            '<button type="button" class="button button-small hp-gmc-audience-delete" data-id="' + seg.id + '" style="color:#b32d2e;">' + i18n.delete + '</button>' +
+                            uploadBtn + '</td></tr>';
+                    }).join('');
+                }
                 var audienceCountries = <?php echo wp_json_encode($audience_countries); ?>;
                 var audienceFunnelSlugs = <?php echo wp_json_encode($audience_funnel_slugs); ?>;
                 var conditionTypeLabels = {
@@ -2108,24 +2156,39 @@ class Dashboard
                     return null;
                 }
                 function getDefinition() {
-                    var logic = document.getElementById('hp-gmc-audience-logic').value;
                     var conditions = [];
-                    document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition').forEach(function(row) {
+                    var rows = document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition');
+                    rows.forEach(function(row, idx) {
                         var c = getConditionFromRow(row);
-                        if (c) conditions.push(c);
+                        if (c) {
+                            if (idx > 0) {
+                                var sel = row.querySelector('.cond-combine');
+                                c.combine_with_previous = (sel && sel.value) ? sel.value : 'and';
+                            }
+                            conditions.push(c);
+                        }
                     });
-                    return { logic: logic, conditions: conditions };
+                    return { conditions: conditions };
                 }
                 function setDefinition(def) {
-                    document.getElementById('hp-gmc-audience-logic').value = def.logic || 'and';
                     var cont = document.getElementById('hp-gmc-audience-conditions');
                     cont.innerHTML = '';
-                    (def.conditions || []).forEach(function(c) { addConditionRow(c); });
+                    var defaultLogic = (def.logic === 'or' || def.logic === 'and') ? def.logic : 'and';
+                    (def.conditions || []).forEach(function(c, i) {
+                        if (i > 0 && (c.combine_with_previous === undefined || c.combine_with_previous === null)) c.combine_with_previous = defaultLogic;
+                        addConditionRow(c);
+                    });
                 }
                 function addConditionRow(c) {
                     c = c || {};
                     var type = c.type || 'billing_address';
                     var includeVal = (c.include === false) ? 'exclude' : 'include';
+                    var tbody = document.getElementById('hp-gmc-audience-conditions');
+                    var isFirst = tbody.children.length === 0;
+                    var combineVal = (c.combine_with_previous === 'or') ? 'or' : 'and';
+                    var combineCell = isFirst
+                        ? '<td class="cond-combine-cell" style="vertical-align:middle;"><span class="description">—</span></td>'
+                        : '<td class="cond-combine-cell"><select class="cond-combine" aria-label="Combine with previous"><option value="and"' + (combineVal === 'and' ? ' selected' : '') + '>AND</option><option value="or"' + (combineVal === 'or' ? ' selected' : '') + '>OR</option></select></td>';
                     var row = document.createElement('tr');
                     row.className = 'hp-gmc-condition';
                     var typeOpts = Object.keys(conditionTypeLabels).map(function(t) {
@@ -2133,6 +2196,7 @@ class Dashboard
                     }).join('');
                     row.innerHTML =
                         '<td class="check-column"><input type="checkbox" class="cond-delete" aria-label="Select for deletion"></td>' +
+                        combineCell +
                         '<td><select class="cond-type">' + typeOpts + '</select></td>' +
                         '<td><span class="cond-fields">' + buildConditionFields(type, c) + '</span></td>' +
                         '<td><select class="cond-include-exclude"><option value="include"' + (includeVal === 'include' ? ' selected' : '') + '>Include</option><option value="exclude"' + (includeVal === 'exclude' ? ' selected' : '') + '>Exclude</option></select></td>' +
@@ -2145,7 +2209,33 @@ class Dashboard
                         row.querySelector('.cond-fields').innerHTML = buildConditionFields(newType, {});
                         if (newType === 'purchase_product') initSkuAutocomplete(row);
                     });
-                    row.querySelector('.cond-remove').addEventListener('click', function() { row.remove(); });
+                    row.querySelector('.cond-remove').addEventListener('click', function() {
+                        row.remove();
+                        updateCombineColumn();
+                    });
+                }
+                function updateCombineColumn() {
+                    var rows = document.querySelectorAll('#hp-gmc-audience-conditions .hp-gmc-condition');
+                    rows.forEach(function(r, idx) {
+                        var cell = r.querySelector('.cond-combine-cell');
+                        if (!cell) return;
+                        var isFirst = (idx === 0);
+                        var currentSelect = cell.querySelector('.cond-combine');
+                        var currentSpan = cell.querySelector('.description');
+                        if (isFirst) {
+                            if (currentSelect) { currentSelect.remove(); cell.appendChild(document.createElement('span')).className = 'description'; cell.querySelector('.description').textContent = '—'; }
+                            else if (currentSpan) currentSpan.textContent = '—';
+                        } else {
+                            if (currentSpan) currentSpan.remove();
+                            if (!currentSelect) {
+                                var sel = document.createElement('select');
+                                sel.className = 'cond-combine';
+                                sel.setAttribute('aria-label', 'Combine with previous');
+                                sel.innerHTML = '<option value="and">AND</option><option value="or">OR</option>';
+                                cell.appendChild(sel);
+                            }
+                        }
+                    });
                 }
                 document.getElementById('hp-gmc-audience-add-condition').addEventListener('click', function() { addConditionRow({}); });
                 document.getElementById('hp-gmc-audience-delete-selected').addEventListener('click', function() {
@@ -2153,6 +2243,7 @@ class Dashboard
                         var tr = cb.closest('tr');
                         if (tr) tr.remove();
                     });
+                    updateCombineColumn();
                 });
                 function applySegmentToForm(seg) {
                     if (!seg) return;
@@ -2295,10 +2386,39 @@ class Dashboard
                                 var notice = document.createElement('div');
                                 notice.className = 'notice notice-success is-dismissible';
                                 notice.style.marginTop = '8px';
-                                notice.innerHTML = '<p><?php echo esc_js(__('Segment saved. Refreshing list…', 'hp-gmc-manager')); ?></p>';
+                                notice.innerHTML = '<p><?php echo esc_js(__('Segment saved.', 'hp-gmc-manager')); ?></p>';
                                 var wrap = document.querySelector('.hp-gmc-audiences');
                                 if (wrap) wrap.insertBefore(notice, wrap.firstChild);
-                                location.reload();
+                                fetch(restBase, { headers: { 'X-WP-Nonce': nonce } })
+                                    .then(function(r) { return r.ok ? r.json() : Promise.resolve({}); })
+                                    .then(function(listData) {
+                                        var list = listData.segments || [];
+                                        var tbody = document.querySelector('.hp-gmc-audiences-table tbody');
+                                        if (tbody) tbody.innerHTML = renderSavedSegmentsBody(list);
+                                        if (typeof attachAudienceActionHandlers === 'function') attachAudienceActionHandlers();
+                                        var bulkBar = document.getElementById('hp-gmc-audience-bulk-actions');
+                                        var selectAll = document.getElementById('hp-gmc-audience-select-all');
+                                        if (selectAll) selectAll.checked = false;
+                                        if (bulkBar) bulkBar.style.display = 'none';
+                                    })
+                                    .catch(function() {});
+                                if (data.id) {
+                                    currentEditId = data.id;
+                                    var nameEl = document.getElementById('hp-gmc-audience-save-name');
+                                    if (nameEl) nameEl.value = data.name || nameEl.value;
+                                    var saveBtn = document.getElementById('hp-gmc-audience-save-as');
+                                    if (saveBtn) saveBtn.textContent = '<?php echo esc_js(__('Update', 'hp-gmc-manager')); ?>';
+                                    var editIdInput = document.getElementById('hp-gmc-audience-edit-id');
+                                    if (!editIdInput) {
+                                        editIdInput = document.createElement('input');
+                                        editIdInput.type = 'hidden';
+                                        editIdInput.id = 'hp-gmc-audience-edit-id';
+                                        var saveP = document.getElementById('hp-gmc-audience-save-name');
+                                        if (saveP && saveP.closest('p')) saveP.closest('p').appendChild(editIdInput);
+                                    }
+                                    if (editIdInput) editIdInput.value = data.id;
+                                }
+                                btn.disabled = false;
                             } else {
                                 btn.disabled = false;
                                 alert(data.message || 'Failed');
@@ -2350,13 +2470,40 @@ class Dashboard
                     }
                     resetRunUI(wrap);
                 });
-                document.querySelectorAll('.hp-gmc-audience-run').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        var runBtn = this;
+                function refreshAudiencesTable() {
+                    fetch(restBase, { headers: { 'X-WP-Nonce': nonce } })
+                        .then(function(r) { return r.ok ? r.json() : Promise.resolve({}); })
+                        .then(function(listData) {
+                            var list = listData.segments || [];
+                            var tbody = document.querySelector('.hp-gmc-audiences-table tbody');
+                            if (tbody) tbody.innerHTML = renderSavedSegmentsBody(list);
+                            if (typeof attachAudienceActionHandlers === 'function') attachAudienceActionHandlers();
+                            var wrap = document.querySelector('.hp-gmc-audiences');
+                            if (wrap) {
+                                var notice = document.createElement('div');
+                                notice.className = 'notice notice-success is-dismissible';
+                                notice.style.marginTop = '8px';
+                                notice.innerHTML = '<p><?php echo esc_js(__('Run completed.', 'hp-gmc-manager')); ?></p>';
+                                wrap.insertBefore(notice, wrap.firstChild);
+                            }
+                        })
+                        .catch(function() {});
+                }
+                function attachAudienceActionHandlers() {
+                    var table = document.querySelector('.hp-gmc-audiences-table');
+                    if (!table) return;
+                    // Run: single delegated click on table (attach once so save/refresh does not double-bind)
+                    if (!table._hpGmcRunDelegated) {
+                        table._hpGmcRunDelegated = true;
+                    table.addEventListener('click', function(e) {
+                        var runBtn = e.target && e.target.classList && e.target.classList.contains('hp-gmc-audience-run') ? e.target : null;
+                        if (!runBtn) return;
+                        var id = runBtn.dataset.id;
+                        if (!id) return;
                         var wrap = runBtn.closest('.hp-gmc-audience-run-wrap');
-                        var statusEl = wrap ? wrap.querySelector('.hp-gmc-audience-run-status') : null;
-                        var abortBtn = wrap ? wrap.querySelector('.hp-gmc-audience-abort') : null;
+                        if (!wrap) return;
+                        var statusEl = wrap.querySelector('.hp-gmc-audience-run-status');
+                        var abortBtn = wrap.querySelector('.hp-gmc-audience-abort');
                         runBtn.disabled = true;
                         runBtn.style.display = 'none';
                         if (abortBtn) abortBtn.style.display = 'inline-block';
@@ -2370,7 +2517,7 @@ class Dashboard
                                 stopPolling();
                                 wrap._stopPolling = null;
                                 wrap._progressKey = null;
-                                setTimeout(function() { location.reload(); }, 2000);
+                                setTimeout(refreshAudiencesTable, 1500);
                                 return;
                             }
                             var threshold = nextChunkIndex * batchesPerChunk;
@@ -2383,7 +2530,7 @@ class Dashboard
                                             stopPolling();
                                             wrap._stopPolling = null;
                                             wrap._progressKey = null;
-                                            setTimeout(function() { location.reload(); }, 500);
+                                            setTimeout(refreshAudiencesTable, 500);
                                         }
                                     })
                                     .catch(function() {});
@@ -2409,7 +2556,7 @@ class Dashboard
                                 wrap._stopPolling = null;
                                 wrap._progressKey = null;
                                 if (data.count !== undefined) {
-                                    location.reload();
+                                    refreshAudiencesTable();
                                 } else {
                                     resetRunUI(wrap);
                                     alert(data.message || 'Error');
@@ -2421,52 +2568,112 @@ class Dashboard
                                 alert(e.message || 'Error');
                             });
                     });
-                });
-                document.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) { if (data.id) location.reload(); else alert(data.message || 'Failed'); })
+                    }
+                    table.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) { if (data.id) location.reload(); else alert(data.message || 'Failed'); })
                                 .catch(function() { alert('Failed'); });
+                        });
                     });
-                });
-                document.querySelectorAll('.hp-gmc-audience-export').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.csv !== undefined) {
-                                    var a = document.createElement('a');
-                                    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
-                                    a.download = data.filename || 'segment.csv';
-                                    a.click();
-                                } else { alert(data.message || 'Failed'); }
+                    table.querySelectorAll('.hp-gmc-audience-export').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            var id = this.dataset.id;
+                            fetch(restBase + '/' + id + '/export-csv', { headers: { 'X-WP-Nonce': nonce } })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.csv !== undefined) {
+                                        var a = document.createElement('a');
+                                        a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(data.csv);
+                                        a.download = data.filename || 'segment.csv';
+                                        a.click();
+                                    } else { alert(data.message || 'Failed'); }
+                                })
+                                .catch(function() { alert('Error'); });
+                        });
+                    });
+                    table.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            var id = this.dataset.id;
+                            if (!confirm('Delete this segment? This cannot be undone.')) return;
+                            fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.deleted) location.reload();
+                                    else alert(data.message || 'Delete failed');
+                                })
+                                .catch(function() { alert('Delete failed'); });
+                        });
+                    });
+                    table.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
+                        btn.addEventListener('click', function() {
+                            var id = this.dataset.id;
+                            var count = parseInt(this.dataset.count, 10) || 0;
+                            if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
+                                return;
+                            }
+                            var msgEl = document.getElementById('hp-gmc-audience-upload-message');
+                            if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+                            btn.disabled = true;
+                            fetch(restBase + '/' + id + '/upload', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
+                                body: JSON.stringify({ append: false })
                             })
-                            .catch(function() { alert('Error'); });
+                                .then(function(r) {
+                                    return r.text().then(function(text) {
+                                        var data;
+                                        try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
+                                        return { ok: r.ok, status: r.status, data: data };
+                                    });
+                                })
+                                .then(function(res) {
+                                    if (res.ok && res.data.success) {
+                                        var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
+                                        if (statusCell) {
+                                            statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
+                                        }
+                                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
+                                    } else {
+                                        var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
+                                        if (res.status === 404) {
+                                            msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
+                                        } else if (res.status === 403) {
+                                            msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
+                                        } else {
+                                            msg = 'HTTP ' + res.status + ': ' + msg;
+                                        }
+                                        if (msgEl) {
+                                            msgEl.textContent = msg;
+                                            msgEl.style.display = 'block';
+                                            msgEl.style.borderLeftColor = '#d63638';
+                                            msgEl.style.background = '#fcf0f1';
+                                        }
+                                    }
+                                })
+                                .catch(function(err) {
+                                    if (msgEl) {
+                                        msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
+                                        msgEl.style.display = 'block';
+                                        msgEl.style.borderLeftColor = '#d63638';
+                                        msgEl.style.background = '#fcf0f1';
+                                    }
+                                })
+                                .finally(function() { btn.disabled = false; });
+                        });
                     });
-                });
-                document.querySelectorAll('.hp-gmc-audience-delete').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        if (!confirm('Delete this segment? This cannot be undone.')) return;
-                        fetch(restBase + '/' + id, { method: 'DELETE', headers: { 'X-WP-Nonce': nonce } })
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.deleted) location.reload();
-                                else alert(data.message || 'Delete failed');
-                            })
-                            .catch(function() { alert('Delete failed'); });
-                    });
-                });
+                }
+                attachAudienceActionHandlers();
                 (function() {
                     var bulkBar = document.getElementById('hp-gmc-audience-bulk-actions');
                     var selectAll = document.getElementById('hp-gmc-audience-select-all');
-                    var rowCbs = document.querySelectorAll('.hp-gmc-audience-row-cb');
+                    var table = document.querySelector('.hp-gmc-audiences-table');
                     function getSelectedIds() {
                         return Array.prototype.map.call(document.querySelectorAll('.hp-gmc-audience-row-cb:checked'), function(cb) { return cb.value; });
                     }
                     function updateBulkBar() {
+                        var rowCbs = document.querySelectorAll('.hp-gmc-audience-row-cb');
                         var ids = getSelectedIds();
                         if (bulkBar) bulkBar.style.display = ids.length ? 'block' : 'none';
                         if (selectAll) {
@@ -2476,12 +2683,12 @@ class Dashboard
                     }
                     if (selectAll) {
                         selectAll.addEventListener('change', function() {
-                            rowCbs.forEach(function(cb) { cb.checked = selectAll.checked; });
+                            document.querySelectorAll('.hp-gmc-audience-row-cb').forEach(function(cb) { cb.checked = selectAll.checked; });
                             updateBulkBar();
                         });
                     }
-                    rowCbs.forEach(function(cb) {
-                        cb.addEventListener('change', updateBulkBar);
+                    if (table) table.addEventListener('change', function(e) {
+                        if (e.target && e.target.classList && e.target.classList.contains('hp-gmc-audience-row-cb')) updateBulkBar();
                     });
                     if (bulkBar) {
                         bulkBar.querySelector('.hp-gmc-audience-bulk-delete').addEventListener('click', function() {
@@ -2592,63 +2799,6 @@ class Dashboard
                         });
                     }
                 })();
-                document.querySelectorAll('.hp-gmc-audience-upload').forEach(function(btn) {
-                    btn.addEventListener('click', function() {
-                        var id = this.dataset.id;
-                        var count = parseInt(this.dataset.count, 10) || 0;
-                        if (count > 0 && count < 1000 && !confirm('This segment has fewer than 1000 users. Google typically recommends at least 1000 for Customer Match. Continue?')) {
-                            return;
-                        }
-                        var msgEl = document.getElementById('hp-gmc-audience-upload-message');
-                        if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
-                        btn.disabled = true;
-                        fetch(restBase + '/' + id + '/upload', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce },
-                            body: JSON.stringify({ append: false })
-                        })
-                            .then(function(r) {
-                                return r.text().then(function(text) {
-                                    var data;
-                                    try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { message: text || 'No response' }; }
-                                    return { ok: r.ok, status: r.status, data: data };
-                                });
-                            })
-                            .then(function(res) {
-                                if (res.ok && res.data.success) {
-                                    var statusCell = document.querySelector('.hp-gmc-audience-upload-status[data-segment-id="' + id + '"]');
-                                    if (statusCell) {
-                                        statusCell.textContent = 'Pending (job submitted). Reload page to see status.';
-                                    }
-                                    if (msgEl) { msgEl.style.display = 'none'; msgEl.textContent = ''; }
-                                } else {
-                                    var msg = res.data.message || res.data.error || res.data.code || 'Upload failed';
-                                    if (res.status === 404) {
-                                        msg = 'Endpoint not found (404). Ensure GMC Manager is updated and REST API is available.';
-                                    } else if (res.status === 403) {
-                                        msg = msg + ' (Upload may be disabled in Settings > Schema & Audiences.)';
-                                    } else {
-                                        msg = 'HTTP ' + res.status + ': ' + msg;
-                                    }
-                                    if (msgEl) {
-                                        msgEl.textContent = msg;
-                                        msgEl.style.display = 'block';
-                                        msgEl.style.borderLeftColor = '#d63638';
-                                        msgEl.style.background = '#fcf0f1';
-                                    }
-                                }
-                            })
-                            .catch(function(err) {
-                                if (msgEl) {
-                                    msgEl.textContent = 'Network or server error. Check the Network tab for the request to ' + restBase + '/' + id + '/upload (e.g. 500 = server error).';
-                                    msgEl.style.display = 'block';
-                                    msgEl.style.borderLeftColor = '#d63638';
-                                    msgEl.style.background = '#fcf0f1';
-                                }
-                            })
-                            .finally(function() { btn.disabled = false; });
-                    });
-                });
             })();
             </script>
         </div>

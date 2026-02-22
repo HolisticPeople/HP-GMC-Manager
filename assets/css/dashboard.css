@@ -105,7 +105,7 @@
 /* Multi-SKU chips in segment builder: thumbnail + SKU + name */
 .cond-sku-chip {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     padding: 4px 6px 4px 4px;
     background: #f0f0f1;
@@ -116,9 +116,10 @@
 }
 .hp-gmc-chip-content {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     min-width: 0;
+    flex-wrap: wrap;
 }
 .hp-gmc-chip-thumb {
     flex-shrink: 0;
@@ -136,9 +137,9 @@
 .hp-gmc-chip-name {
     color: #50575e;
     line-height: 1.25;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-wrap: break-word;
+    word-break: break-word;
     min-width: 0;
 }
 .cond-sku-remove {

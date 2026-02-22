@@ -2345,24 +2345,26 @@ class Plugin
         }
 
         $term = sanitize_text_field($_POST['term'] ?? '');
+        $term_lower = mb_strtolower($term);
 
         if (strlen($term) < 2) {
             wp_send_json_success(['products' => []]);
         }
 
+        // Include all statuses (publish, draft, private) so segment builder can select historical/disabled products.
         $args = [
-            'status' => 'publish',
+            'status' => ['publish', 'draft', 'private'],
             'limit' => 20,
             's' => $term,
         ];
 
         $products = wc_get_products($args);
-        $results = [];
+        $by_id = [];
 
         foreach ($products as $product) {
             $image_id = $product->get_image_id();
             $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
-            $results[] = [
+            $by_id[$product->get_id()] = [
                 'id' => $product->get_id(),
                 'sku' => $product->get_sku(),
                 'name' => $product->get_name(),
@@ -2371,26 +2373,19 @@ class Plugin
             ];
         }
 
-        // Also search by SKU
+        // Also search by SKU (include draft/private for historical products).
         $skuArgs = [
-            'status' => 'publish',
+            'status' => ['publish', 'draft', 'private'],
             'limit' => 10,
             'sku' => $term,
         ];
         $skuProducts = wc_get_products($skuArgs);
-        
+
         foreach ($skuProducts as $product) {
-            $exists = false;
-            foreach ($results as $r) {
-                if ($r['id'] === $product->get_id()) {
-                    $exists = true;
-                    break;
-                }
-            }
-            if (!$exists) {
+            if (!isset($by_id[$product->get_id()])) {
                 $image_id = $product->get_image_id();
                 $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
-                $results[] = [
+                $by_id[$product->get_id()] = [
                     'id' => $product->get_id(),
                     'sku' => $product->get_sku(),
                     'name' => $product->get_name(),
@@ -2398,6 +2393,90 @@ class Plugin
                     'image_url' => $image_url ?: '',
                 ];
             }
+        }
+
+        // Also match ACF fields (slogan, aka, ingredients) and short/long description; these results go to the bottom.
+        global $wpdb;
+        $like = '%' . $wpdb->esc_like($term) . '%';
+        $acf_keys = ['slogan', 'aka', 'ingredients', 'ingredients_other'];
+        $acf_placeholders = implode(',', array_fill(0, count($acf_keys), '%s'));
+        $existing_ids = array_keys($by_id);
+        $existing_placeholder = $existing_ids ? implode(',', array_fill(0, count($existing_ids), '%d')) : '0';
+        $exclude_sql = $existing_ids ? " AND p.ID NOT IN ($existing_placeholder)" : '';
+        $prepare_args = array_merge($acf_keys, [$like, $like, $like], $existing_ids ? $existing_ids : []);
+        $sql = $wpdb->prepare(
+            "SELECT DISTINCT p.ID FROM {$wpdb->posts} p
+            LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key IN ($acf_placeholders) AND pm.meta_value LIKE %s
+            WHERE p.post_type IN ('product', 'product_variation') AND p.post_status IN ('publish', 'draft', 'private')
+            AND (p.post_excerpt LIKE %s OR p.post_content LIKE %s OR pm.post_id IS NOT NULL)
+            $exclude_sql
+            ORDER BY p.post_title ASC
+            LIMIT 30",
+            $prepare_args
+        );
+        $acf_ids = $wpdb->get_col($sql);
+        if (is_array($acf_ids)) {
+            foreach ($acf_ids as $pid) {
+                $pid = (int) $pid;
+                if (isset($by_id[$pid])) {
+                    continue;
+                }
+                $product = wc_get_product($pid);
+                if (!$product) {
+                    continue;
+                }
+                $image_id = $product->get_image_id();
+                $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '';
+                $by_id[$pid] = [
+                    'id' => $product->get_id(),
+                    'sku' => $product->get_sku(),
+                    'name' => $product->get_name(),
+                    'label' => $product->get_sku() . ' - ' . $product->get_name(),
+                    'image_url' => $image_url ?: '',
+                    'acf_match' => true,
+                ];
+            }
+        }
+
+        // Sort by relevance: exact SKU first, then name/SKU, then ACF/description matches at the bottom.
+        $results = array_values($by_id);
+        usort($results, function ($a, $b) use ($term_lower) {
+            $score = function ($row) use ($term_lower) {
+                if (!empty($row['acf_match'])) {
+                    return 20;
+                }
+                $sku = mb_strtolower((string) $row['sku']);
+                $name = mb_strtolower((string) $row['name']);
+                if ($sku === $term_lower) {
+                    return 400;
+                }
+                if ($sku !== '' && mb_strpos($sku, $term_lower) === 0) {
+                    return 300;
+                }
+                if ($name === $term_lower) {
+                    return 250;
+                }
+                if ($name !== '' && mb_strpos($name, $term_lower) === 0) {
+                    return 200;
+                }
+                if ($sku !== '' && mb_strpos($sku, $term_lower) !== false) {
+                    return 100;
+                }
+                if ($name !== '' && mb_strpos($name, $term_lower) !== false) {
+                    return 50;
+                }
+                return 0;
+            };
+            $diff = $score($b) - $score($a);
+            if ($diff !== 0) {
+                return $diff;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
+
+        // Remove internal key before sending to frontend.
+        foreach ($results as $i => $row) {
+            unset($results[$i]['acf_match']);
         }
 
         wp_send_json_success(['products' => $results]);
@@ -2425,9 +2504,7 @@ class Plugin
             $sku
         ));
         $product = $product_id ? wc_get_product((int) $product_id) : null;
-        if (!$product || !$product->is_visible()) {
-            $product = null;
-        }
+        // Accept any product by SKU (including draft/private) so segment builder can include historical products.
         if (!$product || (string) $product->get_sku() !== $sku) {
             wp_send_json_error(['message' => 'Product not found']);
         }
