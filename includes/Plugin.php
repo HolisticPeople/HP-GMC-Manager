@@ -2350,8 +2350,9 @@ class Plugin
             wp_send_json_success(['products' => []]);
         }
 
+        // Include all statuses (publish, draft, private) so segment builder can select historical/disabled products.
         $args = [
-            'status' => 'publish',
+            'status' => ['publish', 'draft', 'private'],
             'limit' => 20,
             's' => $term,
         ];
@@ -2371,9 +2372,9 @@ class Plugin
             ];
         }
 
-        // Also search by SKU
+        // Also search by SKU (include draft/private for historical products).
         $skuArgs = [
-            'status' => 'publish',
+            'status' => ['publish', 'draft', 'private'],
             'limit' => 10,
             'sku' => $term,
         ];
@@ -2425,9 +2426,7 @@ class Plugin
             $sku
         ));
         $product = $product_id ? wc_get_product((int) $product_id) : null;
-        if (!$product || !$product->is_visible()) {
-            $product = null;
-        }
+        // Accept any product by SKU (including draft/private) so segment builder can include historical products.
         if (!$product || (string) $product->get_sku() !== $sku) {
             wp_send_json_error(['message' => 'Product not found']);
         }
