@@ -2561,8 +2561,6 @@ class Dashboard
                                 alert(e.message || 'Error');
                             });
                     });
-                });
-                    });
                     table.querySelectorAll('.hp-gmc-audience-duplicate').forEach(function(btn) {
                     btn.addEventListener('click', function() {
                         fetch(restBase + '/' + this.dataset.id + '/duplicate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({}) })
