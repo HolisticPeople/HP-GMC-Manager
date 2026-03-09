@@ -389,14 +389,57 @@ class Plugin
             return;
         }
 
-        wp_register_ability_category('hp-gmc', [
-            'label' => __('Google Merchant Center', 'hp-gmc-manager'),
-            'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
-        ]);
-        wp_register_ability_category('hp-marketing', [
-            'label' => __('Marketing & Audiences', 'hp-gmc-manager'),
-            'description' => __('Audience segments, GA4, and Google Ads for campaign workflows', 'hp-gmc-manager'),
-        ]);
+        $categories = [
+            'hp-gmc' => [
+                'label' => __('Google Merchant Center', 'hp-gmc-manager'),
+                'description' => __('Tools for managing Google Merchant Center products and settings', 'hp-gmc-manager'),
+            ],
+            'hp-marketing' => [
+                'label' => __('Marketing & Audiences', 'hp-gmc-manager'),
+                'description' => __('Audience segments, GA4, and Google Ads for campaign workflows', 'hp-gmc-manager'),
+            ],
+            // GMC tools currently register under these legacy category slugs.
+            'overview' => [
+                'label' => __('GMC Overview', 'hp-gmc-manager'),
+                'description' => __('High-level Merchant Center summary and reporting tools.', 'hp-gmc-manager'),
+            ],
+            'product' => [
+                'label' => __('GMC Products', 'hp-gmc-manager'),
+                'description' => __('Product-level Merchant Center diagnostics and actions.', 'hp-gmc-manager'),
+            ],
+            'shipping' => [
+                'label' => __('GMC Shipping', 'hp-gmc-manager'),
+                'description' => __('Merchant Center shipping services and country configuration tools.', 'hp-gmc-manager'),
+            ],
+            'account' => [
+                'label' => __('GMC Account', 'hp-gmc-manager'),
+                'description' => __('Merchant Center account status and configuration tools.', 'hp-gmc-manager'),
+            ],
+            'feed' => [
+                'label' => __('GMC Feeds', 'hp-gmc-manager'),
+                'description' => __('Merchant Center feed creation, upload, and maintenance tools.', 'hp-gmc-manager'),
+            ],
+            'funnel' => [
+                'label' => __('GMC Funnels', 'hp-gmc-manager'),
+                'description' => __('Merchant Center tooling tied to funnel exports and settings.', 'hp-gmc-manager'),
+            ],
+            'maintenance' => [
+                'label' => __('GMC Maintenance', 'hp-gmc-manager'),
+                'description' => __('Merchant Center cleanup, relinking, and maintenance tools.', 'hp-gmc-manager'),
+            ],
+            'test' => [
+                'label' => __('GMC Tests', 'hp-gmc-manager'),
+                'description' => __('Merchant Center smoke-test and diagnostic tools.', 'hp-gmc-manager'),
+            ],
+            'example' => [
+                'label' => __('GMC Examples', 'hp-gmc-manager'),
+                'description' => __('Example and reference tools for Merchant Center integrations.', 'hp-gmc-manager'),
+            ],
+        ];
+
+        foreach ($categories as $slug => $definition) {
+            wp_register_ability_category($slug, $definition);
+        }
     }
 
     /**
