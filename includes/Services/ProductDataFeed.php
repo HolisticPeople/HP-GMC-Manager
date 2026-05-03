@@ -332,18 +332,18 @@ class ProductDataFeed
             }
         }
 
-        // Check yith_product_brand taxonomy
+        // Check native WooCommerce Brands taxonomy.
+        $terms = wp_get_post_terms($productId, 'product_brand', ['fields' => 'names']);
+        if (!is_wp_error($terms) && !empty($terms)) {
+            return $terms[0];
+        }
+
+        // Temporary fallback for the staging/production migration window.
         if (taxonomy_exists('yith_product_brand')) {
             $terms = get_the_terms($productId, 'yith_product_brand');
             if ($terms && !is_wp_error($terms)) {
                 return $terms[0]->name;
             }
-        }
-
-        // Check product_brand taxonomy
-        $terms = wp_get_post_terms($productId, 'product_brand', ['fields' => 'names']);
-        if (!is_wp_error($terms) && !empty($terms)) {
-            return $terms[0];
         }
 
         // Fallback to site name

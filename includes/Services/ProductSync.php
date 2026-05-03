@@ -112,16 +112,31 @@ class ProductSync
      */
     private function getBrand(\WC_Product $product): string
     {
-        // Check ACF field first
-        $brand = get_field('manufacturer', $product->get_id());
-        if ($brand) {
-            return is_array($brand) ? ($brand['name'] ?? '') : $brand;
+        // Check ACF manufacturer fields first.
+        if (function_exists('get_field')) {
+            $brand = get_field('manufacturer', $product->get_id());
+            if ($brand) {
+                return is_array($brand) ? ($brand['name'] ?? '') : $brand;
+            }
+
+            $brand = get_field('manufacturer_acf', $product->get_id());
+            if ($brand) {
+                return is_array($brand) ? ($brand['name'] ?? '') : $brand;
+            }
         }
 
-        // Check for brand taxonomy
+        // Check native WooCommerce Brands taxonomy.
         $terms = wp_get_post_terms($product->get_id(), 'product_brand', ['fields' => 'names']);
         if (!is_wp_error($terms) && !empty($terms)) {
             return $terms[0];
+        }
+
+        // Temporary fallback for the staging/production migration window.
+        if (taxonomy_exists('yith_product_brand')) {
+            $terms = get_the_terms($product->get_id(), 'yith_product_brand');
+            if ($terms && !is_wp_error($terms)) {
+                return $terms[0]->name;
+            }
         }
 
         // Fallback to site name
