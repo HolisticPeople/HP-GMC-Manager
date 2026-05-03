@@ -652,8 +652,7 @@ class Dashboard
     }
     
     /**
-     * Get brand from product using same logic as HP-Product-Manager.
-     * Source of truth: yith_product_brand taxonomy, fallback to 'brand' attribute.
+     * Get brand from product using the native WooCommerce Brands migration order.
      */
     private static function get_product_brand($product): string
     {
@@ -663,9 +662,30 @@ class Dashboard
         
         $product_id = $product->get_id();
         $names = [];
+
+        if (function_exists('get_field')) {
+            $brand = get_field('manufacturer', $product_id);
+            if ($brand) {
+                return is_array($brand) ? ($brand['name'] ?? '') : (string) $brand;
+            }
+
+            $brand = get_field('manufacturer_acf', $product_id);
+            if ($brand) {
+                return is_array($brand) ? ($brand['name'] ?? '') : (string) $brand;
+            }
+        }
         
-        // Primary: yith_product_brand taxonomy (same as HP-Product-Manager)
-        if (taxonomy_exists('yith_product_brand')) {
+        if (taxonomy_exists('product_brand')) {
+            $terms = get_the_terms($product_id, 'product_brand');
+            if ($terms && !is_wp_error($terms)) {
+                foreach ($terms as $term) {
+                    $names[$term->name] = true;
+                }
+            }
+        }
+
+        // Temporary fallback for the staging/production migration window.
+        if (empty($names) && taxonomy_exists('yith_product_brand')) {
             $terms = get_the_terms($product_id, 'yith_product_brand');
             if ($terms && !is_wp_error($terms)) {
                 foreach ($terms as $term) {
@@ -678,13 +698,7 @@ class Dashboard
             return implode(', ', array_keys($names));
         }
         
-        // Fallback: 'brand' attribute (same as HP-Product-Manager)
-        $brand = $product->get_attribute('brand');
-        if ($brand) {
-            return $brand;
-        }
-        
-        return '';
+        return get_bloginfo('name');
     }
 
     /**
