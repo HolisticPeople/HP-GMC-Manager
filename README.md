@@ -12,7 +12,7 @@ Google Merchant Center management plugin for WordPress/WooCommerce with admin da
 
 ## Requirements
 
-- PHP 8.0+
+- PHP 8.5+
 - WordPress 6.0+
 - WooCommerce 8.0+
 - HP-Abilities plugin (for MCP integration)

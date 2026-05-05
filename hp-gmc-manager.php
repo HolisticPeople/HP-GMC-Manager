@@ -2,14 +2,14 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 1.30.27
+ * Version: 2.0.0
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: hp-gmc-manager
  * Requires at least: 6.0
- * Requires PHP: 8.0
+ * Requires PHP: 8.5
  * WC requires at least: 8.0
  * WC tested up to: 10.5
  */
@@ -17,9 +17,15 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+if (PHP_VERSION_ID < 80500) {
+    add_action('admin_notices', static function (): void {
+        echo '<div class="notice notice-error"><p>' . esc_html(sprintf('HP GMC Manager requires PHP 8.5 or higher. Current PHP version: %s.', PHP_VERSION)) . '</p></div>';
+    });
+    return;
+}
 
 // Plugin constants
-define('HP_GMC_VERSION', '1.30.27');
+define('HP_GMC_VERSION', '2.0.0');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -89,10 +95,10 @@ function hp_gmc_init() {
     }
 
     // Check PHP version
-    if (version_compare(PHP_VERSION, '8.0', '<')) {
+    if (version_compare(PHP_VERSION, '8.5', '<')) {
         add_action('admin_notices', function () {
             echo '<div class="notice notice-error"><p>';
-            echo esc_html__('HP GMC Manager requires PHP 8.0 or higher.', 'hp-gmc-manager');
+            echo esc_html__('HP GMC Manager requires PHP 8.5 or higher.', 'hp-gmc-manager');
             echo '</p></div>';
         });
         return;
