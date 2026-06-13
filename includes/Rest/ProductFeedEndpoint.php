@@ -36,12 +36,6 @@ class ProductFeedEndpoint
                     'description' => 'Output format: tsv (tab-separated) or csv (comma-separated)',
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
-                'refresh' => [
-                    'type' => 'boolean',
-                    'default' => false,
-                    'description' => 'Force regenerate the feed (bypass cache)',
-                    'sanitize_callback' => 'rest_sanitize_boolean',
-                ],
             ],
         ]);
 
@@ -71,20 +65,19 @@ class ProductFeedEndpoint
     public static function serveFeed(WP_REST_Request $request)
     {
         $format = $request->get_param('format') ?: 'tsv';
-        $forceRefresh = (bool) $request->get_param('refresh');
 
         // Log feed access (for monitoring)
         error_log(json_encode([
             'event' => 'primary_feed.accessed',
             'format' => $format,
-            'refresh' => $forceRefresh,
+            'refresh' => false,
             'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
             'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
             'timestamp' => current_time('mysql'),
         ]));
 
         try {
-            $content = ProductDataFeed::generateFeed($format, $forceRefresh);
+            $content = ProductDataFeed::generateFeed($format, false);
 
             // Set appropriate headers for file download
             $contentType = $format === 'csv' ? 'text/csv' : 'text/tab-separated-values';
