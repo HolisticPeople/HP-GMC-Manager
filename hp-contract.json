@@ -1,0 +1,38 @@
+{
+  "plugin": "HP-GMC-Manager",
+  "repo": "HolisticPeople/HP-GMC-Manager",
+  "schema_version": "1.0",
+  "owns": [
+    "repo-local plugin behavior to be confirmed by owning lane"
+  ],
+  "must_not_own": [
+    "cross-plugin source mutation without registered contract"
+  ],
+  "consumes": [],
+  "exposes": {
+    "cpts": [],
+    "rest": [
+      "hp-gmc/v1/funnel-feed",
+      "hp-gmc/v1/funnel-feed/regenerate",
+      "hp-gmc/v1/funnel-feed/status",
+      "hp-gmc/v1/funnels",
+      "hp-gmc/v1/funnels/{id}",
+      "hp-gmc/v1/funnels/{id}/validate",
+      "hp-gmc/v1/oauth-callback",
+      "hp-gmc/v1/product-feed",
+      "hp-gmc/v1/product-feed/regenerate",
+      "hp-gmc/v1/product-feed/status",
+      "hp-gmc/v1/supplemental-feed/{id}"
+    ],
+    "shortcodes": [],
+    "providers": []
+  },
+  "verification": {
+    "staging": {
+      "status": "unverified"
+    },
+    "production": {
+      "status": "unverified"
+    }
+  }
+}
