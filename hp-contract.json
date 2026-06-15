@@ -12,6 +12,17 @@
   "exposes": {
     "cpts": [],
     "rest": [
+      "hp-gmc/v1/audiences/segments",
+      "hp-gmc/v1/audiences/segments/run-abort",
+      "hp-gmc/v1/audiences/segments/run-continue",
+      "hp-gmc/v1/audiences/segments/run-progress",
+      "hp-gmc/v1/audiences/segments/run-start",
+      "hp-gmc/v1/audiences/segments/{id}",
+      "hp-gmc/v1/audiences/segments/{id}/duplicate",
+      "hp-gmc/v1/audiences/segments/{id}/export-csv",
+      "hp-gmc/v1/audiences/segments/{id}/run",
+      "hp-gmc/v1/audiences/segments/{id}/upload",
+      "hp-gmc/v1/audiences/segments/{id}/upload-status",
       "hp-gmc/v1/funnel-feed",
       "hp-gmc/v1/funnel-feed/regenerate",
       "hp-gmc/v1/funnel-feed/status",
