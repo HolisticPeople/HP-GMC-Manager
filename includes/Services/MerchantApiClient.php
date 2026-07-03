@@ -184,11 +184,11 @@ class MerchantApiClient
             if ($apiType === 'content') {
                 $baseUrl = "https://shoppingcontent.googleapis.com/content/v2.1/{$this->merchantId}/";
             } elseif ($apiType === 'datasources') {
-                $baseUrl = "https://merchantapi.googleapis.com/datasources/v1beta/";
+                $baseUrl = "https://merchantapi.googleapis.com/datasources/v1/";
             } elseif (strpos($endpoint, 'products') !== false || strpos($endpoint, 'productStatuses') !== false) {
-                $baseUrl = "https://merchantapi.googleapis.com/products/v1beta/";
+                $baseUrl = "https://merchantapi.googleapis.com/products/v1/";
             } else {
-                $baseUrl = "https://merchantapi.googleapis.com/accounts/v1beta/";
+                $baseUrl = "https://merchantapi.googleapis.com/accounts/v1/";
             }
             $url = $baseUrl . $endpoint;
 
