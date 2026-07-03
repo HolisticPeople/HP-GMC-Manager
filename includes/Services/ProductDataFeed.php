@@ -360,17 +360,39 @@ class ProductDataFeed
     {
         $productId = $product->get_id();
 
+        // WooCommerce native GTIN field (WC 9.2+: product edit > Inventory > GTIN/UPC/EAN/ISBN)
+        if (method_exists($product, 'get_global_unique_id')) {
+            $gtin = self::normalizeGtin((string) $product->get_global_unique_id());
+            if ($gtin !== '') {
+                return $gtin;
+            }
+        }
+
         // Check common GTIN meta keys
-        $gtinKeys = ['_gtin', '_ean', '_upc', 'gtin', 'ean', 'upc', '_wpm_gtin_code'];
-        
+        $gtinKeys = ['_global_unique_id', '_gtin', '_ean', '_upc', 'gtin', 'ean', 'upc', '_wpm_gtin_code'];
+
         foreach ($gtinKeys as $key) {
-            $gtin = get_post_meta($productId, $key, true);
-            if (!empty($gtin)) {
-                return (string) $gtin;
+            $gtin = self::normalizeGtin((string) get_post_meta($productId, $key, true));
+            if ($gtin !== '') {
+                return $gtin;
             }
         }
 
         return '';
+    }
+
+    /**
+     * Normalize a raw GTIN value for GMC: strip separators, require a valid
+     * GTIN length (8/12/13/14 digits). Invalid values return '' (fail closed) —
+     * a wrong GTIN causes disapproval, a missing one falls back to brand+mpn.
+     */
+    private static function normalizeGtin(string $raw): string
+    {
+        $digits = preg_replace('/\D/', '', $raw);
+        if (!in_array(strlen($digits), [8, 12, 13, 14], true)) {
+            return '';
+        }
+        return $digits;
     }
 
     /**
