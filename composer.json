@@ -10,7 +10,7 @@
         }
     ],
     "require": {
-        "php": ">=8.0",
+        "php": ">=8.5",
         "google/shopping-merchant-accounts": "^0.1",
         "google/shopping-merchant-products": "^0.1",
         "google/auth": "^1.0"

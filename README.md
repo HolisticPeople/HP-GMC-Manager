@@ -12,7 +12,7 @@ Google Merchant Center management plugin for WordPress/WooCommerce with admin da
 
 ## Requirements
 
-- PHP 8.0+
+- PHP 8.5+
 - WordPress 6.0+
 - WooCommerce 8.0+
 - HP-Abilities plugin (for MCP integration)
@@ -100,12 +100,43 @@ Use the same bridge URL as GMC staging/production with query param `?scope=marke
 
 ## GLA Integration
 
-This plugin complements the Google Listings & Ads (GLA) plugin:
+The Google Listings & Ads (GLA) plugin is **inactive** in production (since
+before 2026-07); HP GMC Manager is the sole primary product source (pull feed
+`/wp-json/hp-gmc/v1/product-feed`, GMC datafeed 407019991):
 
-- GLA handles product sync (feed-based)
-- HP GMC Manager adds monitoring, shipping settings, and MCP tools
-- Reads GLA's product ID mapping (`gla_XXXXX`)
-- Does not conflict with GLA's sync operations
+- Keeps GLA's offer-ID convention (`gla_{product_id}`, `_wc_gla_mc_offer_id`)
+  so GMC item history is preserved
+- GLA postmeta is load-bearing: feed inclusion still honors
+  `_wc_gla_visibility = dont-sync-and-show` — do not purge GLA meta without
+  migrating those flags to `_hp_gmc_excluded`
+
+## Changelog
+
+### 3.2.0 — Current Staging Build
+- **Primary feed `identifier_exists` column**: rows WITHOUT a GTIN now emit
+  `identifier_exists=no` (interim doctrine, user decision 2026-07-04, until
+  each product's barcode is resolved); rows with a GTIN leave it blank
+  (defaults to yes). Rationale: ~200 catalog products are genuinely
+  barcode-less house/practitioner brands (Tachyonized, Dr Gabriel Cousens
+  Scalar line, Natures Frequencies, Mother Earth Minerals) — declaring
+  identifier_exists=no is the honest signal and stops "limited performance"
+  warnings for them.
+
+### 3.1.0
+- **Merchant API v1beta → v1 migration**: Google discontinued v1beta on
+  2026-02-28; all dataSource/product/account calls (`listDataSources`,
+  `fetchDataSource`, `getProductStatuses`, the hourly `hp_gmc_sync_status`
+  status sync) were failing with HTTP 409. Base URLs now target v1.
+  NOTE: Merchant API v1 additionally requires a one-time developer
+  registration of the service account's GCP project with the merchant account
+  (`accounts/{id}/developerRegistration:registerGcp`) — calls return 401
+  `GCP_NOT_REGISTERED` until that is done.
+- **Primary feed GTIN**: the `gtin` column now reads WooCommerce's native
+  GTIN/UPC/EAN/ISBN field (`_global_unique_id`, WC 9.2+ product Inventory tab)
+  first, then legacy meta keys. Values are normalized (separators stripped)
+  and must be 8/12/13/14 digits, otherwise emitted empty (fail closed — a
+  wrong GTIN causes disapproval; a missing one falls back to brand+mpn).
+- Added `tests/` regression ledger (standalone PHP assertion scripts).
 
 ## Development
 

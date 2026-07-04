@@ -351,6 +351,8 @@ class Plugin
             return;
         }
 
+        do_action('hp_zen_enqueue_admin_surface', 'hp-gmc-manager');
+
         wp_enqueue_style(
             'hp-gmc-admin',
             HP_GMC_URL . 'assets/css/dashboard.css',

@@ -66,6 +66,7 @@ class ProductDataFeed
             'color',
             'age_group',
             'gender',
+            'identifier_exists',
         ];
 
         $lines = [];
@@ -87,6 +88,7 @@ class ProductDataFeed
 
             // Get GMC-formatted ID (uses GLA ID if available)
             $gmcId = self::getGmcOfferId($productId);
+            $gtin = self::getGtin($product);
 
             // Build row data
             $row = [
@@ -100,13 +102,16 @@ class ProductDataFeed
                 self::escapeField(self::getBrand($product), $format),
                 self::escapeField('new', $format), // Condition is always new for this store
                 self::escapeField($product->get_sku(), $format),
-                self::escapeField(self::getGtin($product), $format),
+                self::escapeField($gtin, $format),
                 self::escapeField(self::getShippingWeight($product), $format),
                 self::escapeField(self::getGoogleProductCategory($product), $format),
                 self::escapeField(self::getProductType($product), $format),
                 self::escapeField(self::getColor($product), $format),
                 self::escapeField(self::getAgeGroup($product), $format),
                 self::escapeField(self::getGender($product), $format),
+                // Interim doctrine (2026-07-04): products without a verified GTIN
+                // declare identifier_exists=no until their barcode is resolved.
+                self::escapeField($gtin === '' ? 'no' : '', $format),
             ];
 
             $lines[] = implode($delimiter, $row);
@@ -360,17 +365,39 @@ class ProductDataFeed
     {
         $productId = $product->get_id();
 
+        // WooCommerce native GTIN field (WC 9.2+: product edit > Inventory > GTIN/UPC/EAN/ISBN)
+        if (method_exists($product, 'get_global_unique_id')) {
+            $gtin = self::normalizeGtin((string) $product->get_global_unique_id());
+            if ($gtin !== '') {
+                return $gtin;
+            }
+        }
+
         // Check common GTIN meta keys
-        $gtinKeys = ['_gtin', '_ean', '_upc', 'gtin', 'ean', 'upc', '_wpm_gtin_code'];
-        
+        $gtinKeys = ['_global_unique_id', '_gtin', '_ean', '_upc', 'gtin', 'ean', 'upc', '_wpm_gtin_code'];
+
         foreach ($gtinKeys as $key) {
-            $gtin = get_post_meta($productId, $key, true);
-            if (!empty($gtin)) {
-                return (string) $gtin;
+            $gtin = self::normalizeGtin((string) get_post_meta($productId, $key, true));
+            if ($gtin !== '') {
+                return $gtin;
             }
         }
 
         return '';
+    }
+
+    /**
+     * Normalize a raw GTIN value for GMC: strip separators, require a valid
+     * GTIN length (8/12/13/14 digits). Invalid values return '' (fail closed) —
+     * a wrong GTIN causes disapproval, a missing one falls back to brand+mpn.
+     */
+    private static function normalizeGtin(string $raw): string
+    {
+        $digits = preg_replace('/\D/', '', $raw);
+        if (!in_array(strlen($digits), [8, 12, 13, 14], true)) {
+            return '';
+        }
+        return $digits;
     }
 
     /**
