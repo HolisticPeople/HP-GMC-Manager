@@ -81,6 +81,15 @@ $meta[4] = ['_wpm_gtin_code' => '4006381333931'];
 check($rm->invoke(null, new FakeProduct(4, '')) === '4006381333931',
     'getGtin honors legacy GTIN meta keys');
 
+// --- 3.2.0: identifier_exists doctrine (user 2026-07-04) — no-GTIN rows declare
+// identifier_exists=no; GTIN rows leave it blank. Assert column placement AND logic.
+$rmHeaderCheck = strpos($feed, "'identifier_exists',");
+check($rmHeaderCheck !== false, 'feed header includes identifier_exists column');
+check(strpos($feed, "\$gtin === '' ? 'no' : ''") !== false,
+    'identifier_exists emits no exactly when gtin is empty');
+check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\];/", $feed),
+    'identifier_exists is the LAST header column (matches row order)');
+
 // --- Availability doctrine (backorder business model, user 2026-07-03):
 // the feed must use WC is_in_stock(), NOT HP-Inventory sellable QOH — HP sells
 // on backorder and shows in_stock unless a known supplier issue.
