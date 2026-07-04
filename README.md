@@ -112,7 +112,17 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.1.0 — Current Staging Build
+### 3.2.0 — Current Staging Build
+- **Primary feed `identifier_exists` column**: rows WITHOUT a GTIN now emit
+  `identifier_exists=no` (interim doctrine, user decision 2026-07-04, until
+  each product's barcode is resolved); rows with a GTIN leave it blank
+  (defaults to yes). Rationale: ~200 catalog products are genuinely
+  barcode-less house/practitioner brands (Tachyonized, Dr Gabriel Cousens
+  Scalar line, Natures Frequencies, Mother Earth Minerals) — declaring
+  identifier_exists=no is the honest signal and stops "limited performance"
+  warnings for them.
+
+### 3.1.0
 - **Merchant API v1beta → v1 migration**: Google discontinued v1beta on
   2026-02-28; all dataSource/product/account calls (`listDataSources`,
   `fetchDataSource`, `getProductStatuses`, the hourly `hp_gmc_sync_status`
