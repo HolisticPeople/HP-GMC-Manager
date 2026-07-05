@@ -98,5 +98,19 @@ check(strpos($feed, "is_in_stock() ? 'in_stock' : 'out_of_stock'") !== false,
 check(strpos($feed, 'hp_inventory_sellable_qoh') === false,
     'feed availability does NOT consult sellable QOH (intentional)');
 
+// --- 3.2.1: supplemental feed must serve RAW text (header+echo+exit), never
+// through WP_REST_Response - the JSON-encoded blob was unparseable by GMC and
+// silently disabled every override/exclusion since the feeds were linked.
+$supp = (string) file_get_contents($root . '/includes/Rest/SupplementalFeedEndpoint.php');
+$serve_pos = strpos($supp, 'public static function serveFeed');
+$echo_pos = strpos($supp, 'echo $content;', (int) $serve_pos);
+$exit_pos = strpos($supp, 'exit;', (int) $echo_pos);
+check($serve_pos !== false && $echo_pos !== false && $exit_pos !== false,
+    'supplemental serveFeed emits raw content via echo+exit');
+check(!preg_match('/new WP_REST_Response\(\$content/', $supp),
+    'supplemental serveFeed never wraps feed content in WP_REST_Response');
+check(strpos($supp, "header('Content-Type: '", (int) $serve_pos) !== false,
+    'supplemental serveFeed sends the content type via header()');
+
 echo $failures === 0 ? "\nALL PASS\n" : "\n$failures FAILURE(S)\n";
 exit($failures === 0 ? 0 : 1);
