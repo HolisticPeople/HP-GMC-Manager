@@ -52,10 +52,17 @@ class SupplementalFeedEndpoint
     /**
      * Generate and serve the supplemental feed content.
      *
+     * Serves RAW text via header()+echo+exit exactly like ProductFeedEndpoint.
+     * Returning the string through WP_REST_Response JSON-encodes it into one
+     * quoted blob, which GMC's fetcher cannot parse — this bug silently
+     * disabled every supplemental override/exclusion since the feeds were
+     * linked (fixed in 3.2.1; verified via Content API products.get showing
+     * no overrides/exclusions ever applied).
+     *
      * @param WP_REST_Request $request
-     * @return WP_REST_Response
+     * @return WP_REST_Response|void
      */
-    public static function serveFeed(WP_REST_Request $request): WP_REST_Response
+    public static function serveFeed(WP_REST_Request $request)
     {
         $feedId = (int) $request->get_param('id');
         $format = $request->get_param('format') ?: 'tsv';
@@ -85,14 +92,15 @@ class SupplementalFeedEndpoint
         $contentType = $format === 'csv' ? 'text/csv' : 'text/tab-separated-values';
         $filename = sanitize_file_name($feed['name']) . '.' . $format;
 
-        $response = new WP_REST_Response($content, 200);
-        $response->header('Content-Type', $contentType . '; charset=utf-8');
-        $response->header('Content-Disposition', 'inline; filename="' . $filename . '"');
-        $response->header('Cache-Control', 'public, max-age=300');
-        $response->header('X-Feed-Id', (string) $feedId);
-        $response->header('X-Feed-Name', $feed['name']);
+        // Send headers directly (not through WP_REST_Response for raw content).
+        header('Content-Type: ' . $contentType . '; charset=utf-8');
+        header('Content-Disposition: inline; filename="' . $filename . '"');
+        header('Cache-Control: public, max-age=300');
+        header('X-Feed-Id: ' . $feedId);
+        header('X-Feed-Name: ' . $feed['name']);
 
-        return $response;
+        echo $content;
+        exit;
     }
 
     /**
