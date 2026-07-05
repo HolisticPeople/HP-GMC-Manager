@@ -112,7 +112,11 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.2.0 — Current Staging Build
+### 3.2.1 — Current Staging Build
+
+- **Fix: supplemental feed endpoints served JSON, not TSV.** `SupplementalFeedEndpoint::serveFeed()` returned the feed text through `WP_REST_Response`, which JSON-encodes it into one quoted string — GMC's daily fetch of both linked supplemental datasources (hp-exclusions, hp-supplemental-overrides) has never parsed a single row, silently disabling every override and exclusion since the feeds were linked (verified via Content API `products.get`: no effective overrides, empty `excludedDestinations`). Now serves raw text via header()+echo+exit, exactly like the primary feed endpoint. Regression assertions added to CoreStructureTest.
+
+### 3.2.0
 - **Primary feed `identifier_exists` column**: rows WITHOUT a GTIN now emit
   `identifier_exists=no` (interim doctrine, user decision 2026-07-04, until
   each product's barcode is resolved); rows with a GTIN leave it blank
