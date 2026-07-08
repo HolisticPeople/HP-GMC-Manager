@@ -70,7 +70,6 @@ class ProductDataFeed
             'additional_image_link',
             'sale_price',
             'sale_price_effective_date',
-            'product_highlights',
             'shipping_length',
             'shipping_width',
             'shipping_height',
@@ -123,7 +122,6 @@ class ProductDataFeed
                 self::escapeField(self::getAdditionalImageLink($product), $format),
                 self::escapeField(self::getSalePrice($product, $currency), $format),
                 self::escapeField(self::getSalePriceEffectiveDate($product), $format),
-                self::escapeField(self::getProductHighlights($product), $format),
                 self::escapeField(self::getShippingDimension($product, 'length'), $format),
                 self::escapeField(self::getShippingDimension($product, 'width'), $format),
                 self::escapeField(self::getShippingDimension($product, 'height'), $format),
@@ -481,52 +479,14 @@ class ProductDataFeed
         return rtrim(rtrim(number_format(floatval($value), 2, '.', ''), '0'), '.') . ' ' . $gmcUnit;
     }
 
-    /**
-     * Product highlights for `product_highlights` — short bullet features.
-     *
-     * Derived ONLY from genuine bullet-list (<li>) items in the short
-     * description (then the long description as a fallback). Returns '' when no
-     * bullet list exists — paragraphs are NOT reshaped into fake highlights.
-     * Up to 10 highlights, comma-separated (GMC text-feed multi-value format).
-     *
-     * @param \WC_Product $product
-     * @return string
-     */
-    private static function getProductHighlights(\WC_Product $product): string
-    {
-        foreach ([$product->get_short_description(), $product->get_description()] as $source) {
-            $source = (string) $source;
-            if (stripos($source, '<li') === false) {
-                continue;
-            }
-            if (!preg_match_all('/<li\b[^>]*>(.*?)<\/li>/is', $source, $matches)) {
-                continue;
-            }
-            $highlights = [];
-            foreach ($matches[1] as $raw) {
-                $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($raw)));
-                if ($text === '') {
-                    continue;
-                }
-                // GMC caps each highlight at 150 characters.
-                if (strlen($text) > 150) {
-                    $text = substr($text, 0, 147) . '...';
-                }
-                // Commas are the multi-value separator in text feeds; neutralize
-                // any inside a single highlight so values don't split wrongly.
-                $text = str_replace(',', ';', $text);
-                $highlights[] = $text;
-                if (count($highlights) >= 10) {
-                    break;
-                }
-            }
-            if (!empty($highlights)) {
-                return implode(',', $highlights);
-            }
-        }
-
-        return '';
-    }
+    // NOTE (3.3.1): product_highlights was intentionally REMOVED. It extracted
+    // <li> bullets from product descriptions straight into the feed, which
+    // surfaced un-reviewed disease/claim language (e.g. "can cure…",
+    // "flu virus", "infection") on products outside the claims-remediation
+    // scope — a GMC healthcare-misleading-claims risk. Do NOT reintroduce a
+    // free-text-from-content feed attribute without a server-side compliance
+    // guard (see HP-Protocol's purpose deny-list, `purpose_withheld`) AND a
+    // full-catalog claims audit of the source field.
 
     /**
      * Get brand for a product.

@@ -112,7 +112,20 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.3.0 — Current Staging Build
+### 3.3.1 — Current Staging Build
+
+- **Removed `product_highlights`** (added in 3.3.0). It extracted `<li>` bullets
+  from product descriptions directly into the feed, which surfaced un-reviewed
+  disease/claim language (e.g. "can cure...", "flu virus", "infection") on
+  products outside the claims-remediation scope — a GMC healthcare-misleading-
+  claims risk. Caught on staging before any production promotion. The other
+  3.3.0 additions (additional_image_link, sale_price + price/sale_price fix,
+  sale_price_effective_date, shipping dimensions) are retained. Regression
+  guard added: the feed header must not contain product_highlights and the
+  builder must not exist, so it can't return without a compliance guard + a
+  full-catalog claims audit.
+
+### 3.3.0
 
 - **UCP / agentic-commerce feed enhancement.** The primary product feed now
   emits a richer, agent-relevant attribute set, each column populated ONLY when
