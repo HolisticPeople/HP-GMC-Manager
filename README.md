@@ -112,7 +112,34 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.2.1 — Current Staging Build
+### 3.3.0 — Current Staging Build
+
+- **UCP / agentic-commerce feed enhancement.** The primary product feed now
+  emits a richer, agent-relevant attribute set, each column populated ONLY when
+  the product actually carries the data (blank cell = "attribute not provided",
+  matching the `identifier_exists` doctrine — never fabricated):
+  - `additional_image_link` — up to 10 gallery image URLs (comma-separated),
+    excluding the primary image. Coverage: ~355 products.
+  - `sale_price` + corrected `price` — when a product is on sale, `price` now
+    holds the **regular** price and `sale_price` holds the sale amount (GMC
+    requires this pairing). Previously an on-sale product emitted the sale
+    amount in `price` with no `sale_price` at all. Coverage: ~22 products.
+  - `sale_price_effective_date` — ISO-8601 `start/end` range, emitted only when
+    BOTH sale dates are set (0 products today; code is ready).
+  - `product_highlights` — short bullet features, derived only from genuine
+    `<li>` bullet lists in the short/long description (paragraphs are not
+    reshaped into fake bullets). Coverage: ~4 products.
+  - `shipping_length` / `shipping_width` / `shipping_height` — physical product
+    dimensions with a GMC-valid unit (in/cm). Coverage: ~536 products.
+- **Not added (no source data):** `item_group_id` and variant attributes
+  (`size`, `material`, `pattern`) — the catalog contains **zero variable
+  products** (all 559 are simple), so these would be 100%-empty columns. Add
+  them in lockstep if variable products are ever introduced.
+- Availability remains WC `is_in_stock()` (backorder business model, unchanged).
+- Regression assertions for every new column (presence + omit-when-empty
+  behavior + the price/sale_price pairing) added to CoreStructureTest.
+
+### 3.2.1
 
 - **Fix: supplemental feed endpoints served JSON, not TSV.** `SupplementalFeedEndpoint::serveFeed()` returned the feed text through `WP_REST_Response`, which JSON-encodes it into one quoted string — GMC's daily fetch of both linked supplemental datasources (hp-exclusions, hp-supplemental-overrides) has never parsed a single row, silently disabling every override and exclusion since the feeds were linked (verified via Content API `products.get`: no effective overrides, empty `excludedDestinations`). Now serves raw text via header()+echo+exit, exactly like the primary feed endpoint. Regression assertions added to CoreStructureTest.
 
