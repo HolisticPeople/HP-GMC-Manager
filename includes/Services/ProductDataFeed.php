@@ -64,6 +64,16 @@ class ProductDataFeed
             'google_product_category',
             'product_type',
             'color',
+            // UCP / agentic-commerce enhancement columns (3.3.0). Each is emitted
+            // ONLY when the product actually carries the data; the cell is left
+            // blank otherwise (GMC reads a blank cell as "attribute not provided").
+            'additional_image_link',
+            'sale_price',
+            'sale_price_effective_date',
+            'product_highlights',
+            'shipping_length',
+            'shipping_width',
+            'shipping_height',
             'age_group',
             'gender',
             'identifier_exists',
@@ -97,7 +107,9 @@ class ProductDataFeed
                 self::escapeField(self::getDescription($product), $format),
                 self::escapeField($product->get_permalink(), $format),
                 self::escapeField(self::getImageLink($product), $format),
-                self::escapeField(self::formatPrice($product->get_price(), $currency), $format),
+                // price = the REGULAR (non-sale) price; when a product is on sale
+                // GMC requires the sale amount in the separate sale_price column.
+                self::escapeField(self::formatPrice(self::getRegularPrice($product), $currency), $format),
                 self::escapeField($product->is_in_stock() ? 'in_stock' : 'out_of_stock', $format),
                 self::escapeField(self::getBrand($product), $format),
                 self::escapeField('new', $format), // Condition is always new for this store
@@ -107,6 +119,14 @@ class ProductDataFeed
                 self::escapeField(self::getGoogleProductCategory($product), $format),
                 self::escapeField(self::getProductType($product), $format),
                 self::escapeField(self::getColor($product), $format),
+                // UCP / agentic-commerce columns — each blank unless the data exists.
+                self::escapeField(self::getAdditionalImageLink($product), $format),
+                self::escapeField(self::getSalePrice($product, $currency), $format),
+                self::escapeField(self::getSalePriceEffectiveDate($product), $format),
+                self::escapeField(self::getProductHighlights($product), $format),
+                self::escapeField(self::getShippingDimension($product, 'length'), $format),
+                self::escapeField(self::getShippingDimension($product, 'width'), $format),
+                self::escapeField(self::getShippingDimension($product, 'height'), $format),
                 self::escapeField(self::getAgeGroup($product), $format),
                 self::escapeField(self::getGender($product), $format),
                 // Interim doctrine (2026-07-04): products without a verified GTIN
@@ -305,6 +325,207 @@ class ProductDataFeed
         }
 
         return number_format((float) $price, 2, '.', '') . ' ' . $currency;
+    }
+
+    /**
+     * Regular (non-sale) price for the `price` column.
+     *
+     * GMC requires the price attribute to hold the regular price whenever a
+     * sale_price is also present. Falls back to the active price when no regular
+     * price is recorded (never fabricates a value).
+     *
+     * @param \WC_Product $product
+     * @return string
+     */
+    private static function getRegularPrice(\WC_Product $product): string
+    {
+        $regular = $product->get_regular_price();
+        if ($regular !== '' && $regular !== null && floatval($regular) > 0) {
+            return (string) $regular;
+        }
+        return (string) $product->get_price();
+    }
+
+    /**
+     * Sale price for the `sale_price` column — emitted ONLY when the product is
+     * genuinely on sale (active sale price below the regular price). Returns ''
+     * (blank cell) otherwise; never fabricated.
+     *
+     * @param \WC_Product $product
+     * @param string $currency
+     * @return string
+     */
+    private static function getSalePrice(\WC_Product $product, string $currency): string
+    {
+        if (!$product->is_on_sale()) {
+            return '';
+        }
+
+        $sale = $product->get_sale_price();
+        $regular = $product->get_regular_price();
+
+        if ($sale === '' || $sale === null || floatval($sale) <= 0) {
+            return '';
+        }
+        // Only trust a sale that is actually cheaper than the regular price.
+        if ($regular !== '' && $regular !== null && floatval($sale) >= floatval($regular)) {
+            return '';
+        }
+
+        return self::formatPrice($sale, $currency);
+    }
+
+    /**
+     * Sale-price effective date range for `sale_price_effective_date` — emitted
+     * ONLY when BOTH a start and end date are set on the sale. Returns '' when
+     * either bound is missing (an open-ended sale needs no date range).
+     *
+     * Format: ISO 8601 range "START/END" (GMC spec).
+     *
+     * @param \WC_Product $product
+     * @return string
+     */
+    private static function getSalePriceEffectiveDate(\WC_Product $product): string
+    {
+        if (!$product->is_on_sale()) {
+            return '';
+        }
+
+        $from = $product->get_date_on_sale_from();
+        $to = $product->get_date_on_sale_to();
+
+        if (!$from || !$to) {
+            return '';
+        }
+
+        return $from->date('c') . '/' . $to->date('c');
+    }
+
+    /**
+     * Additional product images for `additional_image_link`.
+     *
+     * Emits up to 10 gallery image URLs (GMC's cap), comma-separated, ONLY when
+     * the product has gallery images. Returns '' when the gallery is empty.
+     *
+     * @param \WC_Product $product
+     * @return string
+     */
+    private static function getAdditionalImageLink(\WC_Product $product): string
+    {
+        $galleryIds = $product->get_gallery_image_ids();
+        if (empty($galleryIds)) {
+            return '';
+        }
+
+        $mainId = (int) $product->get_image_id();
+        $urls = [];
+        foreach ($galleryIds as $imageId) {
+            $imageId = (int) $imageId;
+            if ($imageId === $mainId) {
+                continue; // Don't duplicate the primary image_link.
+            }
+            $url = wp_get_attachment_url($imageId);
+            if ($url) {
+                $urls[] = $url;
+            }
+            if (count($urls) >= 10) {
+                break; // GMC accepts a maximum of 10 additional images.
+            }
+        }
+
+        return implode(',', $urls);
+    }
+
+    /**
+     * Product physical dimensions for the `shipping_length` / `shipping_width` /
+     * `shipping_height` columns. Emitted ONLY when the requested WooCommerce
+     * dimension is set; returns '' otherwise.
+     *
+     * Format: "{value} {unit}" where unit is GMC-valid (in or cm).
+     *
+     * @param \WC_Product $product
+     * @param string $which One of 'length', 'width', 'height'
+     * @return string
+     */
+    private static function getShippingDimension(\WC_Product $product, string $which): string
+    {
+        $value = match ($which) {
+            'length' => $product->get_length(),
+            'width'  => $product->get_width(),
+            'height' => $product->get_height(),
+            default  => '',
+        };
+
+        if ($value === '' || $value === null || !is_numeric($value) || floatval($value) <= 0) {
+            return '';
+        }
+
+        $wcUnit = strtolower(trim((string) get_option('woocommerce_dimension_unit', 'in')));
+        // GMC accepts only in or cm for shipping dimensions.
+        $gmcUnit = in_array($wcUnit, ['in', 'cm'], true) ? $wcUnit : null;
+        if ($gmcUnit === null) {
+            // Convert the other WooCommerce units to cm so we never emit an
+            // unsupported unit (m → cm, mm → cm, yd → in).
+            $converted = match ($wcUnit) {
+                'm'  => ['val' => floatval($value) * 100, 'unit' => 'cm'],
+                'mm' => ['val' => floatval($value) / 10, 'unit' => 'cm'],
+                'yd' => ['val' => floatval($value) * 36, 'unit' => 'in'],
+                default => null,
+            };
+            if ($converted === null) {
+                return '';
+            }
+            return rtrim(rtrim(number_format($converted['val'], 2, '.', ''), '0'), '.') . ' ' . $converted['unit'];
+        }
+
+        return rtrim(rtrim(number_format(floatval($value), 2, '.', ''), '0'), '.') . ' ' . $gmcUnit;
+    }
+
+    /**
+     * Product highlights for `product_highlights` — short bullet features.
+     *
+     * Derived ONLY from genuine bullet-list (<li>) items in the short
+     * description (then the long description as a fallback). Returns '' when no
+     * bullet list exists — paragraphs are NOT reshaped into fake highlights.
+     * Up to 10 highlights, comma-separated (GMC text-feed multi-value format).
+     *
+     * @param \WC_Product $product
+     * @return string
+     */
+    private static function getProductHighlights(\WC_Product $product): string
+    {
+        foreach ([$product->get_short_description(), $product->get_description()] as $source) {
+            $source = (string) $source;
+            if (stripos($source, '<li') === false) {
+                continue;
+            }
+            if (!preg_match_all('/<li\b[^>]*>(.*?)<\/li>/is', $source, $matches)) {
+                continue;
+            }
+            $highlights = [];
+            foreach ($matches[1] as $raw) {
+                $text = trim(preg_replace('/\s+/', ' ', wp_strip_all_tags($raw)));
+                if ($text === '') {
+                    continue;
+                }
+                // GMC caps each highlight at 150 characters.
+                if (strlen($text) > 150) {
+                    $text = substr($text, 0, 147) . '...';
+                }
+                // Commas are the multi-value separator in text feeds; neutralize
+                // any inside a single highlight so values don't split wrongly.
+                $text = str_replace(',', ';', $text);
+                $highlights[] = $text;
+                if (count($highlights) >= 10) {
+                    break;
+                }
+            }
+            if (!empty($highlights)) {
+                return implode(',', $highlights);
+            }
+        }
+
+        return '';
     }
 
     /**
