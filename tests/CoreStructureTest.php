@@ -119,10 +119,15 @@ check(strpos($supp, "header('Content-Type: '", (int) $serve_pos) !== false,
 // Header presence for every new column.
 foreach ([
     'additional_image_link', 'sale_price', 'sale_price_effective_date',
-    'product_highlights', 'shipping_length', 'shipping_width', 'shipping_height',
+    'shipping_length', 'shipping_width', 'shipping_height',
 ] as $col) {
     check(strpos($feed, "'$col',") !== false, "feed header includes $col column");
 }
+// --- 3.3.1: product_highlights REMOVED (claims risk — surfaced un-reviewed
+// disease/claim language from description bullets into the feed). Guard so it
+// cannot silently return without a compliance guard + full claims audit.
+check(strpos($feed, "'product_highlights'") === false, 'product_highlights column is NOT in the feed header (removed 3.3.1, claims risk)');
+check(strpos($feed, 'getProductHighlights') === false, 'getProductHighlights builder is fully removed (no dead call site)');
 // identifier_exists must remain the LAST column even after the additions.
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\];/", $feed),
     'identifier_exists is STILL the last header column after 3.3.0 additions');
@@ -206,11 +211,8 @@ check($call('getShippingDimension', [$p, 'length']) === '3 in', 'getShippingDime
 $p = new FakeFeedProduct();
 check($call('getShippingDimension', [$p, 'height']) === '', 'getShippingDimension is blank when the dimension is unset (omit-when-empty)');
 
-// product_highlights: only from genuine <li> bullets, never from paragraphs.
-$p = new FakeFeedProduct(); $p->short = '<ul><li>Vegan</li><li>Non-GMO</li></ul>';
-check($call('getProductHighlights', [$p]) === 'Vegan,Non-GMO', 'getProductHighlights extracts bullet-list items');
-$p = new FakeFeedProduct(); $p->short = '<p>A nice paragraph of prose.</p>';
-check($call('getProductHighlights', [$p]) === '', 'getProductHighlights is blank for prose (no fabricated bullets)');
+// product_highlights builder removed in 3.3.1 (claims risk) — no test needed;
+// the header + no-call-site assertions above are the regression guard.
 
 echo $failures === 0 ? "\nALL PASS\n" : "\n$failures FAILURE(S)\n";
 exit($failures === 0 ? 0 : 1);
