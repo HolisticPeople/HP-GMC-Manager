@@ -112,5 +112,107 @@ check(!preg_match('/new WP_REST_Response\(\$content/', $supp),
 check(strpos($supp, "header('Content-Type: '", (int) $serve_pos) !== false,
     'supplemental serveFeed sends the content type via header()');
 
+// --- 3.3.0: UCP / agentic-commerce enhancement columns. Assert header presence,
+// the price/sale_price pairing, and — crucially — the omit-when-empty behavior
+// (a product without the data yields a BLANK cell, never a fabricated value).
+
+// Header presence for every new column.
+foreach ([
+    'additional_image_link', 'sale_price', 'sale_price_effective_date',
+    'shipping_length', 'shipping_width', 'shipping_height',
+] as $col) {
+    check(strpos($feed, "'$col',") !== false, "feed header includes $col column");
+}
+// --- 3.3.1: product_highlights REMOVED (claims risk — surfaced un-reviewed
+// disease/claim language from description bullets into the feed). Guard so it
+// cannot silently return without a compliance guard + full claims audit.
+check(strpos($feed, "'product_highlights'") === false, 'product_highlights column is NOT in the feed header (removed 3.3.1, claims risk)');
+check(strpos($feed, 'getProductHighlights') === false, 'getProductHighlights builder is fully removed (no dead call site)');
+// identifier_exists must remain the LAST column even after the additions.
+check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\];/", $feed),
+    'identifier_exists is STILL the last header column after 3.3.0 additions');
+// price must now source the regular price so sale_price can carry the sale amount.
+check(strpos($feed, 'self::getRegularPrice($product)') !== false,
+    'price column sources the regular (non-sale) price');
+
+// WP stubs needed to exercise the new builders.
+if (!function_exists('get_option')) {
+    function get_option($key, $default = false) {
+        return $key === 'woocommerce_dimension_unit' ? 'in' : $default;
+    }
+}
+if (!function_exists('wp_strip_all_tags')) {
+    function wp_strip_all_tags($s, $b = false) { return trim(strip_tags((string) $s)); }
+}
+if (!function_exists('wp_get_attachment_url')) {
+    function wp_get_attachment_url($id) { return "https://img.example/$id.png"; }
+}
+
+class SaleDate { public function __construct(private string $c) {} public function date($f) { return $this->c; } }
+
+class FakeFeedProduct extends WC_Product
+{
+    public array $gallery = [];
+    public int $mainImage = 0;
+    public string $len = '', $wid = '', $hei = '';
+    public bool $onSale = false;
+    public string $sale = '', $regular = '', $price = '';
+    public ?SaleDate $from = null, $to = null;
+    public string $short = '', $long = '';
+    public function get_gallery_image_ids() { return $this->gallery; }
+    public function get_image_id() { return $this->mainImage; }
+    public function get_length() { return $this->len; }
+    public function get_width() { return $this->wid; }
+    public function get_height() { return $this->hei; }
+    public function is_on_sale() { return $this->onSale; }
+    public function get_sale_price() { return $this->sale; }
+    public function get_regular_price() { return $this->regular; }
+    public function get_price() { return $this->price; }
+    public function get_date_on_sale_from() { return $this->from; }
+    public function get_date_on_sale_to() { return $this->to; }
+    public function get_short_description() { return $this->short; }
+    public function get_description() { return $this->long; }
+}
+
+$cls = \HP_GMC\Services\ProductDataFeed::class;
+$call = fn(string $m, array $args) => (new ReflectionMethod($cls, $m))->invokeArgs(null, $args);
+
+// additional_image_link: gallery URLs comma-joined, primary image excluded.
+$p = new FakeFeedProduct(); $p->gallery = [10, 11, 12]; $p->mainImage = 10;
+check($call('getAdditionalImageLink', [$p]) === 'https://img.example/11.png,https://img.example/12.png',
+    'getAdditionalImageLink joins gallery URLs and drops the primary image');
+$p = new FakeFeedProduct(); // empty gallery
+check($call('getAdditionalImageLink', [$p]) === '',
+    'getAdditionalImageLink is blank when there are no gallery images (omit-when-empty)');
+
+// sale_price: only a genuine discount, correctly formatted; blank otherwise.
+$p = new FakeFeedProduct(); $p->onSale = true; $p->sale = '8'; $p->regular = '10';
+check($call('getSalePrice', [$p, 'USD']) === '8.00 USD', 'getSalePrice emits the formatted sale amount');
+$p = new FakeFeedProduct(); $p->onSale = false; $p->sale = '8'; $p->regular = '10';
+check($call('getSalePrice', [$p, 'USD']) === '', 'getSalePrice is blank when not on sale (omit-when-empty)');
+$p = new FakeFeedProduct(); $p->onSale = true; $p->sale = '10'; $p->regular = '10';
+check($call('getSalePrice', [$p, 'USD']) === '', 'getSalePrice is blank when sale is not below regular');
+
+// getRegularPrice: prefers the regular price for the price column.
+$p = new FakeFeedProduct(); $p->regular = '10'; $p->price = '8';
+check($call('getRegularPrice', [$p]) === '10', 'getRegularPrice returns the regular price for the price column');
+
+// sale_price_effective_date: only when BOTH bounds are set.
+$p = new FakeFeedProduct(); $p->onSale = true; $p->from = new SaleDate('2026-07-01T00:00:00+00:00'); $p->to = new SaleDate('2026-07-31T00:00:00+00:00');
+check($call('getSalePriceEffectiveDate', [$p]) === '2026-07-01T00:00:00+00:00/2026-07-31T00:00:00+00:00',
+    'getSalePriceEffectiveDate emits an ISO-8601 start/end range');
+$p = new FakeFeedProduct(); $p->onSale = true; $p->from = new SaleDate('2026-07-01T00:00:00+00:00');
+check($call('getSalePriceEffectiveDate', [$p]) === '',
+    'getSalePriceEffectiveDate is blank when an end date is missing (omit-when-empty)');
+
+// shipping dimensions: value + GMC-valid unit; blank when unset.
+$p = new FakeFeedProduct(); $p->len = '3';
+check($call('getShippingDimension', [$p, 'length']) === '3 in', 'getShippingDimension emits value + unit');
+$p = new FakeFeedProduct();
+check($call('getShippingDimension', [$p, 'height']) === '', 'getShippingDimension is blank when the dimension is unset (omit-when-empty)');
+
+// product_highlights builder removed in 3.3.1 (claims risk) — no test needed;
+// the header + no-call-site assertions above are the regression guard.
+
 echo $failures === 0 ? "\nALL PASS\n" : "\n$failures FAILURE(S)\n";
 exit($failures === 0 ? 0 : 1);
