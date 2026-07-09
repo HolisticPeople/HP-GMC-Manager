@@ -112,7 +112,20 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.3.1 — Current Staging Build
+### 3.3.2 — Current Staging Build
+
+- **Corrected the `google_product_category` default comment** in
+  `ProductDataFeed::getGoogleProductCategory()`. The comment claimed `469 =
+  "Health & Beauty > Health Care > Vitamins & Supplements"`, which is wrong:
+  **469 is the top-level "Health & Beauty" node**, and the actual supplement leaf
+  is **525 ("… > Fitness & Nutrition > Vitamins & Supplements")**. Comment-only —
+  the default return value stays `469` (a deliberately broad catch-all for
+  products with no per-product mapping). The full catalog was mapped to
+  per-product categories on 2026-07-08 (written to the ACF field the feed reads,
+  which out-ranks this default). Regression guard added so the wrong comment and
+  a drifted default can't return.
+
+### 3.3.1
 
 - **Removed `product_highlights`** (added in 3.3.0). It extracted `<li>` bullets
   from product descriptions directly into the feed, which surfaced un-reviewed

@@ -128,6 +128,16 @@ foreach ([
 // cannot silently return without a compliance guard + full claims audit.
 check(strpos($feed, "'product_highlights'") === false, 'product_highlights column is NOT in the feed header (removed 3.3.1, claims risk)');
 check(strpos($feed, 'getProductHighlights') === false, 'getProductHighlights builder is fully removed (no dead call site)');
+// --- 3.3.2: google_product_category default comment corrected. 469 is the
+// TOP-LEVEL "Health & Beauty" node, NOT the supplement leaf (525). Guard that
+// the wrong comment can't return, the default value stays 469, and the comment
+// still documents the real 525 leaf so the lesson isn't lost.
+check(strpos($feed, '469 = Health & Beauty > Health Care > Vitamins & Supplements') === false,
+    'the WRONG "469 = ...Vitamins & Supplements" comment is gone (469 is the top-level node)');
+check((bool) preg_match('/525 = "Health & Beauty > Health Care > Fitness & Nutrition > Vitamins & Supplements"/', $feed),
+    'default comment documents the real supplement leaf (525)');
+check((bool) preg_match('/Default for products with no per-product mapping.*?\R(?:.*\R)*?\s*return \'469\';/', $feed),
+    'getGoogleProductCategory still defaults to 469 for unmapped products');
 // identifier_exists must remain the LAST column even after the additions.
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\];/", $feed),
     'identifier_exists is STILL the last header column after 3.3.0 additions');
