@@ -678,8 +678,13 @@ class ProductDataFeed
             return (string) $metaCategory;
         }
 
-        // Default category for health/supplement store
-        // 469 = Health & Beauty > Health Care > Vitamins & Supplements
+        // Default for products with no per-product mapping yet.
+        // 469 = "Health & Beauty" (the TOP-LEVEL node) — a deliberately broad
+        // catch-all, NOT the supplement leaf. The supplement leaf is
+        // 525 = "Health & Beauty > Health Care > Fitness & Nutrition > Vitamins & Supplements".
+        // Per-product categories are set on the ACF field 'google_product_category'
+        // (read above); the full catalog was mapped 2026-07-08. Leave the default
+        // at 469 so an unmapped product stays broad rather than mislabeled.
         return '469';
     }
 
