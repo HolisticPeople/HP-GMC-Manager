@@ -112,7 +112,37 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.3.1 — Current Staging Build
+### 3.4.0 — Current Staging Build
+
+- **UCP checkout-compliance feed attributes.** The primary feed now appends the
+  transaction-layer columns required for Copilot Checkout / Google UCP checkout:
+  `native_commerce(checkout_eligibility)`,
+  `consumer_notice(notice_type:notice_message)`, and `merchant_item_id`.
+- **Checkout eligibility is born OFF.** The global
+  `hp_gmc_ucp_checkout_eligibility` toggle defaults to `disabled`, so the new
+  eligibility column stays blank until store-level native checkout settings are
+  configured. When enabled, products can be failed closed per item with
+  `_hp_gmc_checkout_ineligible=yes`.
+- **Per-product notices are opt-in meta only.** `_hp_gmc_notice_type` and
+  `_hp_gmc_notice_message` emit one sanitized consumer notice only when both are
+  present and the notice type is whitelisted.
+- **Merchant checkout mapping is explicit.** `merchant_item_id` always emits the
+  numeric WooCommerce product ID used by the checkout API as `product_id`.
+
+### 3.3.2
+
+- **Corrected the `google_product_category` default comment** in
+  `ProductDataFeed::getGoogleProductCategory()`. The comment claimed `469 =
+  "Health & Beauty > Health Care > Vitamins & Supplements"`, which is wrong:
+  **469 is the top-level "Health & Beauty" node**, and the actual supplement leaf
+  is **525 ("… > Fitness & Nutrition > Vitamins & Supplements")**. Comment-only —
+  the default return value stays `469` (a deliberately broad catch-all for
+  products with no per-product mapping). The full catalog was mapped to
+  per-product categories on 2026-07-08 (written to the ACF field the feed reads,
+  which out-ranks this default). Regression guard added so the wrong comment and
+  a drifted default can't return.
+
+### 3.3.1
 
 - **Removed `product_highlights`** (added in 3.3.0). It extracted `<li>` bullets
   from product descriptions directly into the feed, which surfaced un-reviewed

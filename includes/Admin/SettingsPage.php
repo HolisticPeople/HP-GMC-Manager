@@ -20,6 +20,7 @@ class SettingsPage
         $mode = get_option('hp_gmc_mode', 'auto');
         $sync_frequency = get_option('hp_gmc_sync_frequency', 'hourly');
         $environment = get_option('hp_gmc_environment', '');
+        $ucp_checkout_eligibility = get_option('hp_gmc_ucp_checkout_eligibility', 'disabled');
         $detected_environment = hp_gmc_get_environment();
         ?>
         <div class="wrap">
@@ -161,6 +162,26 @@ class SettingsPage
                             </select>
                             <p class="description">
                                 <?php esc_html_e('How often to sync product statuses from Google Merchant Center.', 'hp-gmc-manager'); ?>
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h2><?php esc_html_e('Feed Settings', 'hp-gmc-manager'); ?></h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="hp_gmc_ucp_checkout_eligibility"><?php esc_html_e('UCP checkout eligibility', 'hp-gmc-manager'); ?></label>
+                        </th>
+                        <td>
+                            <input type="hidden" name="hp_gmc_ucp_checkout_eligibility" value="disabled">
+                            <input type="checkbox"
+                                   id="hp_gmc_ucp_checkout_eligibility"
+                                   name="hp_gmc_ucp_checkout_eligibility"
+                                   value="enabled"
+                                   <?php checked($ucp_checkout_eligibility, 'enabled'); ?>>
+                            <p class="description">
+                                <?php esc_html_e('Marks feed products as eligible for native checkout on agent surfaces (Copilot Checkout / Google UCP). Leave off until the store-level Copilot Checkout settings are configured.', 'hp-gmc-manager'); ?>
                             </p>
                         </td>
                     </tr>

@@ -76,6 +76,11 @@ class ProductDataFeed
             'age_group',
             'gender',
             'identifier_exists',
+            // UCP checkout-compliance columns (3.4.0). Eligibility stays inert
+            // until globally enabled; notices emit only from reviewed meta.
+            'native_commerce(checkout_eligibility)',
+            'consumer_notice(notice_type:notice_message)',
+            'merchant_item_id',
         ];
 
         $lines = [];
@@ -130,6 +135,10 @@ class ProductDataFeed
                 // Interim doctrine (2026-07-04): products without a verified GTIN
                 // declare identifier_exists=no until their barcode is resolved.
                 self::escapeField($gtin === '' ? 'no' : '', $format),
+                // UCP checkout-compliance columns.
+                self::escapeField(self::checkoutEligibility($product), $format),
+                self::escapeField(self::consumerNotice($productId), $format),
+                self::escapeField(self::merchantItemId($productId), $format),
             ];
 
             $lines[] = implode($delimiter, $row);
@@ -479,6 +488,108 @@ class ProductDataFeed
         return rtrim(rtrim(number_format(floatval($value), 2, '.', ''), '0'), '.') . ' ' . $gmcUnit;
     }
 
+    /**
+     * Native checkout eligibility for agent surfaces.
+     *
+     * Inert by default; when enabled, fail closed unless the product is a
+     * simple, purchasable, in-stock feed item and not explicitly ineligible.
+     *
+     * @param \WC_Product $product
+     * @return string
+     */
+    private static function checkoutEligibility(\WC_Product $product): string
+    {
+        if (get_option('hp_gmc_ucp_checkout_eligibility', 'disabled') !== 'enabled') {
+            return '';
+        }
+
+        $productId = (int) $product->get_id();
+        if (get_post_meta($productId, '_hp_gmc_checkout_ineligible', true) === 'yes') {
+            return self::sanitizeFeedText('FALSE');
+        }
+
+        if (!$product->is_type('simple')) {
+            return self::sanitizeFeedText('FALSE');
+        }
+
+        if (!$product->is_purchasable() || !$product->is_in_stock()) {
+            return self::sanitizeFeedText('FALSE');
+        }
+
+        if (get_post_meta($productId, '_wc_gla_visibility', true) === 'dont-sync-and-show') {
+            return self::sanitizeFeedText('FALSE');
+        }
+
+        if (get_post_meta($productId, '_hp_gmc_excluded', true) === 'yes') {
+            return self::sanitizeFeedText('FALSE');
+        }
+
+        return self::sanitizeFeedText('TRUE');
+    }
+
+    /**
+     * Single consumer notice for `consumer_notice(notice_type:notice_message)`.
+     *
+     * @param int $productId
+     * @return string
+     */
+    private static function consumerNotice(int $productId): string
+    {
+        $type = (string) get_post_meta($productId, '_hp_gmc_notice_type', true);
+        $message = (string) get_post_meta($productId, '_hp_gmc_notice_message', true);
+        $allowedTypes = ['legal_disclaimer', 'safety_warning', 'prop_65'];
+
+        if (!in_array($type, $allowedTypes, true) || trim($message) === '') {
+            return '';
+        }
+
+        if (function_exists('wp_kses')) {
+            $message = wp_kses($message, [
+                'b' => [],
+                'br' => [],
+                'i' => [],
+                'a' => ['href' => []],
+            ]);
+        } else {
+            $message = strip_tags($message, '<b><br><i><a>');
+        }
+
+        if (function_exists('mb_substr')) {
+            $message = mb_substr($message, 0, 1000);
+        } else {
+            $message = substr($message, 0, 1000);
+        }
+
+        $message = trim(self::sanitizeFeedText($message));
+        if ($message === '') {
+            return '';
+        }
+
+        return self::sanitizeFeedText($type . ':' . $message);
+    }
+
+    /**
+     * Merchant checkout item identifier.
+     *
+     * @param int $productId
+     * @return string
+     */
+    private static function merchantItemId(int $productId): string
+    {
+        return self::sanitizeFeedText((string) max(0, $productId));
+    }
+
+    /**
+     * Strip row-breaking characters before values reach the TSV/CSV escaper.
+     *
+     * @param string $value
+     * @return string
+     */
+    private static function sanitizeFeedText(string $value): string
+    {
+        return str_replace(["\r\n", "\r", "\n", "\t"], ' ', $value);
+    }
+
     // NOTE (3.3.1): product_highlights was intentionally REMOVED. It extracted
     // <li> bullets from product descriptions straight into the feed, which
     // surfaced un-reviewed disease/claim language (e.g. "can cure…",
@@ -678,8 +789,13 @@ class ProductDataFeed
             return (string) $metaCategory;
         }
 
-        // Default category for health/supplement store
-        // 469 = Health & Beauty > Health Care > Vitamins & Supplements
+        // Default for products with no per-product mapping yet.
+        // 469 = "Health & Beauty" (the TOP-LEVEL node) — a deliberately broad
+        // catch-all, NOT the supplement leaf. The supplement leaf is
+        // 525 = "Health & Beauty > Health Care > Fitness & Nutrition > Vitamins & Supplements".
+        // Per-product categories are set on the ACF field 'google_product_category'
+        // (read above); the full catalog was mapped 2026-07-08. Leave the default
+        // at 469 so an unmapped product stays broad rather than mislabeled.
         return '469';
     }
 
