@@ -36,7 +36,10 @@
       "hp-gmc/v1/supplemental-feed/{id}"
     ],
     "shortcodes": [],
-    "providers": []
+    "providers": [],
+    "options": [
+      "hp_gmc_ucp_checkout_eligibility"
+    ]
   },
   "verification": {
     "staging": {
