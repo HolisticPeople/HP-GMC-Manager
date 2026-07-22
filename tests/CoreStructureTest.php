@@ -26,6 +26,30 @@ $readme = file_get_contents($root . '/README.md');
 $client = file_get_contents($root . '/includes/Services/MerchantApiClient.php');
 $feed = file_get_contents($root . '/includes/Services/ProductDataFeed.php');
 
+function method_body(string $source, string $method): string
+{
+    $pattern = '/private static function ' . preg_quote($method, '/') . '\s*\([^)]*\)\s*:\s*string\s*\{/';
+    if (!preg_match($pattern, $source, $match, PREG_OFFSET_CAPTURE)) {
+        return '';
+    }
+
+    $start = $match[0][1] + strlen($match[0][0]) - 1;
+    $depth = 0;
+    $len = strlen($source);
+    for ($i = $start; $i < $len; $i++) {
+        if ($source[$i] === '{') {
+            $depth++;
+        } elseif ($source[$i] === '}') {
+            $depth--;
+            if ($depth === 0) {
+                return substr($source, $start, $i - $start + 1);
+            }
+        }
+    }
+
+    return '';
+}
+
 // --- Version coupling: header, constant, and README changelog must agree ---
 preg_match('/^\s*\*\s*Version:\s*([\d.]+)/m', $main, $mHeader);
 preg_match("/define\('HP_GMC_VERSION',\s*'([\d.]+)'\)/", $main, $mConst);
@@ -33,6 +57,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
+check($constVersion === '3.4.0',
+    'current version is pinned exactly to 3.4.0');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -87,8 +113,8 @@ $rmHeaderCheck = strpos($feed, "'identifier_exists',");
 check($rmHeaderCheck !== false, 'feed header includes identifier_exists column');
 check(strpos($feed, "\$gtin === '' ? 'no' : ''") !== false,
     'identifier_exists emits no exactly when gtin is empty');
-check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\];/", $feed),
-    'identifier_exists is the LAST header column (matches row order)');
+check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
+    'identifier_exists remains at the end of the 3.3.0 UCP block');
 
 // --- Availability doctrine (backorder business model, user 2026-07-03):
 // the feed must use WC is_in_stock(), NOT HP-Inventory sellable QOH — HP sells
@@ -138,16 +164,58 @@ check((bool) preg_match('/525 = "Health & Beauty > Health Care > Fitness & Nutri
     'default comment documents the real supplement leaf (525)');
 check((bool) preg_match('/Default for products with no per-product mapping.*?\R(?:.*\R)*?\s*return \'469\';/', $feed),
     'getGoogleProductCategory still defaults to 469 for unmapped products');
-// identifier_exists must remain the LAST column even after the additions.
-check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\];/", $feed),
-    'identifier_exists is STILL the last header column after 3.3.0 additions');
+// identifier_exists must remain the last 3.3.0 UCP column before the 3.4.0
+// checkout-compliance append.
+check((bool) preg_match("/'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
+    'identifier_exists is still the final 3.3.0 UCP header before 3.4.0 additions');
 // price must now source the regular price so sale_price can carry the sale amount.
 check(strpos($feed, 'self::getRegularPrice($product)') !== false,
     'price column sources the regular (non-sale) price');
 
+// --- 3.4.0: UCP checkout-compliance transaction-layer columns for Copilot
+// Checkout / Google UCP. Eligibility is inert by default; notices are opt-in
+// and fail closed; merchant_item_id always maps to the numeric WC product ID.
+$nativeCol = "'native_commerce(checkout_eligibility)',";
+$noticeCol = "'consumer_notice(notice_type:notice_message)',";
+$merchantCol = "'merchant_item_id',";
+foreach ([$nativeCol, $noticeCol, $merchantCol] as $col) {
+    check(strpos($feed, $col) !== false, "feed header includes " . trim($col, "',"));
+}
+$posIdentifier = strpos($feed, "'identifier_exists',");
+$posNative = strpos($feed, $nativeCol);
+$posNotice = strpos($feed, $noticeCol);
+$posMerchant = strpos($feed, $merchantCol);
+check($posIdentifier !== false && $posNative !== false && $posNotice !== false && $posMerchant !== false
+    && $posIdentifier < $posNative && $posNative < $posNotice && $posNotice < $posMerchant,
+    '3.4.0 checkout-compliance columns appear in documented order after the 3.3.0 UCP block');
+
+$checkoutBody = method_body($feed, 'checkoutEligibility');
+check($checkoutBody !== '' && strpos($checkoutBody, "get_option('hp_gmc_ucp_checkout_eligibility', 'disabled') !== 'enabled'") !== false,
+    'checkoutEligibility gates emission on hp_gmc_ucp_checkout_eligibility inside the helper body');
+
+$noticeBody = method_body($feed, 'consumerNotice');
+check($noticeBody !== ''
+    && strpos($noticeBody, "'legal_disclaimer'") !== false
+    && strpos($noticeBody, "'safety_warning'") !== false
+    && strpos($noticeBody, "'prop_65'") !== false,
+    'consumerNotice enforces the documented notice_type enum');
+check($noticeBody !== '' && strpos($noticeBody, '1000') !== false,
+    'consumerNotice hard-truncates messages to 1000 chars');
+
+$merchantBody = method_body($feed, 'merchantItemId');
+check($merchantBody !== '' && strpos($merchantBody, '(string) max(0, $productId)') !== false,
+    'merchantItemId returns the numeric product id as a string');
+check(strpos($feed, 'self::escapeField(self::merchantItemId($productId), $format)') !== false,
+    'merchant_item_id helper is wired into row emission');
+
 // WP stubs needed to exercise the new builders.
+$options = [];
 if (!function_exists('get_option')) {
     function get_option($key, $default = false) {
+        global $options;
+        if (is_array($options) && array_key_exists($key, $options)) {
+            return $options[$key];
+        }
         return $key === 'woocommerce_dimension_unit' ? 'in' : $default;
     }
 }
@@ -162,6 +230,7 @@ class SaleDate { public function __construct(private string $c) {} public functi
 
 class FakeFeedProduct extends WC_Product
 {
+    public int $id = 123;
     public array $gallery = [];
     public int $mainImage = 0;
     public string $len = '', $wid = '', $hei = '';
@@ -169,6 +238,7 @@ class FakeFeedProduct extends WC_Product
     public string $sale = '', $regular = '', $price = '';
     public ?SaleDate $from = null, $to = null;
     public string $short = '', $long = '';
+    public function get_id() { return $this->id; }
     public function get_gallery_image_ids() { return $this->gallery; }
     public function get_image_id() { return $this->mainImage; }
     public function get_length() { return $this->len; }
@@ -182,6 +252,9 @@ class FakeFeedProduct extends WC_Product
     public function get_date_on_sale_to() { return $this->to; }
     public function get_short_description() { return $this->short; }
     public function get_description() { return $this->long; }
+    public function is_type($type) { return $type === 'simple'; }
+    public function is_purchasable() { return true; }
+    public function is_in_stock() { return true; }
 }
 
 $cls = \HP_GMC\Services\ProductDataFeed::class;
@@ -220,6 +293,29 @@ $p = new FakeFeedProduct(); $p->len = '3';
 check($call('getShippingDimension', [$p, 'length']) === '3 in', 'getShippingDimension emits value + unit');
 $p = new FakeFeedProduct();
 check($call('getShippingDimension', [$p, 'height']) === '', 'getShippingDimension is blank when the dimension is unset (omit-when-empty)');
+
+// checkout eligibility: inert by default.
+$options = ['hp_gmc_ucp_checkout_eligibility' => 'disabled'];
+$p = new FakeFeedProduct();
+check($call('checkoutEligibility', [$p]) === '',
+    'checkoutEligibility is blank while the global option is disabled');
+
+// consumer_notice: enum + message required, message is sanitized/truncated.
+$meta[123] = [
+    '_hp_gmc_notice_type' => 'safety_warning',
+    '_hp_gmc_notice_message' => "Use as directed:\tline\n<script>alert(1)</script><b>bold</b>",
+];
+check($call('consumerNotice', [123]) === 'safety_warning:Use as directed: line alert(1)<b>bold</b>',
+    'consumerNotice emits type:message with TSV-safe sanitized message');
+$meta[124] = [
+    '_hp_gmc_notice_type' => 'unsupported',
+    '_hp_gmc_notice_message' => 'message',
+];
+check($call('consumerNotice', [124]) === '',
+    'consumerNotice is blank for unsupported notice types');
+
+check($call('merchantItemId', [123]) === '123',
+    'merchantItemId emits the numeric WooCommerce product id');
 
 // product_highlights builder removed in 3.3.1 (claims risk) — no test needed;
 // the header + no-call-site assertions above are the regression guard.

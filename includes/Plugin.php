@@ -226,6 +226,14 @@ class Plugin
             },
         ]);
 
+        register_setting('hp_gmc_settings', 'hp_gmc_ucp_checkout_eligibility', [
+            'type' => 'string',
+            'default' => 'disabled',
+            'sanitize_callback' => function ($value) {
+                return in_array($value, ['enabled', 'disabled'], true) ? $value : 'disabled';
+            },
+        ]);
+
         // GA4 Analytics settings
         register_setting('hp_gmc_settings', 'hp_gmc_ga4_property_id', [
             'type' => 'string',
