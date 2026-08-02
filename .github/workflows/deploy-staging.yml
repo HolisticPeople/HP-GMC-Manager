@@ -50,6 +50,8 @@ jobs:
             --exclude='.github' \
             --exclude='.specstory' \
             --exclude='*.log' \
+            --exclude='tests' \
+            --exclude='scripts' \
             -e "ssh -p ${KINSTA_PORT:-22}" \
             ./ "${KINSTA_USER}@${KINSTA_HOST}:${REMOTE_PATH}/"
 
