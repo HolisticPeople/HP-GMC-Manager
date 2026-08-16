@@ -34,7 +34,7 @@ class ProductDataFeed
      */
     public static function generateFeed(string $format = 'tsv', bool $forceRegenerate = false, string $profile = 'merchant'): string
     {
-        $profile = $profile === 'agent' ? 'agent' : 'merchant';
+        $profile = in_array($profile, ['agent', 'openai'], true) ? $profile : 'merchant';
 
         // Check cache first (unless force regenerate)
         if (!$forceRegenerate) {
@@ -102,13 +102,20 @@ class ProductDataFeed
                 continue;
             }
 
+            // OpenAI's commerce policy excludes large parts of the canonical
+            // wellness catalog. This profile is deliberately fail-closed: a
+            // product appears only after an explicit per-item policy review.
+            if ($profile === 'openai' && !self::isOpenAiEligible($productId)) {
+                continue;
+            }
+
             // Get GMC-formatted ID (uses GLA ID if available)
             $gmcId = self::getGmcOfferId($productId);
             $gtin = self::getGtin($product);
             $mpn = trim((string) $product->get_sku());
             $title = trim((string) $product->get_name());
             $description = self::getDescription($product);
-            if ($profile === 'agent') {
+            if (in_array($profile, ['agent', 'openai'], true)) {
                 $title = self::getAgentTitle($product, $title);
                 if ($title === '') {
                     continue;
@@ -184,6 +191,14 @@ class ProductDataFeed
     public static function generateAgentFeed(string $format = 'tsv', bool $forceRegenerate = false): string
     {
         return self::generateFeed($format, $forceRegenerate, 'agent');
+    }
+
+    /**
+     * Generate the OpenAI-specific, explicitly allowlisted feed.
+     */
+    public static function generateOpenAiFeed(string $format = 'tsv', bool $forceRegenerate = false): string
+    {
+        return self::generateFeed($format, $forceRegenerate, 'openai');
     }
 
     /**
@@ -290,6 +305,14 @@ class ProductDataFeed
         }
 
         return true;
+    }
+
+    /**
+     * Require an explicit, per-product OpenAI commerce-policy review.
+     */
+    private static function isOpenAiEligible(int $productId): bool
+    {
+        return get_post_meta($productId, '_hp_openai_feed_eligible', true) === 'yes';
     }
 
     /**
@@ -1168,7 +1191,7 @@ class ProductDataFeed
      */
     public static function clearCache(): bool
     {
-        foreach (['merchant', 'agent'] as $profile) {
+        foreach (['merchant', 'agent', 'openai'] as $profile) {
             delete_transient(self::CACHE_KEY . '_tsv_' . $profile);
             delete_transient(self::CACHE_KEY . '_csv_' . $profile);
         }

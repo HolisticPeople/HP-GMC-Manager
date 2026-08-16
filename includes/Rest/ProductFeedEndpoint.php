@@ -39,8 +39,8 @@ class ProductFeedEndpoint
                 'profile' => [
                     'type' => 'string',
                     'default' => 'merchant',
-                    'enum' => ['merchant', 'agent'],
-                    'description' => 'Feed profile: merchant (canonical GMC) or agent (claim-safe agent discovery)',
+                    'enum' => ['merchant', 'agent', 'openai'],
+                    'description' => 'Feed profile: merchant (canonical GMC), agent (claim-safe discovery), or openai (explicit policy allowlist)',
                     'sanitize_callback' => 'sanitize_key',
                 ],
             ],
@@ -72,7 +72,8 @@ class ProductFeedEndpoint
     public static function serveFeed(WP_REST_Request $request)
     {
         $format = $request->get_param('format') ?: 'tsv';
-        $profile = $request->get_param('profile') === 'agent' ? 'agent' : 'merchant';
+        $requestedProfile = (string) $request->get_param('profile');
+        $profile = in_array($requestedProfile, ['agent', 'openai'], true) ? $requestedProfile : 'merchant';
 
         // Log feed access (for monitoring)
         error_log(json_encode([
@@ -86,13 +87,22 @@ class ProductFeedEndpoint
         ]));
 
         try {
-            $content = $profile === 'agent'
-                ? ProductDataFeed::generateAgentFeed($format, false)
-                : ProductDataFeed::generateFeed($format, false);
+            if ($profile === 'openai') {
+                $content = ProductDataFeed::generateOpenAiFeed($format, false);
+            } elseif ($profile === 'agent') {
+                $content = ProductDataFeed::generateAgentFeed($format, false);
+            } else {
+                $content = ProductDataFeed::generateFeed($format, false);
+            }
 
             // Set appropriate headers for file download
             $contentType = $format === 'csv' ? 'text/csv' : 'text/tab-separated-values';
-            $filename = ($profile === 'agent' ? 'agent-product-feed' : 'product-feed') . '.' . $format;
+            $filenames = [
+                'merchant' => 'product-feed',
+                'agent' => 'agent-product-feed',
+                'openai' => 'openai-product-feed',
+            ];
+            $filename = $filenames[$profile] . '.' . $format;
 
             // Send headers directly (not through WP_REST_Response for raw content)
             header('Content-Type: ' . $contentType . '; charset=utf-8');
@@ -153,6 +163,8 @@ class ProductFeedEndpoint
             ProductDataFeed::generateFeed('csv', true);
             ProductDataFeed::generateAgentFeed('tsv', true);
             ProductDataFeed::generateAgentFeed('csv', true);
+            ProductDataFeed::generateOpenAiFeed('tsv', true);
+            ProductDataFeed::generateOpenAiFeed('csv', true);
 
             $status = ProductDataFeed::getStatus();
 

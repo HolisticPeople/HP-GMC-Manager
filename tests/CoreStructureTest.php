@@ -57,8 +57,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.2',
-    'current version is pinned exactly to 3.4.2');
+check($constVersion === '3.4.3',
+    'current version is pinned exactly to 3.4.3');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -341,6 +341,17 @@ check($call('getAgentTitle', [$p, $p->name]) === 'Reviewed Wellness Book',
 $endpoint = (string) file_get_contents($root . '/includes/Rest/ProductFeedEndpoint.php');
 check(strpos($endpoint, "'profile' =>") !== false && strpos($endpoint, 'generateAgentFeed') !== false,
     'public product-feed endpoint exposes the agent profile without changing the merchant default');
+
+// 3.4.3 OpenAI feed: separate, explicit allowlist; born empty/fail-closed.
+check(strpos($endpoint, "'openai'") !== false && strpos($endpoint, 'generateOpenAiFeed') !== false,
+    'public product-feed endpoint exposes a distinct OpenAI profile');
+check($call('isOpenAiEligible', [123]) === false,
+    'OpenAI feed excludes products without an explicit policy-review flag');
+$meta[123]['_hp_openai_feed_eligible'] = 'yes';
+check($call('isOpenAiEligible', [123]) === true,
+    'OpenAI feed includes only explicitly reviewed products');
+check(strpos($feed, "foreach (['merchant', 'agent', 'openai'] as \$profile)") !== false,
+    'cache clearing covers the OpenAI profile');
 
 // product_highlights builder removed in 3.3.1 (claims risk) — no test needed;
 // the header + no-call-site assertions above are the regression guard.
