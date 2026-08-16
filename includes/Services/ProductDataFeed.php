@@ -32,11 +32,13 @@ class ProductDataFeed
      * @param bool $forceRegenerate Skip cache and regenerate
      * @return string Feed content
      */
-    public static function generateFeed(string $format = 'tsv', bool $forceRegenerate = false): string
+    public static function generateFeed(string $format = 'tsv', bool $forceRegenerate = false, string $profile = 'merchant'): string
     {
+        $profile = $profile === 'agent' ? 'agent' : 'merchant';
+
         // Check cache first (unless force regenerate)
         if (!$forceRegenerate) {
-            $cached = get_transient(self::CACHE_KEY . '_' . $format);
+            $cached = get_transient(self::CACHE_KEY . '_' . $format . '_' . $profile);
             if ($cached !== false) {
                 return $cached;
             }
@@ -103,12 +105,22 @@ class ProductDataFeed
             // Get GMC-formatted ID (uses GLA ID if available)
             $gmcId = self::getGmcOfferId($productId);
             $gtin = self::getGtin($product);
+            $mpn = trim((string) $product->get_sku());
+            $title = trim((string) $product->get_name());
+            $description = self::getDescription($product);
+            if ($profile === 'agent') {
+                $title = self::getAgentTitle($product, $title);
+                if ($title === '') {
+                    continue;
+                }
+                $description = self::getAgentDescription($product, $description);
+            }
 
             // Build row data
             $row = [
                 self::escapeField($gmcId, $format),
-                self::escapeField($product->get_name(), $format),
-                self::escapeField(self::getDescription($product), $format),
+                self::escapeField($title, $format),
+                self::escapeField($description, $format),
                 self::escapeField($product->get_permalink(), $format),
                 self::escapeField(self::getImageLink($product), $format),
                 // price = the REGULAR (non-sale) price; when a product is on sale
@@ -117,7 +129,7 @@ class ProductDataFeed
                 self::escapeField($product->is_in_stock() ? 'in_stock' : 'out_of_stock', $format),
                 self::escapeField(self::getBrand($product), $format),
                 self::escapeField('new', $format), // Condition is always new for this store
-                self::escapeField($product->get_sku(), $format),
+                self::escapeField($mpn, $format),
                 self::escapeField($gtin, $format),
                 self::escapeField(self::getShippingWeight($product), $format),
                 self::escapeField(self::getGoogleProductCategory($product), $format),
@@ -132,9 +144,9 @@ class ProductDataFeed
                 self::escapeField(self::getShippingDimension($product, 'height'), $format),
                 self::escapeField(self::getAgeGroup($product), $format),
                 self::escapeField(self::getGender($product), $format),
-                // Interim doctrine (2026-07-04): products without a verified GTIN
-                // declare identifier_exists=no until their barcode is resolved.
-                self::escapeField($gtin === '' ? 'no' : '', $format),
+                // identifier_exists=no is valid only when the product genuinely
+                // has neither a GTIN nor an MPN. A SKU-backed MPN is an identifier.
+                self::escapeField($gtin === '' && $mpn === '' ? 'no' : '', $format),
                 // UCP checkout-compliance columns.
                 self::escapeField(self::checkoutEligibility($product), $format),
                 self::escapeField(self::consumerNotice($productId), $format),
@@ -148,7 +160,7 @@ class ProductDataFeed
         $content = implode("\n", $lines);
 
         // Cache the result
-        set_transient(self::CACHE_KEY . '_' . $format, $content, self::CACHE_DURATION);
+        set_transient(self::CACHE_KEY . '_' . $format . '_' . $profile, $content, self::CACHE_DURATION);
 
         // Update metadata
         update_option(self::LAST_GENERATED_KEY, current_time('mysql'));
@@ -159,10 +171,19 @@ class ProductDataFeed
             'event' => 'primary_feed.generated',
             'product_count' => $count,
             'format' => $format,
+            'profile' => $profile,
             'timestamp' => current_time('mysql'),
         ]));
 
         return $content;
+    }
+
+    /**
+     * Generate the Google-compatible, claim-safe feed used by shopping agents.
+     */
+    public static function generateAgentFeed(string $format = 'tsv', bool $forceRegenerate = false): string
+    {
+        return self::generateFeed($format, $forceRegenerate, 'agent');
     }
 
     /**
@@ -290,12 +311,65 @@ class ProductDataFeed
         $description = preg_replace('/\s+/', ' ', $description);
         $description = trim($description);
 
+        // Description is required by Google-compatible merchant feeds. Use the
+        // product name as the narrowest truthful fallback instead of emitting
+        // an invalid blank cell.
+        if ($description === '') {
+            $description = trim((string) $product->get_name());
+        }
+
         // GMC has a 5000 character limit for descriptions
         if (strlen($description) > 5000) {
             $description = substr($description, 0, 4997) . '...';
         }
 
         return $description;
+    }
+
+    /**
+     * Return reviewed agent copy when present; otherwise replace descriptions
+     * containing bounded high-risk claim language with neutral catalog copy.
+     */
+    private static function getAgentDescription(\WC_Product $product, string $description): string
+    {
+        $productId = (int) $product->get_id();
+        $reviewed = trim((string) get_post_meta($productId, '_hp_agent_feed_description', true));
+        if ($reviewed !== '') {
+            $reviewed = trim((string) preg_replace('/\s+/', ' ', wp_strip_all_tags($reviewed)));
+            if ($reviewed !== '') {
+                return function_exists('mb_substr') ? mb_substr($reviewed, 0, 5000) : substr($reviewed, 0, 5000);
+            }
+        }
+
+        if (!self::hasHighRiskClaimLanguage($description)) {
+            return $description;
+        }
+
+        $name = trim((string) $product->get_name());
+
+        return trim($name . '. See the product page for ingredients, directions, and current product details.');
+    }
+
+    /**
+     * Claim-bearing titles cannot be neutralized generically without changing
+     * product identity. Require reviewed replacement copy or omit the item.
+     */
+    private static function getAgentTitle(\WC_Product $product, string $title): string
+    {
+        $reviewed = trim((string) get_post_meta((int) $product->get_id(), '_hp_agent_feed_title', true));
+        if ($reviewed !== '') {
+            $reviewed = trim((string) preg_replace('/\s+/', ' ', wp_strip_all_tags($reviewed)));
+            if ($reviewed !== '' && !self::hasHighRiskClaimLanguage($reviewed)) {
+                return function_exists('mb_substr') ? mb_substr($reviewed, 0, 150) : substr($reviewed, 0, 150);
+            }
+        }
+
+        return self::hasHighRiskClaimLanguage($title) ? '' : $title;
+    }
+
+    private static function hasHighRiskClaimLanguage(string $description): bool
+    {
+        return preg_match('/\b(cures?|curing|treats?|treating|prevents?|preventing|heals?|healing|diseases?|cancers?|tumou?rs?|infections?|viruses?|viral|influenza|covid(?:-19)?|diabetes|diabetic|arthritis|prescription\s+drug)\b/i', $description) === 1;
     }
 
     /**
@@ -1094,6 +1168,11 @@ class ProductDataFeed
      */
     public static function clearCache(): bool
     {
+        foreach (['merchant', 'agent'] as $profile) {
+            delete_transient(self::CACHE_KEY . '_tsv_' . $profile);
+            delete_transient(self::CACHE_KEY . '_csv_' . $profile);
+        }
+        // Retire pre-3.4.1 cache keys.
         delete_transient(self::CACHE_KEY . '_tsv');
         delete_transient(self::CACHE_KEY . '_csv');
 

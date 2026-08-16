@@ -36,6 +36,13 @@ class ProductFeedEndpoint
                     'description' => 'Output format: tsv (tab-separated) or csv (comma-separated)',
                     'sanitize_callback' => 'sanitize_text_field',
                 ],
+                'profile' => [
+                    'type' => 'string',
+                    'default' => 'merchant',
+                    'enum' => ['merchant', 'agent'],
+                    'description' => 'Feed profile: merchant (canonical GMC) or agent (claim-safe agent discovery)',
+                    'sanitize_callback' => 'sanitize_key',
+                ],
             ],
         ]);
 
@@ -65,11 +72,13 @@ class ProductFeedEndpoint
     public static function serveFeed(WP_REST_Request $request)
     {
         $format = $request->get_param('format') ?: 'tsv';
+        $profile = $request->get_param('profile') === 'agent' ? 'agent' : 'merchant';
 
         // Log feed access (for monitoring)
         error_log(json_encode([
             'event' => 'primary_feed.accessed',
             'format' => $format,
+            'profile' => $profile,
             'refresh' => false,
             'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
             'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
@@ -77,11 +86,13 @@ class ProductFeedEndpoint
         ]));
 
         try {
-            $content = ProductDataFeed::generateFeed($format, false);
+            $content = $profile === 'agent'
+                ? ProductDataFeed::generateAgentFeed($format, false)
+                : ProductDataFeed::generateFeed($format, false);
 
             // Set appropriate headers for file download
             $contentType = $format === 'csv' ? 'text/csv' : 'text/tab-separated-values';
-            $filename = 'product-feed.' . $format;
+            $filename = ($profile === 'agent' ? 'agent-product-feed' : 'product-feed') . '.' . $format;
 
             // Send headers directly (not through WP_REST_Response for raw content)
             header('Content-Type: ' . $contentType . '; charset=utf-8');
@@ -89,6 +100,7 @@ class ProductFeedEndpoint
             header('Cache-Control: public, max-age=3600'); // Allow caching for 1 hour
             header('X-Feed-Product-Count: ' . ProductDataFeed::getProductCount());
             header('X-Feed-Generated: ' . (ProductDataFeed::getLastGenerated() ?: 'unknown'));
+            header('X-Feed-Profile: ' . $profile);
 
             echo $content;
             exit;
@@ -139,6 +151,8 @@ class ProductFeedEndpoint
             // Regenerate both formats
             ProductDataFeed::generateFeed('tsv', true);
             ProductDataFeed::generateFeed('csv', true);
+            ProductDataFeed::generateAgentFeed('tsv', true);
+            ProductDataFeed::generateAgentFeed('csv', true);
 
             $status = ProductDataFeed::getStatus();
 
