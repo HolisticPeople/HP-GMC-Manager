@@ -57,8 +57,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.1',
-    'current version is pinned exactly to 3.4.1');
+check($constVersion === '3.4.2',
+    'current version is pinned exactly to 3.4.2');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -331,6 +331,12 @@ check(strpos($agentDescription, 'treats infection') === false && strpos($agentDe
 $meta[123]['_hp_agent_feed_description'] = 'Reviewed agent-safe product copy.';
 check($call('getAgentDescription', [$p, $call('getDescription', [$p])]) === 'Reviewed agent-safe product copy.',
     'reviewed agent description meta takes precedence');
+$p->name = 'A Cure for Diabetes';
+check($call('getAgentTitle', [$p, $p->name]) === '',
+    'unreviewed claim-bearing titles are excluded from the agent feed');
+$meta[123]['_hp_agent_feed_title'] = 'Reviewed Wellness Book';
+check($call('getAgentTitle', [$p, $p->name]) === 'Reviewed Wellness Book',
+    'reviewed claim-safe agent title meta restores an excluded item');
 
 $endpoint = (string) file_get_contents($root . '/includes/Rest/ProductFeedEndpoint.php');
 check(strpos($endpoint, "'profile' =>") !== false && strpos($endpoint, 'generateAgentFeed') !== false,

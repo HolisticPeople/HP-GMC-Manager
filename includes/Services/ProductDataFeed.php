@@ -106,15 +106,20 @@ class ProductDataFeed
             $gmcId = self::getGmcOfferId($productId);
             $gtin = self::getGtin($product);
             $mpn = trim((string) $product->get_sku());
+            $title = trim((string) $product->get_name());
             $description = self::getDescription($product);
             if ($profile === 'agent') {
+                $title = self::getAgentTitle($product, $title);
+                if ($title === '') {
+                    continue;
+                }
                 $description = self::getAgentDescription($product, $description);
             }
 
             // Build row data
             $row = [
                 self::escapeField($gmcId, $format),
-                self::escapeField($product->get_name(), $format),
+                self::escapeField($title, $format),
                 self::escapeField($description, $format),
                 self::escapeField($product->get_permalink(), $format),
                 self::escapeField(self::getImageLink($product), $format),
@@ -343,6 +348,23 @@ class ProductDataFeed
         $name = trim((string) $product->get_name());
 
         return trim($name . '. See the product page for ingredients, directions, and current product details.');
+    }
+
+    /**
+     * Claim-bearing titles cannot be neutralized generically without changing
+     * product identity. Require reviewed replacement copy or omit the item.
+     */
+    private static function getAgentTitle(\WC_Product $product, string $title): string
+    {
+        $reviewed = trim((string) get_post_meta((int) $product->get_id(), '_hp_agent_feed_title', true));
+        if ($reviewed !== '') {
+            $reviewed = trim((string) preg_replace('/\s+/', ' ', wp_strip_all_tags($reviewed)));
+            if ($reviewed !== '' && !self::hasHighRiskClaimLanguage($reviewed)) {
+                return function_exists('mb_substr') ? mb_substr($reviewed, 0, 150) : substr($reviewed, 0, 150);
+            }
+        }
+
+        return self::hasHighRiskClaimLanguage($title) ? '' : $title;
     }
 
     private static function hasHighRiskClaimLanguage(string $description): bool
