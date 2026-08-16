@@ -112,7 +112,15 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.2 — Current Staging Build
+### 3.4.3 — Current Staging Build
+
+- Added `?profile=openai`, a separate fail-closed OpenAI commerce feed.
+  Products are omitted unless `_hp_openai_feed_eligible=yes` has been set
+  after a per-item policy and landing-page review. The profile also inherits
+  the agent title/description claim guards; the canonical merchant and agent
+  profiles are unchanged.
+
+### 3.4.2
 
 - Agent-profile products with high-risk claim language in the title now fail
   closed unless a claim-safe `_hp_agent_feed_title` has been explicitly
