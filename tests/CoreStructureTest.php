@@ -57,8 +57,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.0',
-    'current version is pinned exactly to 3.4.0');
+check($constVersion === '3.4.1',
+    'current version is pinned exactly to 3.4.1');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -107,12 +107,11 @@ $meta[4] = ['_wpm_gtin_code' => '4006381333931'];
 check($rm->invoke(null, new FakeProduct(4, '')) === '4006381333931',
     'getGtin honors legacy GTIN meta keys');
 
-// --- 3.2.0: identifier_exists doctrine (user 2026-07-04) — no-GTIN rows declare
-// identifier_exists=no; GTIN rows leave it blank. Assert column placement AND logic.
+// --- 3.4.1: identifier_exists=no only when BOTH GTIN and MPN are absent.
 $rmHeaderCheck = strpos($feed, "'identifier_exists',");
 check($rmHeaderCheck !== false, 'feed header includes identifier_exists column');
-check(strpos($feed, "\$gtin === '' ? 'no' : ''") !== false,
-    'identifier_exists emits no exactly when gtin is empty');
+check(strpos($feed, "\$gtin === '' && \$mpn === '' ? 'no' : ''") !== false,
+    'identifier_exists=no requires both GTIN and MPN to be absent');
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
     'identifier_exists remains at the end of the 3.3.0 UCP block');
 
@@ -238,6 +237,8 @@ class FakeFeedProduct extends WC_Product
     public string $sale = '', $regular = '', $price = '';
     public ?SaleDate $from = null, $to = null;
     public string $short = '', $long = '';
+    public string $name = 'Fallback Product';
+    public string $sku = '';
     public function get_id() { return $this->id; }
     public function get_gallery_image_ids() { return $this->gallery; }
     public function get_image_id() { return $this->mainImage; }
@@ -252,6 +253,8 @@ class FakeFeedProduct extends WC_Product
     public function get_date_on_sale_to() { return $this->to; }
     public function get_short_description() { return $this->short; }
     public function get_description() { return $this->long; }
+    public function get_name() { return $this->name; }
+    public function get_sku() { return $this->sku; }
     public function is_type($type) { return $type === 'simple'; }
     public function is_purchasable() { return true; }
     public function is_in_stock() { return true; }
@@ -316,6 +319,22 @@ check($call('consumerNotice', [124]) === '',
 
 check($call('merchantItemId', [123]) === '123',
     'merchantItemId emits the numeric WooCommerce product id');
+
+// 3.4.1 feed readiness: required descriptions and a claim-safe agent profile.
+$p = new FakeFeedProduct();
+check($call('getDescription', [$p]) === 'Fallback Product',
+    'blank source descriptions fall back to the truthful product name');
+$p->long = 'This formula treats infection and prevents disease.';
+$agentDescription = $call('getAgentDescription', [$p, $call('getDescription', [$p])]);
+check(strpos($agentDescription, 'treats infection') === false && strpos($agentDescription, 'Fallback Product') === 0,
+    'unreviewed high-risk claims are replaced with neutral agent catalog copy');
+$meta[123]['_hp_agent_feed_description'] = 'Reviewed agent-safe product copy.';
+check($call('getAgentDescription', [$p, $call('getDescription', [$p])]) === 'Reviewed agent-safe product copy.',
+    'reviewed agent description meta takes precedence');
+
+$endpoint = (string) file_get_contents($root . '/includes/Rest/ProductFeedEndpoint.php');
+check(strpos($endpoint, "'profile' =>") !== false && strpos($endpoint, 'generateAgentFeed') !== false,
+    'public product-feed endpoint exposes the agent profile without changing the merchant default');
 
 // product_highlights builder removed in 3.3.1 (claims risk) — no test needed;
 // the header + no-call-site assertions above are the regression guard.
