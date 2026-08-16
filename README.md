@@ -112,7 +112,13 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.1 — Current Staging Build
+### 3.4.2 — Current Staging Build
+
+- Agent-profile products with high-risk claim language in the title now fail
+  closed unless a claim-safe `_hp_agent_feed_title` has been explicitly
+  reviewed and stored. Canonical merchant-feed titles remain unchanged.
+
+### 3.4.1
 
 - Added `?profile=agent` to the public Google-compatible product feed. This
   agent-discovery profile prefers explicitly reviewed
