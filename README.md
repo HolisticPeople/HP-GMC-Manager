@@ -112,7 +112,14 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.4 — Current Staging Build
+### 3.4.5 — Current Staging Build
+
+- Uses HP-Funnels' offer-level GMC contract when available, preserving the
+  legacy starter item while exporting additional ExpressShop packages with
+  stable IDs, bundle status, and component imagery for accurate promotion
+  targeting. Older HP-Funnels versions retain the one-row fallback.
+
+### 3.4.4
 
 - Fixed `additional_image_link` coverage for legacy products whose valid extra
   images are attached to the product but were never added to the WooCommerce
