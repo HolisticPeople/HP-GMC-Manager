@@ -508,8 +508,10 @@ class ProductDataFeed
     /**
      * Additional product images for `additional_image_link`.
      *
-     * Emits up to 10 gallery image URLs (GMC's cap), comma-separated, ONLY when
-     * the product has gallery images. Returns '' when the gallery is empty.
+     * Emits up to 10 gallery image URLs (GMC's cap), comma-separated. When the
+     * curated WooCommerce gallery is empty, eligible image attachments owned by
+     * the product are used as a guarded legacy fallback. Fallback images must
+     * use a Google-supported MIME type and be at least 500x500 pixels.
      *
      * @param \WC_Product $product
      * @return string
@@ -518,18 +520,46 @@ class ProductDataFeed
     {
         $galleryIds = $product->get_gallery_image_ids();
         if (empty($galleryIds)) {
-            return '';
+            $galleryIds = [];
+            $supportedMimes = [
+                'image/jpeg',
+                'image/png',
+                'image/webp',
+                'image/gif',
+                'image/bmp',
+                'image/tiff',
+            ];
+
+            foreach (get_attached_media('image', $product->get_id()) as $attachment) {
+                $imageId = isset($attachment->ID) ? (int) $attachment->ID : 0;
+                if ($imageId <= 0 || !in_array((string) get_post_mime_type($imageId), $supportedMimes, true)) {
+                    continue;
+                }
+
+                $metadata = wp_get_attachment_metadata($imageId);
+                $width = is_array($metadata) ? (int) ($metadata['width'] ?? 0) : 0;
+                $height = is_array($metadata) ? (int) ($metadata['height'] ?? 0) : 0;
+                if ($width < 500 || $height < 500) {
+                    continue;
+                }
+
+                $galleryIds[] = $imageId;
+            }
         }
 
         $mainId = (int) $product->get_image_id();
         $urls = [];
+        $seenIds = [];
+        $seenUrls = [];
         foreach ($galleryIds as $imageId) {
             $imageId = (int) $imageId;
-            if ($imageId === $mainId) {
+            if ($imageId <= 0 || $imageId === $mainId || isset($seenIds[$imageId])) {
                 continue; // Don't duplicate the primary image_link.
             }
+            $seenIds[$imageId] = true;
             $url = wp_get_attachment_url($imageId);
-            if ($url) {
+            if ($url && !isset($seenUrls[$url])) {
+                $seenUrls[$url] = true;
                 $urls[] = $url;
             }
             if (count($urls) >= 10) {
