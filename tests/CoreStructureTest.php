@@ -57,8 +57,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.3',
-    'current version is pinned exactly to 3.4.3');
+check($constVersion === '3.4.4',
+    'current version is pinned exactly to 3.4.4');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -222,8 +222,34 @@ if (!function_exists('wp_strip_all_tags')) {
     function wp_strip_all_tags($s, $b = false) { return trim(strip_tags((string) $s)); }
 }
 if (!function_exists('wp_get_attachment_url')) {
-    function wp_get_attachment_url($id) { return "https://img.example/$id.png"; }
+    function wp_get_attachment_url($id) {
+        global $attachmentUrls;
+        return array_key_exists($id, $attachmentUrls) ? $attachmentUrls[$id] : "https://img.example/$id.png";
+    }
 }
+if (!function_exists('get_attached_media')) {
+    function get_attached_media($type, $postId) {
+        global $attachedMedia;
+        return $attachedMedia[$postId] ?? [];
+    }
+}
+if (!function_exists('get_post_mime_type')) {
+    function get_post_mime_type($id) {
+        global $attachmentMimes;
+        return $attachmentMimes[$id] ?? 'image/jpeg';
+    }
+}
+if (!function_exists('wp_get_attachment_metadata')) {
+    function wp_get_attachment_metadata($id) {
+        global $attachmentMetadata;
+        return $attachmentMetadata[$id] ?? ['width' => 1000, 'height' => 1000];
+    }
+}
+
+$attachmentUrls = [];
+$attachedMedia = [];
+$attachmentMimes = [];
+$attachmentMetadata = [];
 
 class SaleDate { public function __construct(private string $c) {} public function date($f) { return $this->c; } }
 
@@ -267,9 +293,27 @@ $call = fn(string $m, array $args) => (new ReflectionMethod($cls, $m))->invokeAr
 $p = new FakeFeedProduct(); $p->gallery = [10, 11, 12]; $p->mainImage = 10;
 check($call('getAdditionalImageLink', [$p]) === 'https://img.example/11.png,https://img.example/12.png',
     'getAdditionalImageLink joins gallery URLs and drops the primary image');
-$p = new FakeFeedProduct(); // empty gallery
-check($call('getAdditionalImageLink', [$p]) === '',
-    'getAdditionalImageLink is blank when there are no gallery images (omit-when-empty)');
+$p = new FakeFeedProduct(); $p->mainImage = 20;
+$attachedMedia[123] = array_map(fn($id) => (object) ['ID' => $id], [20, 21, 22, 23, 24, 21]);
+$attachmentMetadata[21] = ['width' => 1200, 'height' => 800];
+$attachmentMetadata[22] = ['width' => 499, 'height' => 800];
+$attachmentMetadata[23] = ['width' => 800, 'height' => 800];
+$attachmentMimes[23] = 'image/svg+xml';
+$attachmentMetadata[24] = ['width' => 800, 'height' => 800];
+$attachmentUrls[24] = false;
+check($call('getAdditionalImageLink', [$p]) === 'https://img.example/21.png',
+    'getAdditionalImageLink safely falls back to distinct 500x500+ product-owned raster images');
+$attachedMedia[123] = [(object) ['ID' => 25], (object) ['ID' => 26]];
+$attachmentMetadata[25] = $attachmentMetadata[26] = ['width' => 800, 'height' => 800];
+$attachmentUrls[25] = $attachmentUrls[26] = 'https://img.example/shared.png';
+check($call('getAdditionalImageLink', [$p]) === 'https://img.example/shared.png',
+    'getAdditionalImageLink does not emit a duplicate attachment URL');
+$attachedMedia[123] = array_map(fn($id) => (object) ['ID' => $id], range(30, 44));
+$attachmentMetadata = [];
+$attachmentMimes = [];
+$attachmentUrls = [];
+check(count(explode(',', $call('getAdditionalImageLink', [$p]))) === 10,
+    'getAdditionalImageLink caps attachment fallback at 10 URLs');
 
 // sale_price: only a genuine discount, correctly formatted; blank otherwise.
 $p = new FakeFeedProduct(); $p->onSale = true; $p->sale = '8'; $p->regular = '10';
