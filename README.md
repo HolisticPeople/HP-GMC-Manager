@@ -112,7 +112,16 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.3 — Current Staging Build
+### 3.4.4 — Current Staging Build
+
+- Fixed `additional_image_link` coverage for legacy products whose valid extra
+  images are attached to the product but were never added to the WooCommerce
+  gallery field. The feed keeps curated galleries authoritative; only an empty
+  gallery activates the fallback, which excludes the featured image, rejects
+  unsupported formats and images below 500x500, de-duplicates attachment IDs,
+  de-duplicates URLs, and retains Google's 10-image cap.
+
+### 3.4.3
 
 - Added `?profile=openai`, a separate fail-closed OpenAI commerce feed.
   Products are omitted unless `_hp_openai_feed_eligible=yes` has been set
