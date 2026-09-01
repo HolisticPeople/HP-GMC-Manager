@@ -126,10 +126,8 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
   `/wp-json/hp-gmc/v1/product-feed`.
 - `identifier_exists=no` now requires an explicit
   `_hp_gmc_identifier_exists=no` product review and is suppressed whenever a
-  GTIN or the required brand-plus-reviewed-MPN combination is present. A
-  source-backed brand may coexist with `no` when both GTIN and MPN are absent;
-  missing local identifiers remain unresolved instead of being mislabeled as
-  nonexistent.
+  GTIN, reviewed MPN, or source-backed brand is present. Missing local
+  identifiers remain unresolved instead of being mislabeled as nonexistent.
 - Brand no longer falls back to `HolisticPeople` when no product manufacturer
   source exists. Variations may inherit a source-backed parent brand, while
   their GTIN and MPN remain variation-specific.

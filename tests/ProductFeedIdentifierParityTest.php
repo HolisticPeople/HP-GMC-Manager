@@ -159,8 +159,8 @@ check_feed($absentRow['identifier_exists'] === 'no', 'reviewed UPI absence emits
 
 $brandRow = $rows['gla_104'];
 check_feed($brandRow['brand'] === 'Known Brand', 'brand-only row preserves known brand');
-check_feed($brandRow['identifier_exists'] === 'no',
-    'brand-only row retains reviewed no when GTIN and MPN are absent');
+check_feed($brandRow['identifier_exists'] === '',
+    'brand-only row suppresses identifier_exists=no');
 
 $malformedRow = $rows['gla_105'];
 check_feed($malformedRow['gtin'] === '', 'malformed alphanumeric GTIN is omitted, not sanitized');

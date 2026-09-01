@@ -148,8 +148,8 @@ check_identifier(ProductIdentifiers::getIdentifierExists($product, '', '', '') =
     'reviewed no-identifiers product emits identifier_exists=no');
 $brands[104] = 'Known Brand';
 $brand = ProductIdentifiers::getBrand($product);
-check_identifier(ProductIdentifiers::getIdentifierExists($product, '', '', $brand) === 'no',
-    'known brand may coexist with reviewed no when GTIN and MPN are absent');
+check_identifier(ProductIdentifiers::getIdentifierExists($product, '', '', $brand) === '',
+    'known brand suppresses identifier_exists=no');
 check_identifier(ProductIdentifiers::getIdentifierExists($product, '', 'KNOWN-MPN', $brand) === '',
     'brand plus MPN suppresses identifier_exists=no');
 

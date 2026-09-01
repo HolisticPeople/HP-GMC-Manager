@@ -84,9 +84,8 @@ final class ProductIdentifiers
      *
      * A missing local identifier is an unresolved data gap, not proof that the
      * manufacturer assigned none. Therefore "no" is emitted only when the
-     * product has neither a projected GTIN nor the brand-plus-MPN combination,
-     * and a product-level review explicitly records
-     * _hp_gmc_identifier_exists=no.
+     * product has no projected GTIN, MPN, or brand, and a product-level review
+     * explicitly records _hp_gmc_identifier_exists=no.
      */
     public static function getIdentifierExists(
         \WC_Product $product,
@@ -95,7 +94,7 @@ final class ProductIdentifiers
         string $brand
     ): string
     {
-        if ($gtin !== '' || ($mpn !== '' && $brand !== '')) {
+        if ($gtin !== '' || $mpn !== '' || $brand !== '') {
             return '';
         }
 
