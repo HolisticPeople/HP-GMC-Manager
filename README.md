@@ -112,7 +112,25 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.5 — Current Staging Build
+### 3.4.6 — Current Staging Build
+
+- Removed the unsafe SKU-to-MPN projection from both the pull feed and direct
+  Merchant API mapper. `mpn` now emits only from a product-level reviewed
+  manufacturer source: `_hp_gmc_mpn`, `_hp_gmc_mpn_verified=yes`, and an
+  approved `_hp_gmc_mpn_source` (`manufacturer`, `manufacturer_catalog`,
+  `authorized_distributor`, or `product_label`). Variations never inherit a
+  parent MPN.
+- `identifier_exists=no` now requires an explicit
+  `_hp_gmc_identifier_exists=no` product review and is suppressed whenever a
+  GTIN or reviewed MPN is present. Missing local identifiers remain unresolved
+  instead of being mislabeled as nonexistent.
+- SKU remains the store's internal SKU/offer-join evidence and is never
+  relabeled as a manufacturer identifier. GTIN projection retains the native
+  Woo/legacy source order and now also rejects invalid GS1 check digits. Brand
+  projection, offer IDs, feed column order, and non-identifier behavior remain
+  unchanged.
+
+### 3.4.5
 
 - Uses HP-Funnels' offer-level GMC contract when available, preserving the
   legacy starter item while exporting additional ExpressShop packages with

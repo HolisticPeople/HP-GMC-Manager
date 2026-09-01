@@ -62,6 +62,8 @@ class ProductSync
      */
     public function mapProductToGmc(\WC_Product $product): array
     {
+        $gtin = ProductIdentifiers::getGtin($product);
+        $mpn = ProductIdentifiers::getMpn($product);
         $data = [
             'offerId' => $this->getGlaId($product->get_id()),
             'title' => $product->get_name(),
@@ -74,13 +76,21 @@ class ProductSync
                 'currency' => get_woocommerce_currency(),
             ],
             'brand' => $this->getBrand($product),
-            'gtin' => $this->getGtin($product),
-            'mpn' => $product->get_sku(),
             'condition' => 'new',
             'channel' => 'online',
             'contentLanguage' => substr(get_locale(), 0, 2),
             'targetCountry' => wc_get_base_location()['country'] ?? 'US',
         ];
+
+        if ($gtin !== '') {
+            $data['gtin'] = $gtin;
+        }
+        if ($mpn !== '') {
+            $data['mpn'] = $mpn;
+        }
+        if (ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn) === 'no') {
+            $data['identifierExists'] = false;
+        }
 
         // Add categories
         $categories = $this->getGoogleProductCategory($product);
@@ -141,24 +151,6 @@ class ProductSync
 
         // Fallback to site name
         return get_bloginfo('name');
-    }
-
-    /**
-     * Get GTIN for a product.
-     */
-    private function getGtin(\WC_Product $product): ?string
-    {
-        // Check common GTIN meta keys
-        $gtin_keys = ['_gtin', '_ean', '_upc', 'gtin', 'ean', 'upc', '_wpm_gtin_code'];
-        
-        foreach ($gtin_keys as $key) {
-            $gtin = get_post_meta($product->get_id(), $key, true);
-            if (!empty($gtin)) {
-                return $gtin;
-            }
-        }
-
-        return null;
     }
 
     /**

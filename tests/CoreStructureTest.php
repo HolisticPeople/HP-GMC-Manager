@@ -25,6 +25,8 @@ $main = file_get_contents($root . '/hp-gmc-manager.php');
 $readme = file_get_contents($root . '/README.md');
 $client = file_get_contents($root . '/includes/Services/MerchantApiClient.php');
 $feed = file_get_contents($root . '/includes/Services/ProductDataFeed.php');
+$sync = file_get_contents($root . '/includes/Services/ProductSync.php');
+$identifiers = file_get_contents($root . '/includes/Services/ProductIdentifiers.php');
 
 function method_body(string $source, string $method): string
 {
@@ -57,8 +59,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.5',
-    'current version is pinned exactly to 3.4.5');
+check($constVersion === '3.4.6',
+    'current version is pinned exactly to 3.4.6');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -76,6 +78,7 @@ check(substr_count($client, 'merchantapi.googleapis.com') >= 3
 $meta = [];
 function get_post_meta($id, $key, $single) { global $meta; return $meta[$id][$key] ?? ''; }
 if (!defined('ABSPATH')) define('ABSPATH', '/');
+require $root . '/includes/Services/ProductIdentifiers.php';
 require $root . '/includes/Services/ProductDataFeed.php';
 
 class WC_Product {}
@@ -87,7 +90,7 @@ class FakeProduct extends WC_Product
     public function get_global_unique_id(): string { return $this->gtin; }
 }
 
-$rm = new ReflectionMethod(\HP_GMC\Services\ProductDataFeed::class, 'getGtin');
+$rm = new ReflectionMethod(\HP_GMC\Services\ProductIdentifiers::class, 'getGtin');
 
 // Native WC field wins and separators are stripped (ISBN-13 with dashes).
 check($rm->invoke(null, new FakeProduct(1, '978-1947925229')) === '9781947925229',
@@ -96,6 +99,10 @@ check($rm->invoke(null, new FakeProduct(1, '978-1947925229')) === '9781947925229
 // Invalid length fails CLOSED (empty), never emitted as-is.
 check($rm->invoke(null, new FakeProduct(2, '12345')) === '',
     'getGtin emits empty for invalid-length values (fail closed)');
+
+// Invalid GS1 check digit also fails closed.
+check($rm->invoke(null, new FakeProduct(5, '679372000058')) === '',
+    'getGtin emits empty for an invalid GS1 check digit');
 
 // Falls back to _global_unique_id meta when the native getter is empty.
 $meta[3] = ['_global_unique_id' => '0123456789012'];
@@ -107,11 +114,20 @@ $meta[4] = ['_wpm_gtin_code' => '4006381333931'];
 check($rm->invoke(null, new FakeProduct(4, '')) === '4006381333931',
     'getGtin honors legacy GTIN meta keys');
 
-// --- 3.4.1: identifier_exists=no only when BOTH GTIN and MPN are absent.
+// --- 3.4.6: MPN and identifier_exists are explicit reviewed data, never SKU inference.
 $rmHeaderCheck = strpos($feed, "'identifier_exists',");
 check($rmHeaderCheck !== false, 'feed header includes identifier_exists column');
-check(strpos($feed, "\$gtin === '' && \$mpn === '' ? 'no' : ''") !== false,
-    'identifier_exists=no requires both GTIN and MPN to be absent');
+check(strpos($feed, 'ProductIdentifiers::getMpn($product)') !== false,
+    'feed MPN comes from the reviewed identifier provider');
+check(strpos($feed, 'ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn)') !== false,
+    'identifier_exists comes from the explicit reviewed-absence provider');
+check(strpos($feed, '$mpn = trim((string) $product->get_sku())') === false,
+    'feed never copies the internal SKU into MPN');
+check(strpos($sync, "'mpn' => \$product->get_sku()") === false,
+    'direct API mapping never copies the internal SKU into MPN');
+check(strpos($identifiers, "'_hp_gmc_mpn_verified'") !== false
+    && strpos($identifiers, "'_hp_gmc_mpn_source'") !== false,
+    'MPN provider requires explicit review and provenance metadata');
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
     'identifier_exists remains at the end of the 3.3.0 UCP block');
 
