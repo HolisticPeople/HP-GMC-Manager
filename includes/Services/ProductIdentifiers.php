@@ -84,12 +84,18 @@ final class ProductIdentifiers
      *
      * A missing local identifier is an unresolved data gap, not proof that the
      * manufacturer assigned none. Therefore "no" is emitted only when the
-     * product has no projected GTIN/MPN and a product-level review explicitly
-     * records _hp_gmc_identifier_exists=no.
+     * product has neither a projected GTIN nor the brand-plus-MPN combination,
+     * and a product-level review explicitly records
+     * _hp_gmc_identifier_exists=no.
      */
-    public static function getIdentifierExists(\WC_Product $product, string $gtin, string $mpn): string
+    public static function getIdentifierExists(
+        \WC_Product $product,
+        string $gtin,
+        string $mpn,
+        string $brand
+    ): string
     {
-        if ($gtin !== '' || $mpn !== '') {
+        if ($gtin !== '' || ($mpn !== '' && $brand !== '')) {
             return '';
         }
 
@@ -103,12 +109,74 @@ final class ProductIdentifiers
     }
 
     /**
+     * Return a source-backed brand without inventing the merchant as maker.
+     *
+     * A variation may inherit its parent's brand, but it never inherits the
+     * parent's GTIN or MPN. Blank is safer than a guessed store-name brand.
+     */
+    public static function getBrand(\WC_Product $product): string
+    {
+        $productIds = [(int) $product->get_id()];
+        if ($product->is_type('variation') && method_exists($product, 'get_parent_id')) {
+            $parentId = (int) $product->get_parent_id();
+            if ($parentId > 0) {
+                $productIds[] = $parentId;
+            }
+        }
+
+        foreach ($productIds as $productId) {
+            if (function_exists('get_field')) {
+                foreach (['manufacturer', 'manufacturer_acf'] as $field) {
+                    $brand = get_field($field, $productId);
+                    if (is_array($brand)) {
+                        $brand = $brand['name'] ?? '';
+                    }
+                    $brand = self::normalizeBrand((string) $brand);
+                    if ($brand !== '') {
+                        return $brand;
+                    }
+                }
+            }
+
+            $terms = wp_get_post_terms($productId, 'product_brand', ['fields' => 'names']);
+            if (!is_wp_error($terms) && !empty($terms)) {
+                $brand = self::normalizeBrand((string) $terms[0]);
+                if ($brand !== '') {
+                    return $brand;
+                }
+            }
+
+            if (taxonomy_exists('yith_product_brand')) {
+                $terms = get_the_terms($productId, 'yith_product_brand');
+                if ($terms && !is_wp_error($terms)) {
+                    $brand = self::normalizeBrand((string) ($terms[0]->name ?? ''));
+                    if ($brand !== '') {
+                        return $brand;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
      * Normalize GTIN separators and require a valid GS1 check digit.
      */
     private static function normalizeGtin(string $raw): string
     {
-        $digits = preg_replace('/\D/', '', $raw);
+        $raw = trim($raw);
+        if ($raw === '' || preg_match('/^[0-9 -]+$/D', $raw) !== 1) {
+            return '';
+        }
+
+        $digits = str_replace([' ', '-'], '', $raw);
         if (!in_array(strlen($digits), [8, 12, 13, 14], true)) {
+            return '';
+        }
+
+        // Google rejects restricted GS1 ranges used for internal/coupon data.
+        if (str_starts_with($digits, '02') || str_starts_with($digits, '04') || str_starts_with($digits, '2')) {
             return '';
         }
 
@@ -132,15 +200,31 @@ final class ProductIdentifiers
      */
     private static function normalizeMpn(string $raw): string
     {
-        $value = strip_tags($raw);
-        $value = preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $value);
-        $value = preg_replace('/\s+/u', ' ', (string) $value);
-        $value = trim((string) $value);
-
-        if ($value === '') {
+        if ($raw === '' || trim($raw) !== $raw || strip_tags($raw) !== $raw) {
             return '';
         }
 
-        return function_exists('mb_substr') ? mb_substr($value, 0, 70) : substr($value, 0, 70);
+        if (preg_match('/[\x00-\x1F\x7F]/u', $raw) === 1) {
+            return '';
+        }
+
+        $length = function_exists('mb_strlen') ? mb_strlen($raw) : strlen($raw);
+
+        return $length <= 70 ? $raw : '';
+    }
+
+    /**
+     * Keep only an exact, bounded source brand.
+     */
+    private static function normalizeBrand(string $raw): string
+    {
+        $brand = trim(strip_tags($raw));
+        if ($brand === '' || preg_match('/[\x00-\x1F\x7F]/u', $brand) === 1) {
+            return '';
+        }
+
+        $length = function_exists('mb_strlen') ? mb_strlen($brand) : strlen($brand);
+
+        return $length <= 70 ? $brand : '';
     }
 }

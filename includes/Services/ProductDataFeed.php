@@ -46,8 +46,6 @@ class ProductDataFeed
 
         $delimiter = $format === 'csv' ? ',' : "\t";
         $products = self::getPublishedProducts();
-        $productSync = new ProductSync();
-
         // Build header row
         // NOTE: shipping_weight uses GMC format (e.g., "0.15 lb") NOT WooCommerce "lbs"
         $headers = [
@@ -113,6 +111,7 @@ class ProductDataFeed
             $gmcId = self::getGmcOfferId($productId);
             $gtin = ProductIdentifiers::getGtin($product);
             $mpn = ProductIdentifiers::getMpn($product);
+            $brand = ProductIdentifiers::getBrand($product);
             $title = trim((string) $product->get_name());
             $description = self::getDescription($product);
             if (in_array($profile, ['agent', 'openai'], true)) {
@@ -134,7 +133,7 @@ class ProductDataFeed
                 // GMC requires the sale amount in the separate sale_price column.
                 self::escapeField(self::formatPrice(self::getRegularPrice($product), $currency), $format),
                 self::escapeField($product->is_in_stock() ? 'in_stock' : 'out_of_stock', $format),
-                self::escapeField(self::getBrand($product), $format),
+                self::escapeField($brand, $format),
                 self::escapeField('new', $format), // Condition is always new for this store
                 self::escapeField($mpn, $format),
                 self::escapeField($gtin, $format),
@@ -153,7 +152,7 @@ class ProductDataFeed
                 self::escapeField(self::getGender($product), $format),
                 // Missing local data is not proof that identifiers do not exist.
                 // Emit "no" only from an explicit product-level review.
-                self::escapeField(ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn), $format),
+                self::escapeField(ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn, $brand), $format),
                 // UCP checkout-compliance columns.
                 self::escapeField(self::checkoutEligibility($product), $format),
                 self::escapeField(self::consumerNotice($productId), $format),
@@ -725,54 +724,6 @@ class ProductDataFeed
     // free-text-from-content feed attribute without a server-side compliance
     // guard (see HP-Protocol's purpose deny-list, `purpose_withheld`) AND a
     // full-catalog claims audit of the source field.
-
-    /**
-     * Get brand for a product.
-     *
-     * @param \WC_Product $product
-     * @return string
-     */
-    private static function getBrand(\WC_Product $product): string
-    {
-        $productId = $product->get_id();
-
-        // Check ACF manufacturer field first
-        if (function_exists('get_field')) {
-            $manufacturer = get_field('manufacturer', $productId);
-            if ($manufacturer) {
-                if (is_array($manufacturer)) {
-                    return $manufacturer['name'] ?? '';
-                }
-                return (string) $manufacturer;
-            }
-
-            // Also check manufacturer_acf
-            $manufacturerAcf = get_field('manufacturer_acf', $productId);
-            if ($manufacturerAcf) {
-                if (is_array($manufacturerAcf)) {
-                    return $manufacturerAcf['name'] ?? '';
-                }
-                return (string) $manufacturerAcf;
-            }
-        }
-
-        // Check native WooCommerce Brands taxonomy.
-        $terms = wp_get_post_terms($productId, 'product_brand', ['fields' => 'names']);
-        if (!is_wp_error($terms) && !empty($terms)) {
-            return $terms[0];
-        }
-
-        // Temporary fallback for the staging/production migration window.
-        if (taxonomy_exists('yith_product_brand')) {
-            $terms = get_the_terms($productId, 'yith_product_brand');
-            if ($terms && !is_wp_error($terms)) {
-                return $terms[0]->name;
-            }
-        }
-
-        // Fallback to site name
-        return get_bloginfo('name');
-    }
 
     /**
      * Get shipping weight for GMC in correct format.

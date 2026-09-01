@@ -119,12 +119,12 @@ $rmHeaderCheck = strpos($feed, "'identifier_exists',");
 check($rmHeaderCheck !== false, 'feed header includes identifier_exists column');
 check(strpos($feed, 'ProductIdentifiers::getMpn($product)') !== false,
     'feed MPN comes from the reviewed identifier provider');
-check(strpos($feed, 'ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn)') !== false,
+check(strpos($feed, 'ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn, $brand)') !== false,
     'identifier_exists comes from the explicit reviewed-absence provider');
 check(strpos($feed, '$mpn = trim((string) $product->get_sku())') === false,
     'feed never copies the internal SKU into MPN');
-check(strpos($sync, "'mpn' => \$product->get_sku()") === false,
-    'direct API mapping never copies the internal SKU into MPN');
+check(strpos($sync, 'mapProductToGmc') === false && strpos($sync, 'pushProduct') === false,
+    'obsolete direct product mapper/request path is disabled instead of claiming Merchant API v1 parity');
 check(strpos($identifiers, "'_hp_gmc_mpn_verified'") !== false
     && strpos($identifiers, "'_hp_gmc_mpn_source'") !== false,
     'MPN provider requires explicit review and provenance metadata');
