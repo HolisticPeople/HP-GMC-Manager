@@ -21,10 +21,15 @@ function check_identifier(bool $ok, string $label): void
 
 $meta = [];
 $brands = [];
+$acfBrands = [];
 
 function get_post_meta($id, $key, $single = true) {
     global $meta;
     return $meta[$id][$key] ?? '';
+}
+function get_field($field, $id) {
+    global $acfBrands;
+    return $acfBrands[$id][$field] ?? '';
 }
 function wp_get_post_terms($id, $taxonomy, $args = []) {
     global $brands;
@@ -71,6 +76,9 @@ check_identifier(ProductIdentifiers::getMpn($product) === '', 'GTIN product does
 $meta[101]['_hp_gmc_identifier_exists'] = 'no';
 check_identifier(ProductIdentifiers::getIdentifierExists($product, $gtin, '', $brand) === '',
     'GTIN and brand suppress a contradictory identifier_exists=no');
+$acfBrands[109]['manufacturer'] = (object) ['name' => 'ACF Term Brand'];
+check_identifier(ProductIdentifiers::getBrand(new WC_Product(109)) === 'ACF Term Brand',
+    'ACF term-object brand is projected without object coercion');
 
 // Malformed/restricted/checksum-invalid GTINs all fail closed.
 foreach ([

@@ -130,6 +130,8 @@ final class ProductIdentifiers
                     $brand = get_field($field, $productId);
                     if (is_array($brand)) {
                         $brand = $brand['name'] ?? '';
+                    } elseif (is_object($brand)) {
+                        $brand = $brand->name ?? '';
                     }
                     $brand = self::normalizeBrand((string) $brand);
                     if ($brand !== '') {
