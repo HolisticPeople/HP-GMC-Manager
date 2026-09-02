@@ -11,9 +11,9 @@ if (!defined('ABSPATH')) {
  */
 final class StorefrontPolicyContentMigration
 {
-    private const VERSION = '3.4.7';
+    private const VERSION = '3.4.8';
     private const VERSION_OPTION = 'hp_gmc_storefront_policy_content_version';
-    private const BACKUP_OPTION = 'hp_gmc_storefront_policy_backup_3_4_7';
+    private const BACKUP_OPTION = 'hp_gmc_storefront_policy_backup_3_4_8';
 
     public static function run(): void
     {
