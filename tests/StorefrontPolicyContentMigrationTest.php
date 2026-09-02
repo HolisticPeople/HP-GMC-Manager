@@ -2,9 +2,20 @@
 declare(strict_types=1);
 
 define('ABSPATH', '/');
+$hooks = [];
+function add_action($tag, $callback, $priority = 10, $acceptedArgs = 1): void {
+    global $hooks;
+    $hooks[] = compact('tag', 'callback', 'priority', 'acceptedArgs');
+}
 require dirname(__DIR__) . '/includes/Services/StorefrontPolicyContentMigration.php';
 
 use HP_GMC\Services\StorefrontPolicyContentMigration;
+
+StorefrontPolicyContentMigration::init();
+if (($hooks[0]['tag'] ?? '') !== 'init' || ($hooks[0]['priority'] ?? 0) !== 30) {
+    fwrite(STDERR, "Storefront content migration must wait for WordPress init.\n");
+    exit(1);
+}
 
 $return = StorefrontPolicyContentMigration::returnPolicyContent();
 foreach ([

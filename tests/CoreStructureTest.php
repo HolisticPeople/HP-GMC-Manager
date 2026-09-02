@@ -61,14 +61,14 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.8',
-    'current version is pinned exactly to 3.4.8');
+check($constVersion === '3.4.9',
+    'current version is pinned exactly to 3.4.9');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,
     'Plugin initializes the canonical merchant return policy schema service');
-check(strpos($plugin, 'StorefrontPolicyContentMigration::run();') !== false,
-    'Plugin runs the reversible storefront policy content migration');
+check(strpos($plugin, 'StorefrontPolicyContentMigration::init();') !== false,
+    'Plugin defers the reversible storefront policy content migration');
 
 // --- 3.1.0 lesson: Merchant API v1beta was discontinued 2026-02-28 (HTTP 409).
 // No merchantapi.googleapis.com call may target v1beta again.

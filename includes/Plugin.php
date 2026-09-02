@@ -53,7 +53,7 @@ class Plugin
     public static function init(): void
     {
         MerchantReturnPolicySchemaService::init();
-        StorefrontPolicyContentMigration::run();
+        StorefrontPolicyContentMigration::init();
 
         // Register admin pages
         add_action('admin_menu', [self::class, 'register_admin_menu']);
