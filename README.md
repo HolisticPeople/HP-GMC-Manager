@@ -112,16 +112,23 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.6 — Current Staging Build
+### 3.4.7 — Identifier Migration Operator Candidate
 
-- Added the versioned `scripts/gmc-identifier-migration.php` operator tool for
+- Added the deploy-visible versioned
+  `includes/Operations/IdentifierMigrationOperator.php` tool for
   immutable candidate exports and checksum-gated staging preflight, apply,
   rollback, and feed regeneration. Production is export-only; write operations
   fail closed outside staging, and `_sku`, `_global_unique_id`, and `sku_mfr`
-  are fingerprinted and verified unchanged.
+  are fingerprinted, rechecked immediately before every row write, and verified
+  unchanged. Failed preflight exits nonzero.
 - Added `scripts/compare-identifier-feeds.py` for row-keyed production,
   staging-before, and staging-after comparisons that separate population drift,
-  identifier changes, and every non-identifier cell change.
+  identifier changes, and every non-identifier cell change. A staging-after
+  comparison exits nonzero if IDs, headers, GTIN, or any non-identifier cell
+  changes.
+
+### 3.4.6
+
 - Removed the unsafe SKU-to-MPN projection from the canonical pull feed. `mpn`
   now emits only from a product-level reviewed manufacturer source:
   `_hp_gmc_mpn`, `_hp_gmc_mpn_verified=yes`, and an approved

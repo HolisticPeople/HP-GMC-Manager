@@ -3,11 +3,11 @@
  * HP-GMC reviewed identifier migration tool (schema v1).
  *
  * Run through WP-CLI so WordPress and WooCommerce are loaded:
- *   wp eval-file scripts/gmc-identifier-migration.php export gla_123:123,...
- *   wp eval-file scripts/gmc-identifier-migration.php preflight /path/manifest.json SHA256
- *   wp eval-file scripts/gmc-identifier-migration.php apply /path/manifest.json SHA256
- *   wp eval-file scripts/gmc-identifier-migration.php rollback /path/manifest.json SHA256
- *   wp eval-file scripts/gmc-identifier-migration.php regenerate
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php export gla_123:123,...
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php preflight /path/manifest.json SHA256
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php apply /path/manifest.json SHA256
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php rollback /path/manifest.json SHA256
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php regenerate
  *
  * Production use is read-only: only `export` is permitted there. Apply,
  * rollback, and regeneration fail closed unless the detected site is staging.
@@ -287,6 +287,25 @@ function hp_gmc_identifier_apply(array $manifest, bool $rollback = false): array
             $productId = (int) $row['product_id'];
             $before = hp_gmc_identifier_current($productId);
             $beforeProtected = array_intersect_key($before, array_flip(['_sku', '_global_unique_id', 'sku_mfr']));
+            foreach ($beforeProtected as $key => $currentValue) {
+                $expectedValue = (string) ($row['protected_fingerprint'][$key] ?? '');
+                if (!hash_equals($expectedValue, $currentValue)) {
+                    throw new RuntimeException('Immediate protected-field drift for product ' . $productId . ': ' . $key);
+                }
+            }
+            $expectedCanonical = $rollback
+                ? [
+                    '_hp_gmc_mpn' => (string) ($row['proposed_mpn'] ?? ''),
+                    '_hp_gmc_mpn_verified' => 'yes',
+                    '_hp_gmc_mpn_source' => (string) ($row['manufacturer_provenance']['type'] ?? ''),
+                ]
+                : (array) ($row['rollback_value'] ?? []);
+            foreach (['_hp_gmc_mpn', '_hp_gmc_mpn_verified', '_hp_gmc_mpn_source'] as $key) {
+                if (!array_key_exists($key, $expectedCanonical)
+                    || !hash_equals((string) $expectedCanonical[$key], $before[$key])) {
+                    throw new RuntimeException('Immediate canonical-field drift for product ' . $productId . ': ' . $key);
+                }
+            }
             $restores[$productId] = array_intersect_key($before, array_flip([
                 '_hp_gmc_mpn',
                 '_hp_gmc_mpn_verified',
@@ -371,6 +390,9 @@ try {
     }
 
     echo wp_json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
+    if ($operation === 'preflight' && !($result['ok'] ?? false)) {
+        exit(1);
+    }
 } catch (Throwable $error) {
     fwrite(STDERR, wp_json_encode([
         'ok' => false,

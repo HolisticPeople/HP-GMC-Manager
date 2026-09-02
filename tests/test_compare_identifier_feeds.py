@@ -28,5 +28,11 @@ with tempfile.TemporaryDirectory() as directory:
     delta = report["staging_before_vs_after"]
     assert delta["changed_cell_count_by_column"] == {"mpn": 1}
     assert delta["non_identifier_changes"] == []
+    assert report["acceptance"]["ok"] is True
+
+    after.write_text("id\ttitle\tmpn\tgtin\tidentifier_exists\nA\tChanged\tMFR-A\t\t\nC\tThree\t\t\t\n", encoding="utf-8")
+    failed = MODULE.build_report(production, before, after)
+    assert failed["acceptance"]["ok"] is False
+    assert "non-identifier cells changed" in failed["acceptance"]["failures"]
 
 print("ALL PASS")

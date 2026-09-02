@@ -1,10 +1,10 @@
 <?php
-/** Standalone contract checks for scripts/gmc-identifier-migration.php. */
+/** Standalone contract checks for the deployed identifier operator. */
 
 declare(strict_types=1);
 
 define('HP_GMC_IDENTIFIER_MIGRATION_LIBRARY_ONLY', true);
-require dirname(__DIR__) . '/scripts/gmc-identifier-migration.php';
+require dirname(__DIR__) . '/includes/Operations/IdentifierMigrationOperator.php';
 
 $failures = 0;
 $check = static function (bool $condition, string $label) use (&$failures): void {

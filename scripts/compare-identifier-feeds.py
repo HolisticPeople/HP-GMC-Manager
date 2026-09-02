@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 IDENTIFIER_COLUMNS = {"mpn", "gtin", "identifier_exists"}
+ALLOWED_MIGRATION_COLUMNS = {"mpn", "identifier_exists"}
 
 
 def load_feed(path: Path) -> tuple[list[str], dict[str, dict[str, str]]]:
@@ -87,6 +88,23 @@ def build_report(production: Path, staging_before: Path, staging_after: Path | N
         report["header_parity_staging_before_vs_after"] = before_headers == after_headers
         report["staging_before_vs_after"] = compare(before_rows, after_rows)
         report["production_vs_staging_after"] = compare(production_rows, after_rows)
+        delta = report["staging_before_vs_after"]
+        changed_columns = set(delta["changed_cell_count_by_column"])
+        failures = []
+        if not report["header_parity_staging_before_vs_after"]:
+            failures.append("staging feed headers changed")
+        if delta["left_only_ids"] or delta["right_only_ids"]:
+            failures.append("staging feed population changed")
+        if delta["non_identifier_changes"]:
+            failures.append("non-identifier cells changed")
+        unexpected_identifier_columns = sorted(changed_columns - ALLOWED_MIGRATION_COLUMNS)
+        if unexpected_identifier_columns:
+            failures.append("protected identifier columns changed: " + ", ".join(unexpected_identifier_columns))
+        report["acceptance"] = {
+            "ok": not failures,
+            "allowed_changed_columns": sorted(ALLOWED_MIGRATION_COLUMNS),
+            "failures": failures,
+        }
     return report
 
 
@@ -103,7 +121,7 @@ def main() -> int:
         args.output.write_text(payload, encoding="utf-8")
     else:
         print(payload, end="")
-    return 0
+    return 0 if report.get("acceptance", {}).get("ok", True) else 1
 
 
 if __name__ == "__main__":

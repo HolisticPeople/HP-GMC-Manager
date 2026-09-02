@@ -27,7 +27,7 @@ $client = file_get_contents($root . '/includes/Services/MerchantApiClient.php');
 $feed = file_get_contents($root . '/includes/Services/ProductDataFeed.php');
 $sync = file_get_contents($root . '/includes/Services/ProductSync.php');
 $identifiers = file_get_contents($root . '/includes/Services/ProductIdentifiers.php');
-$identifierMigration = file_get_contents($root . '/scripts/gmc-identifier-migration.php');
+$identifierMigration = file_get_contents($root . '/includes/Operations/IdentifierMigrationOperator.php');
 
 function method_body(string $source, string $method): string
 {
@@ -60,8 +60,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.6',
-    'current version is pinned exactly to 3.4.6');
+check($constVersion === '3.4.7',
+    'current version is pinned exactly to 3.4.7');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 
@@ -139,6 +139,11 @@ check(strpos($identifierMigration, "['_sku', '_global_unique_id', 'sku_mfr']") !
     'identifier migration fingerprints protected source identifiers');
 check(strpos($identifierMigration, 'hash_equals($expected, $current[$key])') !== false,
     'identifier migration aborts on protected-field drift');
+check(strpos($identifierMigration, 'Immediate protected-field drift') !== false
+    && strpos($identifierMigration, 'Immediate canonical-field drift') !== false,
+    'identifier migration rechecks every accepted row immediately before writes');
+check(strpos($identifierMigration, 'if ($operation === \'preflight\' && !($result[\'ok\'] ?? false))') !== false,
+    'failed identifier preflight exits nonzero');
 
 // --- Availability doctrine (backorder business model, user 2026-07-03):
 // the feed must use WC is_in_stock(), NOT HP-Inventory sellable QOH — HP sells
