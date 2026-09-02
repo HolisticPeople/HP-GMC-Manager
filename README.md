@@ -112,6 +112,18 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.11 — Production Confirmation Helper
+
+- Added a read-only `production-confirmation` operator command that emits the
+  exact confirmation value for an operation and full manifest SHA-256.
+- Tightened the authorization schema to require exactly 12 lowercase
+  hexadecimal manifest-prefix characters. For manifest
+  `91705c7459e9747f0e6009038bf5b310b1ada03ba030330292892e3b9d0f8a79`,
+  the preflight confirmation is exactly
+  `HP-GMC-PRODUCTION-PREFLIGHT-91705c7459e9`.
+- Use the helper rather than manually truncating the checksum:
+  `wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-confirmation preflight 91705c7459e9747f0e6009038bf5b310b1ada03ba030330292892e3b9d0f8a79`.
+
 ### 3.4.10 — Guarded Production Identifier Candidate
 
 - Added separately named `production-*` identifier operations without
