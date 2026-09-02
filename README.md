@@ -112,6 +112,26 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.10 — Guarded Production Identifier Candidate
+
+- Added separately named `production-*` identifier operations without
+  weakening the existing exact-host staging gate. Every production operation
+  requires immutable manifest and authorization checksums plus exact production
+  host/environment, merchant-account fingerprint, operation, feed-before hash
+  and population, manifest/accepted counts, approval reference, bounded expiry,
+  authorization UUID, and explicit confirmation bindings.
+- Manifest and authorization bytes are each read once, then both checksummed
+  and decoded from that same capture; mutating authorization UUIDs are consumed
+  atomically and cannot be replayed.
+- Production regeneration requires an immediate protected/canonical preflight
+  for its explicitly authorized `applied` or `rolled_back` phase before any
+  cache clear or feed generation.
+- Kept production execution fail closed on any checksum, host, account, feed,
+  row-count, authorization, canonical-before, or protected-field drift. Apply
+  still automatically restores already-touched canonical fields on failure.
+- Isolated dashboard/API product-count metadata to the merchant profile so
+  agent and OpenAI feed generation can no longer overwrite merchant status.
+
 ### 3.4.9
 - Publish the canonical 30-day MerchantReturnPolicy in Yoast's Organization graph, including customer-paid remorse returns, free defect returns, downloadable labels, full refunds, and no restocking fee.
 - Reconcile the public Return & Refund Policy and Terms pages with that policy, retaining one-time content backups for rollback.

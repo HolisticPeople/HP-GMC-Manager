@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 3.4.9
+ * Version: 3.4.10
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -25,7 +25,7 @@ if (PHP_VERSION_ID < 80500) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '3.4.9');
+define('HP_GMC_VERSION', '3.4.10');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));

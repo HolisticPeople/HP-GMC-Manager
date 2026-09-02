@@ -168,9 +168,12 @@ class ProductDataFeed
         // Cache the result
         set_transient(self::CACHE_KEY . '_' . $format . '_' . $profile, $content, self::CACHE_DURATION);
 
-        // Update metadata
-        update_option(self::LAST_GENERATED_KEY, current_time('mysql'));
-        update_option(self::PRODUCT_COUNT_KEY, $count);
+        // Dashboard/API status describes the merchant feed only. Agent/OpenAI
+        // profile generation must not overwrite the merchant product count.
+        if (self::updatesMerchantStatus($profile)) {
+            update_option(self::LAST_GENERATED_KEY, current_time('mysql'));
+            update_option(self::PRODUCT_COUNT_KEY, $count);
+        }
 
         // Log generation event
         error_log(json_encode([
@@ -182,6 +185,14 @@ class ProductDataFeed
         ]));
 
         return $content;
+    }
+
+    /**
+     * Whether a generated profile owns the dashboard/API merchant status.
+     */
+    private static function updatesMerchantStatus(string $profile): bool
+    {
+        return $profile === 'merchant';
     }
 
     /**

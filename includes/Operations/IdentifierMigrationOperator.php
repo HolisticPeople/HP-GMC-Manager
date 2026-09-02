@@ -8,15 +8,22 @@
  *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php apply /path/manifest.json SHA256
  *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php rollback /path/manifest.json SHA256
  *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php regenerate
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-preflight /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-apply /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-rollback /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-regenerate /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
  *
- * Production use is read-only: only `export` is permitted there. Apply,
- * rollback, and regeneration fail closed unless the detected site is staging.
+ * Production mutations use separate `production-*` operations and require an
+ * immutable, operation-specific authorization packet in addition to the
+ * immutable manifest. Existing staging operations remain staging-only.
  */
 
 declare(strict_types=1);
 
 const HP_GMC_IDENTIFIER_MANIFEST_SCHEMA = 'hp-gmc-identifier-migration/v1';
+const HP_GMC_IDENTIFIER_PRODUCTION_AUTHORIZATION_SCHEMA = 'hp-gmc-identifier-production-authorization/v1';
 const HP_GMC_IDENTIFIER_STAGING_HOST = 'env-holisticpeoplecom-hpdevplus.kinsta.cloud';
+const HP_GMC_IDENTIFIER_PRODUCTION_HOST = 'holisticpeople.com';
 
 function hp_gmc_identifier_is_staging(string $url, ?string $environmentType = null): bool
 {
@@ -29,30 +36,50 @@ function hp_gmc_identifier_is_staging(string $url, ?string $environmentType = nu
         && hash_equals(HP_GMC_IDENTIFIER_STAGING_HOST, $host);
 }
 
-function hp_gmc_identifier_json(string $path): array
+function hp_gmc_identifier_is_production(string $url, ?string $environmentType = null): bool
 {
-    if (!is_file($path) || !is_readable($path)) {
-        throw new RuntimeException('Manifest is not a readable file: ' . $path);
-    }
+    $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+    $environmentType ??= function_exists('wp_get_environment_type')
+        ? (string) wp_get_environment_type()
+        : '';
 
-    $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-    if (!is_array($decoded)) {
-        throw new RuntimeException('Manifest root must be an object.');
-    }
-
-    return $decoded;
+    return $environmentType === 'production'
+        && hash_equals(HP_GMC_IDENTIFIER_PRODUCTION_HOST, $host);
 }
 
-function hp_gmc_identifier_checksum(string $path, string $expected): void
+function hp_gmc_identifier_normalize_url(string $url): string
 {
+    $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+    $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+    $port = parse_url($url, PHP_URL_PORT);
+    if ($scheme === '' || $host === '') {
+        return '';
+    }
+
+    return $scheme . '://' . $host . ($port ? ':' . $port : '') . '/';
+}
+
+function hp_gmc_identifier_verified_json(string $path, string $expected): array
+{
+    if (!is_file($path) || !is_readable($path)) {
+        throw new RuntimeException('JSON input is not a readable file: ' . $path);
+    }
     if (!preg_match('/^[a-f0-9]{64}$/D', $expected)) {
         throw new RuntimeException('Expected SHA-256 must be 64 lowercase hexadecimal characters.');
     }
-
-    $actual = hash_file('sha256', $path);
-    if (!hash_equals($expected, $actual)) {
-        throw new RuntimeException('Manifest checksum mismatch.');
+    $bytes = file_get_contents($path);
+    if (!is_string($bytes)) {
+        throw new RuntimeException('Unable to read JSON input: ' . $path);
     }
+    if (!hash_equals($expected, hash('sha256', $bytes))) {
+        throw new RuntimeException('JSON input checksum mismatch.');
+    }
+
+    $decoded = json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($decoded)) {
+        throw new RuntimeException('JSON input root must be an object.');
+    }
+    return $decoded;
 }
 
 function hp_gmc_identifier_current(int $productId): array
@@ -162,21 +189,25 @@ function hp_gmc_identifier_export(string $pairs): array
     ];
 }
 
-function hp_gmc_identifier_validate_manifest(array $manifest): array
+function hp_gmc_identifier_validate_manifest(array $manifest, string $targetEnvironment = 'staging'): array
 {
     $errors = [];
     $allowedSources = ['manufacturer', 'manufacturer_catalog', 'authorized_distributor', 'product_label'];
     if (($manifest['schema'] ?? '') !== HP_GMC_IDENTIFIER_MANIFEST_SCHEMA) {
         $errors[] = 'Unsupported manifest schema.';
     }
-    if (($manifest['target_environment'] ?? '') !== 'staging') {
-        $errors[] = 'Manifest target_environment must be staging.';
+    if (!in_array($targetEnvironment, ['staging', 'production'], true)) {
+        $errors[] = 'Unsupported expected manifest environment.';
+    } elseif (($manifest['target_environment'] ?? '') !== $targetEnvironment) {
+        $errors[] = 'Manifest target_environment must be ' . $targetEnvironment . '.';
     }
     if (!isset($manifest['rows']) || !is_array($manifest['rows'])) {
         return array_merge($errors, ['Manifest rows must be an array.']);
     }
 
     $seen = [];
+    $seenOffers = [];
+    $seenAcceptedMpn = [];
     foreach ($manifest['rows'] as $index => $row) {
         $prefix = 'rows[' . $index . ']';
         $productId = (int) ($row['product_id'] ?? 0);
@@ -185,6 +216,12 @@ function hp_gmc_identifier_validate_manifest(array $manifest): array
             continue;
         }
         $seen[$productId] = true;
+        $offerId = trim((string) ($row['gmc_offer_id'] ?? ''));
+        if ($offerId === '' || isset($seenOffers[$offerId])) {
+            $errors[] = $prefix . ' has an invalid or duplicate gmc_offer_id.';
+        } else {
+            $seenOffers[$offerId] = true;
+        }
 
         $status = (string) ($row['review_status'] ?? '');
         if (!in_array($status, ['accepted', 'rejected', 'ambiguous', 'deferred'], true)) {
@@ -201,6 +238,18 @@ function hp_gmc_identifier_validate_manifest(array $manifest): array
         if ($mpn !== (string) ($row['raw_sku_mfr'] ?? '')) {
             $errors[] = $prefix . ' proposed_mpn must exactly preserve reviewed raw_sku_mfr.';
         }
+        if ($mpn !== '' && hash_equals($mpn, (string) ($row['woo_sku'] ?? ''))) {
+            $errors[] = $prefix . ' accepted proposed_mpn cannot equal the Woo SKU.';
+        }
+        if (trim((string) ($row['gtin'] ?? '')) !== '') {
+            $errors[] = $prefix . ' accepted target must not already have a GTIN.';
+        }
+        $normalizedMpn = strtolower($mpn);
+        if ($normalizedMpn !== '' && isset($seenAcceptedMpn[$normalizedMpn])) {
+            $errors[] = $prefix . ' accepted proposed_mpn duplicates another accepted row.';
+        } elseif ($normalizedMpn !== '') {
+            $seenAcceptedMpn[$normalizedMpn] = true;
+        }
         $source = (string) ($row['manufacturer_provenance']['type'] ?? '');
         if (!in_array($source, $allowedSources, true)) {
             $errors[] = $prefix . ' accepted provenance type is not approved.';
@@ -216,9 +265,9 @@ function hp_gmc_identifier_validate_manifest(array $manifest): array
     return $errors;
 }
 
-function hp_gmc_identifier_preflight(array $manifest, bool $rollback = false): array
+function hp_gmc_identifier_preflight(array $manifest, bool $rollback = false, string $targetEnvironment = 'staging'): array
 {
-    $errors = hp_gmc_identifier_validate_manifest($manifest);
+    $errors = hp_gmc_identifier_validate_manifest($manifest, $targetEnvironment);
     $accepted = 0;
     foreach (($manifest['rows'] ?? []) as $index => $row) {
         if (($row['review_status'] ?? '') !== 'accepted') {
@@ -271,9 +320,9 @@ function hp_gmc_identifier_store(int $productId, string $key, string $value): vo
     }
 }
 
-function hp_gmc_identifier_apply(array $manifest, bool $rollback = false): array
+function hp_gmc_identifier_apply(array $manifest, bool $rollback = false, string $targetEnvironment = 'staging'): array
 {
-    $preflight = hp_gmc_identifier_preflight($manifest, $rollback);
+    $preflight = hp_gmc_identifier_preflight($manifest, $rollback, $targetEnvironment);
     if (!$preflight['ok']) {
         throw new RuntimeException('Preflight failed: ' . implode(' | ', $preflight['errors']));
     }
@@ -345,6 +394,203 @@ function hp_gmc_identifier_apply(array $manifest, bool $rollback = false): array
     ];
 }
 
+function hp_gmc_identifier_feed_snapshot(): array
+{
+    $content = get_transient('hp_gmc_primary_feed_content_tsv_merchant');
+    if (!is_string($content) || $content === '') {
+        throw new RuntimeException('Merchant TSV feed cache is unavailable; capture/freeze it before authorization.');
+    }
+
+    return [
+        'sha256' => hash('sha256', $content),
+        'product_count' => substr_count($content, "\n"),
+    ];
+}
+
+function hp_gmc_identifier_production_confirmation(string $operation, string $manifestSha): string
+{
+    return 'HP-GMC-PRODUCTION-' . strtoupper($operation) . '-' . substr($manifestSha, 0, 12);
+}
+
+function hp_gmc_identifier_validate_production_authorization(
+    array $authorization,
+    string $operation,
+    string $manifestSha,
+    array $manifest,
+    string $siteUrl,
+    string $merchantId,
+    array $feedSnapshot,
+    ?int $now = null
+): array {
+    $errors = hp_gmc_identifier_validate_manifest($manifest, 'production');
+    $allowedOperations = ['preflight', 'apply', 'rollback', 'regenerate'];
+    if (!in_array($operation, $allowedOperations, true)) {
+        $errors[] = 'Unsupported production operation.';
+    }
+    if (($authorization['schema'] ?? '') !== HP_GMC_IDENTIFIER_PRODUCTION_AUTHORIZATION_SCHEMA) {
+        $errors[] = 'Unsupported production authorization schema.';
+    }
+    if (($authorization['target_environment'] ?? '') !== 'production') {
+        $errors[] = 'Production authorization target_environment must be production.';
+    }
+    if (($authorization['target_host'] ?? '') !== HP_GMC_IDENTIFIER_PRODUCTION_HOST) {
+        $errors[] = 'Production authorization target_host mismatch.';
+    }
+    $normalizedSiteUrl = hp_gmc_identifier_normalize_url($siteUrl);
+    if ($normalizedSiteUrl !== 'https://' . HP_GMC_IDENTIFIER_PRODUCTION_HOST . '/') {
+        $errors[] = 'Runtime production site URL mismatch.';
+    }
+    if ((string) ($authorization['target_site_url'] ?? '') !== $normalizedSiteUrl) {
+        $errors[] = 'Production authorization target_site_url mismatch.';
+    }
+    if ($merchantId === '') {
+        $errors[] = 'Runtime merchant account ID is empty.';
+    } elseif (!hash_equals(
+        hash('sha256', $merchantId),
+        (string) ($authorization['target_merchant_id_sha256'] ?? '')
+    )) {
+        $errors[] = 'Production authorization merchant account fingerprint mismatch.';
+    }
+    if (!hash_equals($manifestSha, (string) ($authorization['manifest_sha256'] ?? ''))) {
+        $errors[] = 'Production authorization manifest checksum mismatch.';
+    }
+    if (($authorization['operation'] ?? '') !== $operation) {
+        $errors[] = 'Production authorization operation mismatch.';
+    }
+    $canonicalPhase = (string) ($authorization['expected_canonical_phase'] ?? '');
+    $allowedPhases = $operation === 'regenerate'
+        ? ['applied', 'rolled_back']
+        : [in_array($operation, ['rollback'], true) ? 'applied' : 'rolled_back'];
+    if (!in_array($canonicalPhase, $allowedPhases, true)) {
+        $errors[] = 'Production authorization canonical phase mismatch.';
+    }
+    if (($authorization['confirmation'] ?? '') !== hp_gmc_identifier_production_confirmation($operation, $manifestSha)) {
+        $errors[] = 'Production authorization confirmation mismatch.';
+    }
+    if (!preg_match(
+        '/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/D',
+        (string) ($authorization['authorization_id'] ?? '')
+    )) {
+        $errors[] = 'Production authorization authorization_id must be a lowercase UUID.';
+    }
+    if ((int) ($authorization['expected_manifest_rows'] ?? -1) !== count($manifest['rows'] ?? [])) {
+        $errors[] = 'Production authorization manifest row count mismatch.';
+    }
+    $acceptedRows = count(array_filter(
+        $manifest['rows'] ?? [],
+        static fn(array $row): bool => ($row['review_status'] ?? '') === 'accepted'
+    ));
+    if ((int) ($authorization['expected_accepted_rows'] ?? -1) !== $acceptedRows) {
+        $errors[] = 'Production authorization accepted row count mismatch.';
+    }
+    if (!hash_equals(
+        (string) ($feedSnapshot['sha256'] ?? ''),
+        (string) ($authorization['expected_feed_before_sha256'] ?? '')
+    )) {
+        $errors[] = 'Production authorization feed checksum mismatch.';
+    }
+    if ((int) ($authorization['expected_feed_product_count'] ?? -1) !== (int) ($feedSnapshot['product_count'] ?? -2)) {
+        $errors[] = 'Production authorization feed product count mismatch.';
+    }
+    if (trim((string) ($authorization['approved_by'] ?? '')) === '') {
+        $errors[] = 'Production authorization approved_by is required.';
+    }
+    if (trim((string) ($authorization['approval_reference'] ?? '')) === '') {
+        $errors[] = 'Production authorization approval_reference is required.';
+    }
+
+    $now ??= time();
+    $approvedAt = strtotime((string) ($authorization['approved_at_utc'] ?? ''));
+    $expiresAt = strtotime((string) ($authorization['expires_at_utc'] ?? ''));
+    if ($approvedAt === false || $approvedAt > $now) {
+        $errors[] = 'Production authorization approved_at_utc is invalid or in the future.';
+    }
+    if ($expiresAt === false || $expiresAt <= $now || $expiresAt <= (int) $approvedAt) {
+        $errors[] = 'Production authorization is expired or has an invalid expiry.';
+    } elseif ($approvedAt !== false && $expiresAt - $approvedAt > 4 * HOUR_IN_SECONDS) {
+        $errors[] = 'Production authorization validity window exceeds four hours.';
+    }
+
+    return $errors;
+}
+
+function hp_gmc_identifier_production_context(
+    string $operation,
+    string $manifestPath,
+    string $manifestSha,
+    string $authorizationPath,
+    string $authorizationSha
+): array {
+    if (!hp_gmc_identifier_is_production(home_url('/'))) {
+        throw new RuntimeException('production-' . $operation . ' is permitted only on the exact production site.');
+    }
+    $manifest = hp_gmc_identifier_verified_json($manifestPath, $manifestSha);
+    $authorization = hp_gmc_identifier_verified_json($authorizationPath, $authorizationSha);
+    $feedSnapshot = hp_gmc_identifier_feed_snapshot();
+    $errors = hp_gmc_identifier_validate_production_authorization(
+        $authorization,
+        $operation,
+        $manifestSha,
+        $manifest,
+        home_url('/'),
+        trim((string) get_option('hp_gmc_merchant_id', '')),
+        $feedSnapshot
+    );
+    if ($errors !== []) {
+        throw new RuntimeException('Production authorization failed: ' . implode(' | ', $errors));
+    }
+
+    return [
+        'manifest' => $manifest,
+        'authorization' => $authorization,
+        'authorization_sha256' => $authorizationSha,
+        'manifest_sha256' => $manifestSha,
+        'feed_snapshot' => $feedSnapshot,
+    ];
+}
+
+function hp_gmc_identifier_consume_production_authorization(
+    array $authorization,
+    string $authorizationSha,
+    string $manifestSha,
+    string $operation
+): array {
+    $authorizationId = (string) ($authorization['authorization_id'] ?? '');
+    $optionKey = 'hp_gmc_identifier_auth_consumed_' . hash('sha256', $authorizationId);
+    $record = [
+        'authorization_id' => $authorizationId,
+        'authorization_sha256' => $authorizationSha,
+        'manifest_sha256' => $manifestSha,
+        'operation' => $operation,
+        'consumed_at_utc' => gmdate('c'),
+    ];
+    if (!add_option($optionKey, $record, '', false)) {
+        throw new RuntimeException('Production authorization was already consumed.');
+    }
+
+    return [
+        'option_key' => $optionKey,
+        'record' => $record,
+    ];
+}
+
+function hp_gmc_identifier_regenerate(): array
+{
+    if (!class_exists('HP_GMC\\Services\\ProductDataFeed')) {
+        throw new RuntimeException('HP-GMC ProductDataFeed service is unavailable.');
+    }
+    \HP_GMC\Services\ProductDataFeed::clearCache();
+    $feed = \HP_GMC\Services\ProductDataFeed::generateFeed('tsv', true);
+
+    return [
+        'ok' => true,
+        'operation' => 'regenerate',
+        'sha256' => hash('sha256', $feed),
+        'logical_lines' => substr_count($feed, "\n") + 1,
+        'status' => \HP_GMC\Services\ProductDataFeed::getStatus(),
+    ];
+}
+
 if (defined('HP_GMC_IDENTIFIER_MIGRATION_LIBRARY_ONLY') && HP_GMC_IDENTIFIER_MIGRATION_LIBRARY_ONLY) {
     return;
 }
@@ -365,8 +611,7 @@ try {
             throw new RuntimeException($operation . ' is permitted only on staging.');
         }
         $path = (string) ($commandArgs[1] ?? '');
-        hp_gmc_identifier_checksum($path, (string) ($commandArgs[2] ?? ''));
-        $manifest = hp_gmc_identifier_json($path);
+        $manifest = hp_gmc_identifier_verified_json($path, (string) ($commandArgs[2] ?? ''));
         $result = $operation === 'preflight'
             ? hp_gmc_identifier_preflight($manifest, false)
             : hp_gmc_identifier_apply($manifest, $operation === 'rollback');
@@ -374,24 +619,65 @@ try {
         if (!hp_gmc_identifier_is_staging(home_url('/'))) {
             throw new RuntimeException('Feed regeneration is permitted only on staging.');
         }
-        if (!class_exists('HP_GMC\\Services\\ProductDataFeed')) {
-            throw new RuntimeException('HP-GMC ProductDataFeed service is unavailable.');
+        $result = hp_gmc_identifier_regenerate();
+    } elseif (preg_match('/^production-(preflight|apply|rollback|regenerate)$/D', $operation, $match)) {
+        $productionOperation = $match[1];
+        $context = hp_gmc_identifier_production_context(
+            $productionOperation,
+            (string) ($commandArgs[1] ?? ''),
+            (string) ($commandArgs[2] ?? ''),
+            (string) ($commandArgs[3] ?? ''),
+            (string) ($commandArgs[4] ?? '')
+        );
+        if ($productionOperation === 'preflight') {
+            $result = hp_gmc_identifier_preflight($context['manifest'], false, 'production');
+            $result['operation'] = 'production-preflight';
+            $result['feed_snapshot'] = $context['feed_snapshot'];
+        } elseif ($productionOperation === 'apply') {
+            hp_gmc_identifier_consume_production_authorization(
+                $context['authorization'],
+                $context['authorization_sha256'],
+                $context['manifest_sha256'],
+                $productionOperation
+            );
+            $result = hp_gmc_identifier_apply($context['manifest'], false, 'production');
+            $result['operation'] = 'production-apply';
+        } elseif ($productionOperation === 'rollback') {
+            hp_gmc_identifier_consume_production_authorization(
+                $context['authorization'],
+                $context['authorization_sha256'],
+                $context['manifest_sha256'],
+                $productionOperation
+            );
+            $result = hp_gmc_identifier_apply($context['manifest'], true, 'production');
+            $result['operation'] = 'production-rollback';
+        } else {
+            $expectApplied = ($context['authorization']['expected_canonical_phase'] ?? '') === 'applied';
+            $preflight = hp_gmc_identifier_preflight(
+                $context['manifest'],
+                $expectApplied,
+                'production'
+            );
+            if (!$preflight['ok']) {
+                throw new RuntimeException('Production regeneration preflight failed: ' . implode(' | ', $preflight['errors']));
+            }
+            hp_gmc_identifier_consume_production_authorization(
+                $context['authorization'],
+                $context['authorization_sha256'],
+                $context['manifest_sha256'],
+                $productionOperation
+            );
+            $result = hp_gmc_identifier_regenerate();
+            $result['operation'] = 'production-regenerate';
+            $result['canonical_phase'] = $context['authorization']['expected_canonical_phase'];
+            $result['preflight'] = $preflight;
         }
-        \HP_GMC\Services\ProductDataFeed::clearCache();
-        $feed = \HP_GMC\Services\ProductDataFeed::generateFeed('tsv', true);
-        $result = [
-            'ok' => true,
-            'operation' => 'regenerate',
-            'sha256' => hash('sha256', $feed),
-            'logical_lines' => substr_count($feed, "\n") + 1,
-            'status' => \HP_GMC\Services\ProductDataFeed::getStatus(),
-        ];
     } else {
         throw new RuntimeException('Unknown operation.');
     }
 
     echo wp_json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;
-    if ($operation === 'preflight' && !($result['ok'] ?? false)) {
+    if (in_array($operation, ['preflight', 'production-preflight'], true) && !($result['ok'] ?? false)) {
         exit(1);
     }
 } catch (Throwable $error) {
