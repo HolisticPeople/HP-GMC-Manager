@@ -157,6 +157,17 @@ check(strpos($identifierMigration, "HP_GMC_IDENTIFIER_PRODUCTION_AUTHORIZATION_S
     && strpos($identifierMigration, "expected_feed_before_sha256") !== false
     && strpos($identifierMigration, "expires_at_utc") !== false,
     'production migration requires account, feed, manifest, operation, and expiry bindings');
+check(strpos($identifierMigration, 'hp_gmc_identifier_verified_json') !== false
+    && strpos($identifierMigration, "hash('sha256', \$bytes)") !== false
+    && strpos($identifierMigration, "json_decode(\$bytes") !== false
+    && strpos($identifierMigration, 'hash_file(') === false,
+    'manifest and authorization decode the same captured bytes that were checksummed');
+check(strpos($identifierMigration, 'hp_gmc_identifier_consume_production_authorization') !== false
+    && strpos($identifierMigration, 'add_option($optionKey, $record') !== false,
+    'mutating production authorization is atomically consumed through a unique option');
+check(strpos($identifierMigration, "expected_canonical_phase") !== false
+    && strpos($identifierMigration, "Production regeneration preflight failed") !== false,
+    'production regeneration is bound to an immediate canonical-phase preflight');
 check(strpos($identifierMigration, "in_array(\$operation, ['preflight', 'production-preflight'], true)") !== false,
     'failed identifier preflight exits nonzero');
 

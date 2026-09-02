@@ -59,30 +59,27 @@ function hp_gmc_identifier_normalize_url(string $url): string
     return $scheme . '://' . $host . ($port ? ':' . $port : '') . '/';
 }
 
-function hp_gmc_identifier_json(string $path): array
+function hp_gmc_identifier_verified_json(string $path, string $expected): array
 {
     if (!is_file($path) || !is_readable($path)) {
-        throw new RuntimeException('Manifest is not a readable file: ' . $path);
+        throw new RuntimeException('JSON input is not a readable file: ' . $path);
     }
-
-    $decoded = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
-    if (!is_array($decoded)) {
-        throw new RuntimeException('Manifest root must be an object.');
-    }
-
-    return $decoded;
-}
-
-function hp_gmc_identifier_checksum(string $path, string $expected): void
-{
     if (!preg_match('/^[a-f0-9]{64}$/D', $expected)) {
         throw new RuntimeException('Expected SHA-256 must be 64 lowercase hexadecimal characters.');
     }
-
-    $actual = hash_file('sha256', $path);
-    if (!hash_equals($expected, $actual)) {
-        throw new RuntimeException('Manifest checksum mismatch.');
+    $bytes = file_get_contents($path);
+    if (!is_string($bytes)) {
+        throw new RuntimeException('Unable to read JSON input: ' . $path);
     }
+    if (!hash_equals($expected, hash('sha256', $bytes))) {
+        throw new RuntimeException('JSON input checksum mismatch.');
+    }
+
+    $decoded = json_decode($bytes, true, 512, JSON_THROW_ON_ERROR);
+    if (!is_array($decoded)) {
+        throw new RuntimeException('JSON input root must be an object.');
+    }
+    return $decoded;
 }
 
 function hp_gmc_identifier_current(int $productId): array
@@ -460,6 +457,13 @@ function hp_gmc_identifier_validate_production_authorization(
     if (($authorization['operation'] ?? '') !== $operation) {
         $errors[] = 'Production authorization operation mismatch.';
     }
+    $canonicalPhase = (string) ($authorization['expected_canonical_phase'] ?? '');
+    $allowedPhases = $operation === 'regenerate'
+        ? ['applied', 'rolled_back']
+        : [in_array($operation, ['rollback'], true) ? 'applied' : 'rolled_back'];
+    if (!in_array($canonicalPhase, $allowedPhases, true)) {
+        $errors[] = 'Production authorization canonical phase mismatch.';
+    }
     if (($authorization['confirmation'] ?? '') !== hp_gmc_identifier_production_confirmation($operation, $manifestSha)) {
         $errors[] = 'Production authorization confirmation mismatch.';
     }
@@ -520,10 +524,8 @@ function hp_gmc_identifier_production_context(
     if (!hp_gmc_identifier_is_production(home_url('/'))) {
         throw new RuntimeException('production-' . $operation . ' is permitted only on the exact production site.');
     }
-    hp_gmc_identifier_checksum($manifestPath, $manifestSha);
-    hp_gmc_identifier_checksum($authorizationPath, $authorizationSha);
-    $manifest = hp_gmc_identifier_json($manifestPath);
-    $authorization = hp_gmc_identifier_json($authorizationPath);
+    $manifest = hp_gmc_identifier_verified_json($manifestPath, $manifestSha);
+    $authorization = hp_gmc_identifier_verified_json($authorizationPath, $authorizationSha);
     $feedSnapshot = hp_gmc_identifier_feed_snapshot();
     $errors = hp_gmc_identifier_validate_production_authorization(
         $authorization,
@@ -541,7 +543,34 @@ function hp_gmc_identifier_production_context(
     return [
         'manifest' => $manifest,
         'authorization' => $authorization,
+        'authorization_sha256' => $authorizationSha,
+        'manifest_sha256' => $manifestSha,
         'feed_snapshot' => $feedSnapshot,
+    ];
+}
+
+function hp_gmc_identifier_consume_production_authorization(
+    array $authorization,
+    string $authorizationSha,
+    string $manifestSha,
+    string $operation
+): array {
+    $authorizationId = (string) ($authorization['authorization_id'] ?? '');
+    $optionKey = 'hp_gmc_identifier_auth_consumed_' . hash('sha256', $authorizationId);
+    $record = [
+        'authorization_id' => $authorizationId,
+        'authorization_sha256' => $authorizationSha,
+        'manifest_sha256' => $manifestSha,
+        'operation' => $operation,
+        'consumed_at_utc' => gmdate('c'),
+    ];
+    if (!add_option($optionKey, $record, '', false)) {
+        throw new RuntimeException('Production authorization was already consumed.');
+    }
+
+    return [
+        'option_key' => $optionKey,
+        'record' => $record,
     ];
 }
 
@@ -582,8 +611,7 @@ try {
             throw new RuntimeException($operation . ' is permitted only on staging.');
         }
         $path = (string) ($commandArgs[1] ?? '');
-        hp_gmc_identifier_checksum($path, (string) ($commandArgs[2] ?? ''));
-        $manifest = hp_gmc_identifier_json($path);
+        $manifest = hp_gmc_identifier_verified_json($path, (string) ($commandArgs[2] ?? ''));
         $result = $operation === 'preflight'
             ? hp_gmc_identifier_preflight($manifest, false)
             : hp_gmc_identifier_apply($manifest, $operation === 'rollback');
@@ -606,14 +634,43 @@ try {
             $result['operation'] = 'production-preflight';
             $result['feed_snapshot'] = $context['feed_snapshot'];
         } elseif ($productionOperation === 'apply') {
+            hp_gmc_identifier_consume_production_authorization(
+                $context['authorization'],
+                $context['authorization_sha256'],
+                $context['manifest_sha256'],
+                $productionOperation
+            );
             $result = hp_gmc_identifier_apply($context['manifest'], false, 'production');
             $result['operation'] = 'production-apply';
         } elseif ($productionOperation === 'rollback') {
+            hp_gmc_identifier_consume_production_authorization(
+                $context['authorization'],
+                $context['authorization_sha256'],
+                $context['manifest_sha256'],
+                $productionOperation
+            );
             $result = hp_gmc_identifier_apply($context['manifest'], true, 'production');
             $result['operation'] = 'production-rollback';
         } else {
+            $expectApplied = ($context['authorization']['expected_canonical_phase'] ?? '') === 'applied';
+            $preflight = hp_gmc_identifier_preflight(
+                $context['manifest'],
+                $expectApplied,
+                'production'
+            );
+            if (!$preflight['ok']) {
+                throw new RuntimeException('Production regeneration preflight failed: ' . implode(' | ', $preflight['errors']));
+            }
+            hp_gmc_identifier_consume_production_authorization(
+                $context['authorization'],
+                $context['authorization_sha256'],
+                $context['manifest_sha256'],
+                $productionOperation
+            );
             $result = hp_gmc_identifier_regenerate();
             $result['operation'] = 'production-regenerate';
+            $result['canonical_phase'] = $context['authorization']['expected_canonical_phase'];
+            $result['preflight'] = $preflight;
         }
     } else {
         throw new RuntimeException('Unknown operation.');

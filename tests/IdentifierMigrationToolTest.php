@@ -5,6 +5,15 @@ declare(strict_types=1);
 
 define('HP_GMC_IDENTIFIER_MIGRATION_LIBRARY_ONLY', true);
 defined('HOUR_IN_SECONDS') || define('HOUR_IN_SECONDS', 3600);
+$GLOBALS['hp_gmc_test_consumed_options'] = [];
+function add_option(string $key, mixed $value, string $deprecated = '', bool $autoload = true): bool
+{
+    if (array_key_exists($key, $GLOBALS['hp_gmc_test_consumed_options'])) {
+        return false;
+    }
+    $GLOBALS['hp_gmc_test_consumed_options'][$key] = $value;
+    return true;
+}
 require dirname(__DIR__) . '/includes/Operations/IdentifierMigrationOperator.php';
 
 $failures = 0;
@@ -137,6 +146,7 @@ $authorization = [
     'target_merchant_id_sha256' => hash('sha256', 'merchant-123'),
     'manifest_sha256' => $manifestSha,
     'operation' => 'apply',
+    'expected_canonical_phase' => 'rolled_back',
     'authorization_id' => '123e4567-e89b-42d3-a456-426614174000',
     'confirmation' => hp_gmc_identifier_production_confirmation('apply', $manifestSha),
     'expected_manifest_rows' => 1,
@@ -224,6 +234,72 @@ $check(hp_gmc_identifier_validate_production_authorization(
     $feedSnapshot,
     strtotime('2026-09-02T12:00:00Z')
 ) !== [], 'authorization window longer than four hours is rejected');
+
+$badAuthorization = $authorization;
+$badAuthorization['expected_canonical_phase'] = 'applied';
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], 'apply authorization cannot target an already-applied canonical phase');
+
+$regenerateAuthorization = $authorization;
+$regenerateAuthorization['operation'] = 'regenerate';
+$regenerateAuthorization['expected_canonical_phase'] = 'applied';
+$regenerateAuthorization['confirmation'] = hp_gmc_identifier_production_confirmation('regenerate', $manifestSha);
+$check(hp_gmc_identifier_validate_production_authorization(
+    $regenerateAuthorization,
+    'regenerate',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) === [], 'regeneration authorization accepts the explicit applied phase');
+
+$verifiedPath = tempnam(sys_get_temp_dir(), 'hp-gmc-json-');
+$verifiedDocument = ['schema' => 'test', 'value' => 1];
+$verifiedBytes = json_encode($verifiedDocument, JSON_THROW_ON_ERROR);
+file_put_contents($verifiedPath, $verifiedBytes);
+$check(
+    hp_gmc_identifier_verified_json($verifiedPath, hash('sha256', $verifiedBytes)) === $verifiedDocument,
+    'verified JSON hashes and decodes the same captured bytes'
+);
+try {
+    hp_gmc_identifier_verified_json($verifiedPath, str_repeat('0', 64));
+    $check(false, 'verified JSON rejects a mismatched checksum');
+} catch (RuntimeException) {
+    $check(true, 'verified JSON rejects a mismatched checksum');
+}
+unlink($verifiedPath);
+
+$consumed = hp_gmc_identifier_consume_production_authorization(
+    $authorization,
+    str_repeat('c', 64),
+    $manifestSha,
+    'apply'
+);
+$check(
+    ($consumed['record']['authorization_sha256'] ?? '') === str_repeat('c', 64),
+    'mutating authorization consumption records the exact authorization checksum'
+);
+try {
+    hp_gmc_identifier_consume_production_authorization(
+        $authorization,
+        str_repeat('c', 64),
+        $manifestSha,
+        'apply'
+    );
+    $check(false, 'mutating authorization cannot be replayed');
+} catch (RuntimeException) {
+    $check(true, 'mutating authorization cannot be replayed');
+}
 
 echo $failures === 0 ? "\nALL PASS\n" : "\n{$failures} FAILURE(S)\n";
 exit($failures === 0 ? 0 : 1);
