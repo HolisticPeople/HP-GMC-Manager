@@ -36,7 +36,10 @@
     "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "operation": {"enum": ["preflight", "apply", "rollback", "regenerate"]},
     "expected_canonical_phase": {"enum": ["applied", "rolled_back"]},
-    "confirmation": {"type": "string", "minLength": 1},
+    "confirmation": {
+      "type": "string",
+      "pattern": "^HP-GMC-PRODUCTION-(PREFLIGHT|APPLY|ROLLBACK|REGENERATE)-[0-9a-f]{12}$"
+    },
     "expected_manifest_rows": {"type": "integer", "minimum": 1},
     "expected_accepted_rows": {"type": "integer", "minimum": 0},
     "expected_feed_before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},

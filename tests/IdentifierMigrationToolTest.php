@@ -134,6 +134,18 @@ $deferred['rows'][0] = [
 $check(hp_gmc_identifier_validate_manifest($deferred) === [], 'deferred row needs no fabricated identifier');
 
 $manifestSha = str_repeat('a', 64);
+$knownManifestSha = '91705c7459e9747f0e6009038bf5b310b1ada03ba030330292892e3b9d0f8a79';
+$knownConfirmation = hp_gmc_identifier_confirmation_result('preflight', $knownManifestSha);
+$check(
+    ($knownConfirmation['confirmation'] ?? '') === 'HP-GMC-PRODUCTION-PREFLIGHT-91705c7459e9',
+    'confirmation helper preserves exactly the first 12 manifest checksum characters'
+);
+try {
+    hp_gmc_identifier_confirmation_result('preflight', substr($knownManifestSha, 0, 63));
+    $check(false, 'confirmation helper rejects truncated manifest checksums');
+} catch (RuntimeException) {
+    $check(true, 'confirmation helper rejects truncated manifest checksums');
+}
 $feedSnapshot = [
     'sha256' => str_repeat('b', 64),
     'product_count' => 530,
@@ -221,6 +233,19 @@ $check(hp_gmc_identifier_validate_production_authorization(
     $feedSnapshot,
     strtotime('2026-09-02T12:00:00Z')
 ) !== [], 'generic confirmation string is rejected');
+
+$badAuthorization = $authorization;
+$badAuthorization['confirmation'] = 'HP-GMC-PRODUCTION-APPLY-' . substr($manifestSha, 0, 11);
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], '11-character manifest prefix is rejected');
 
 $badAuthorization = $authorization;
 $badAuthorization['expires_at_utc'] = '2026-09-02T15:00:01Z';

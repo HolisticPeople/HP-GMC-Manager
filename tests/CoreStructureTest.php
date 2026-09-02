@@ -61,8 +61,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.10',
-    'current version is pinned exactly to 3.4.10');
+check($constVersion === '3.4.11',
+    'current version is pinned exactly to 3.4.11');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,
@@ -168,6 +168,9 @@ check(strpos($identifierMigration, 'hp_gmc_identifier_consume_production_authori
 check(strpos($identifierMigration, "expected_canonical_phase") !== false
     && strpos($identifierMigration, "Production regeneration preflight failed") !== false,
     'production regeneration is bound to an immediate canonical-phase preflight');
+check(strpos($identifierMigration, "production-confirmation") !== false
+    && strpos($identifierMigration, "Production confirmation requires a full lowercase SHA-256") !== false,
+    'read-only production confirmation helper requires the full manifest checksum');
 check(strpos($identifierMigration, "in_array(\$operation, ['preflight', 'production-preflight'], true)") !== false,
     'failed identifier preflight exits nonzero');
 

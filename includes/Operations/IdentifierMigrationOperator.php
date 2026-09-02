@@ -12,6 +12,7 @@
  *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-apply /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
  *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-rollback /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
  *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-regenerate /path/manifest.json MANIFEST_SHA /path/authorization.json AUTH_SHA
+ *   wp eval-file wp-content/plugins/hp-gmc-manager/includes/Operations/IdentifierMigrationOperator.php production-confirmation preflight MANIFEST_SHA
  *
  * Production mutations use separate `production-*` operations and require an
  * immutable, operation-specific authorization packet in addition to the
@@ -412,6 +413,24 @@ function hp_gmc_identifier_production_confirmation(string $operation, string $ma
     return 'HP-GMC-PRODUCTION-' . strtoupper($operation) . '-' . substr($manifestSha, 0, 12);
 }
 
+function hp_gmc_identifier_confirmation_result(string $operation, string $manifestSha): array
+{
+    if (!in_array($operation, ['preflight', 'apply', 'rollback', 'regenerate'], true)) {
+        throw new RuntimeException('Unsupported production confirmation operation.');
+    }
+    if (!preg_match('/^[a-f0-9]{64}$/D', $manifestSha)) {
+        throw new RuntimeException('Production confirmation requires a full lowercase SHA-256 manifest checksum.');
+    }
+
+    return [
+        'ok' => true,
+        'operation' => 'production-confirmation',
+        'authorized_operation' => $operation,
+        'manifest_sha256' => $manifestSha,
+        'confirmation' => hp_gmc_identifier_production_confirmation($operation, $manifestSha),
+    ];
+}
+
 function hp_gmc_identifier_validate_production_authorization(
     array $authorization,
     string $operation,
@@ -620,6 +639,11 @@ try {
             throw new RuntimeException('Feed regeneration is permitted only on staging.');
         }
         $result = hp_gmc_identifier_regenerate();
+    } elseif ($operation === 'production-confirmation') {
+        $result = hp_gmc_identifier_confirmation_result(
+            (string) ($commandArgs[1] ?? ''),
+            (string) ($commandArgs[2] ?? '')
+        );
     } elseif (preg_match('/^production-(preflight|apply|rollback|regenerate)$/D', $operation, $match)) {
         $productionOperation = $match[1];
         $context = hp_gmc_identifier_production_context(
