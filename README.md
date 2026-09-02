@@ -112,6 +112,10 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.7
+- Publish the canonical 30-day MerchantReturnPolicy in Yoast's Organization graph, including customer-paid remorse returns, free defect returns, downloadable labels, full refunds, and no restocking fee.
+- Reconcile the public Return & Refund Policy and Terms pages with that policy, retaining one-time content backups for rollback.
+
 ### 3.4.6 — Current Staging Build
 
 - Removed the unsafe SKU-to-MPN projection from the canonical pull feed. `mpn`
