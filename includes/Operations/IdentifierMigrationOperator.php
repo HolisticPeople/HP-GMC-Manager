@@ -16,16 +16,17 @@
 declare(strict_types=1);
 
 const HP_GMC_IDENTIFIER_MANIFEST_SCHEMA = 'hp-gmc-identifier-migration/v1';
+const HP_GMC_IDENTIFIER_STAGING_HOST = 'env-holisticpeoplecom-hpdevplus.kinsta.cloud';
 
-function hp_gmc_identifier_is_staging(string $url): bool
+function hp_gmc_identifier_is_staging(string $url, ?string $environmentType = null): bool
 {
-    $host = (string) parse_url($url, PHP_URL_HOST);
+    $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+    $environmentType ??= function_exists('wp_get_environment_type')
+        ? (string) wp_get_environment_type()
+        : '';
 
-    return $host !== '' && (
-        str_contains($host, 'kinsta.cloud')
-        || str_contains($host, 'staging')
-        || str_contains($host, 'hpdev')
-    );
+    return $environmentType === 'staging'
+        && hash_equals(HP_GMC_IDENTIFIER_STAGING_HOST, $host);
 }
 
 function hp_gmc_identifier_json(string $path): array

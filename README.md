@@ -118,7 +118,8 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
   `includes/Operations/IdentifierMigrationOperator.php` tool for
   immutable candidate exports and checksum-gated staging preflight, apply,
   rollback, and feed regeneration. Production is export-only; write operations
-  fail closed outside staging, and `_sku`, `_global_unique_id`, and `sku_mfr`
+  require both WordPress environment type `staging` and the exact approved
+  staging host, and `_sku`, `_global_unique_id`, and `sku_mfr`
   are fingerprinted, rechecked immediately before every row write, and verified
   unchanged. Failed preflight exits nonzero.
 - Added `scripts/compare-identifier-feeds.py` for row-keyed production,

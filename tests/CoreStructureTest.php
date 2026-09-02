@@ -135,6 +135,10 @@ check(strpos($identifierMigration, "'target_environment'] ?? '') !== 'staging'")
     'identifier migration manifest is staging-targeted');
 check(strpos($identifierMigration, "permitted only on staging") !== false,
     'identifier migration writes and regeneration fail closed outside staging');
+check(strpos($identifierMigration, "wp_get_environment_type") !== false
+    && strpos($identifierMigration, "environmentType === 'staging'") !== false
+    && strpos($identifierMigration, 'HP_GMC_IDENTIFIER_STAGING_HOST') !== false,
+    'identifier migration requires authoritative staging type and exact approved host');
 check(strpos($identifierMigration, "['_sku', '_global_unique_id', 'sku_mfr']") !== false,
     'identifier migration fingerprints protected source identifiers');
 check(strpos($identifierMigration, 'hash_equals($expected, $current[$key])') !== false,

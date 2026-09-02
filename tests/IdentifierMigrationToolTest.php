@@ -16,8 +16,27 @@ $check = static function (bool $condition, string $label) use (&$failures): void
     }
 };
 
-$check(hp_gmc_identifier_is_staging('https://env-example.kinsta.cloud/'), 'Kinsta staging host is accepted');
-$check(!hp_gmc_identifier_is_staging('https://holisticpeople.com/'), 'production host is rejected');
+$check(hp_gmc_identifier_is_staging(
+    'https://env-holisticpeoplecom-hpdevplus.kinsta.cloud/',
+    'staging'
+), 'exact approved host plus authoritative staging type is accepted');
+$check(!hp_gmc_identifier_is_staging(
+    'https://env-holisticpeoplecom-hpdevplus.kinsta.cloud/',
+    'production'
+), 'approved host is rejected when WordPress environment type is production');
+$check(!hp_gmc_identifier_is_staging(
+    'https://production-store.kinsta.cloud/',
+    'staging'
+), 'production-like Kinsta host is rejected');
+$check(!hp_gmc_identifier_is_staging(
+    'https://notstaging.example.com/',
+    'staging'
+), 'staging substring trap is rejected');
+$check(!hp_gmc_identifier_is_staging(
+    'https://hpdevelopment.example.com/',
+    'staging'
+), 'hpdev substring trap is rejected');
+$check(!hp_gmc_identifier_is_staging('https://holisticpeople.com/', 'production'), 'production host is rejected');
 
 $base = [
     'schema' => HP_GMC_IDENTIFIER_MANIFEST_SCHEMA,
