@@ -27,6 +27,7 @@ $client = file_get_contents($root . '/includes/Services/MerchantApiClient.php');
 $feed = file_get_contents($root . '/includes/Services/ProductDataFeed.php');
 $sync = file_get_contents($root . '/includes/Services/ProductSync.php');
 $identifiers = file_get_contents($root . '/includes/Services/ProductIdentifiers.php');
+$identifierMigration = file_get_contents($root . '/scripts/gmc-identifier-migration.php');
 
 function method_body(string $source, string $method): string
 {
@@ -130,6 +131,14 @@ check(strpos($identifiers, "'_hp_gmc_mpn_verified'") !== false
     'MPN provider requires explicit review and provenance metadata');
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
     'identifier_exists remains at the end of the 3.3.0 UCP block');
+check(strpos($identifierMigration, "'target_environment'] ?? '') !== 'staging'") !== false,
+    'identifier migration manifest is staging-targeted');
+check(strpos($identifierMigration, "permitted only on staging") !== false,
+    'identifier migration writes and regeneration fail closed outside staging');
+check(strpos($identifierMigration, "['_sku', '_global_unique_id', 'sku_mfr']") !== false,
+    'identifier migration fingerprints protected source identifiers');
+check(strpos($identifierMigration, 'hash_equals($expected, $current[$key])') !== false,
+    'identifier migration aborts on protected-field drift');
 
 // --- Availability doctrine (backorder business model, user 2026-07-03):
 // the feed must use WC is_in_stock(), NOT HP-Inventory sellable QOH — HP sells
