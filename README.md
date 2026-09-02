@@ -119,6 +119,9 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
   rollback, and feed regeneration. Production is export-only; write operations
   fail closed outside staging, and `_sku`, `_global_unique_id`, and `sku_mfr`
   are fingerprinted and verified unchanged.
+- Added `scripts/compare-identifier-feeds.py` for row-keyed production,
+  staging-before, and staging-after comparisons that separate population drift,
+  identifier changes, and every non-identifier cell change.
 - Removed the unsafe SKU-to-MPN projection from the canonical pull feed. `mpn`
   now emits only from a product-level reviewed manufacturer source:
   `_hp_gmc_mpn`, `_hp_gmc_mpn_verified=yes`, and an approved
