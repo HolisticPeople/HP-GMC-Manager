@@ -61,8 +61,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.9',
-    'current version is pinned exactly to 3.4.9');
+check($constVersion === '3.4.10',
+    'current version is pinned exactly to 3.4.10');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,
@@ -136,10 +136,11 @@ check(strpos($identifiers, "'_hp_gmc_mpn_verified'") !== false
     'MPN provider requires explicit review and provenance metadata');
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
     'identifier_exists remains at the end of the 3.3.0 UCP block');
-check(strpos($identifierMigration, "'target_environment'] ?? '') !== 'staging'") !== false,
-    'identifier migration manifest is staging-targeted');
+check(strpos($identifierMigration, "['staging', 'production']") !== false
+    && strpos($identifierMigration, "hp_gmc_identifier_validate_manifest(array \$manifest, string \$targetEnvironment = 'staging')") !== false,
+    'identifier migration requires an explicit environment-targeted manifest');
 check(strpos($identifierMigration, "permitted only on staging") !== false,
-    'identifier migration writes and regeneration fail closed outside staging');
+    'existing staging migration commands remain fail closed outside staging');
 check(strpos($identifierMigration, "wp_get_environment_type") !== false
     && strpos($identifierMigration, "environmentType === 'staging'") !== false
     && strpos($identifierMigration, 'HP_GMC_IDENTIFIER_STAGING_HOST') !== false,
@@ -151,7 +152,12 @@ check(strpos($identifierMigration, 'hash_equals($expected, $current[$key])') !==
 check(strpos($identifierMigration, 'Immediate protected-field drift') !== false
     && strpos($identifierMigration, 'Immediate canonical-field drift') !== false,
     'identifier migration rechecks every accepted row immediately before writes');
-check(strpos($identifierMigration, 'if ($operation === \'preflight\' && !($result[\'ok\'] ?? false))') !== false,
+check(strpos($identifierMigration, "HP_GMC_IDENTIFIER_PRODUCTION_AUTHORIZATION_SCHEMA") !== false
+    && strpos($identifierMigration, "target_merchant_id_sha256") !== false
+    && strpos($identifierMigration, "expected_feed_before_sha256") !== false
+    && strpos($identifierMigration, "expires_at_utc") !== false,
+    'production migration requires account, feed, manifest, operation, and expiry bindings');
+check(strpos($identifierMigration, "in_array(\$operation, ['preflight', 'production-preflight'], true)") !== false,
     'failed identifier preflight exits nonzero');
 
 // --- Availability doctrine (backorder business model, user 2026-07-03):

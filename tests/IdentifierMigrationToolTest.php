@@ -4,6 +4,7 @@
 declare(strict_types=1);
 
 define('HP_GMC_IDENTIFIER_MIGRATION_LIBRARY_ONLY', true);
+defined('HOUR_IN_SECONDS') || define('HOUR_IN_SECONDS', 3600);
 require dirname(__DIR__) . '/includes/Operations/IdentifierMigrationOperator.php';
 
 $failures = 0;
@@ -37,13 +38,32 @@ $check(!hp_gmc_identifier_is_staging(
     'staging'
 ), 'hpdev substring trap is rejected');
 $check(!hp_gmc_identifier_is_staging('https://holisticpeople.com/', 'production'), 'production host is rejected');
+$check(hp_gmc_identifier_is_production(
+    'https://holisticpeople.com/',
+    'production'
+), 'exact production host plus authoritative production type is accepted');
+$check(!hp_gmc_identifier_is_production(
+    'https://holisticpeople.com/',
+    'staging'
+), 'production host is rejected when WordPress environment type is staging');
+$check(!hp_gmc_identifier_is_production(
+    'https://www.holisticpeople.com/',
+    'production'
+), 'production host alias is rejected');
+$check(!hp_gmc_identifier_is_production(
+    'https://env-holisticpeoplecom-hpdevplus.kinsta.cloud/',
+    'production'
+), 'staging host is rejected for production operations');
 
 $base = [
     'schema' => HP_GMC_IDENTIFIER_MANIFEST_SCHEMA,
     'target_environment' => 'staging',
     'rows' => [[
         'product_id' => 10,
+        'gmc_offer_id' => 'gla_10',
         'review_status' => 'accepted',
+        'woo_sku' => 'STORE-10',
+        'gtin' => '',
         'raw_sku_mfr' => 'MFR-10',
         'proposed_mpn' => 'MFR-10',
         'manufacturer_provenance' => [
@@ -55,6 +75,17 @@ $base = [
     ]],
 ];
 $check(hp_gmc_identifier_validate_manifest($base) === [], 'accepted source-backed row validates');
+
+$production = $base;
+$production['target_environment'] = 'production';
+$check(
+    hp_gmc_identifier_validate_manifest($production, 'production') === [],
+    'production manifest validates only when production is explicitly expected'
+);
+$check(
+    hp_gmc_identifier_validate_manifest($base, 'production') !== [],
+    'staging manifest cannot authorize a production operation'
+);
 
 $bad = $base;
 $bad['rows'][0]['proposed_mpn'] = 'INVENTED';
@@ -68,9 +99,131 @@ $bad = $base;
 $bad['rows'][0]['manufacturer_provenance']['evidence'] = '';
 $check(hp_gmc_identifier_validate_manifest($bad) !== [], 'accepted row requires provenance evidence');
 
+$bad = $base;
+$bad['rows'][0]['woo_sku'] = 'MFR-10';
+$check(hp_gmc_identifier_validate_manifest($bad) !== [], 'accepted MPN cannot equal the Woo SKU');
+
+$bad = $base;
+$bad['rows'][0]['gtin'] = '012345678905';
+$check(hp_gmc_identifier_validate_manifest($bad) !== [], 'GTIN-bearing row is rejected from this MPN migration');
+
+$bad = $base;
+$duplicate = $bad['rows'][0];
+$duplicate['product_id'] = 11;
+$duplicate['gmc_offer_id'] = 'gla_11';
+$duplicate['gtin'] = '';
+$bad['rows'][0]['gtin'] = '';
+$bad['rows'][] = $duplicate;
+$check(hp_gmc_identifier_validate_manifest($bad) !== [], 'duplicate accepted MPN is rejected');
+
 $deferred = $base;
-$deferred['rows'][0] = ['product_id' => 10, 'review_status' => 'deferred'];
+$deferred['rows'][0] = [
+    'product_id' => 10,
+    'gmc_offer_id' => 'gla_10',
+    'review_status' => 'deferred',
+];
 $check(hp_gmc_identifier_validate_manifest($deferred) === [], 'deferred row needs no fabricated identifier');
+
+$manifestSha = str_repeat('a', 64);
+$feedSnapshot = [
+    'sha256' => str_repeat('b', 64),
+    'product_count' => 530,
+];
+$authorization = [
+    'schema' => HP_GMC_IDENTIFIER_PRODUCTION_AUTHORIZATION_SCHEMA,
+    'target_environment' => 'production',
+    'target_host' => HP_GMC_IDENTIFIER_PRODUCTION_HOST,
+    'target_site_url' => 'https://holisticpeople.com/',
+    'target_merchant_id_sha256' => hash('sha256', 'merchant-123'),
+    'manifest_sha256' => $manifestSha,
+    'operation' => 'apply',
+    'authorization_id' => '123e4567-e89b-42d3-a456-426614174000',
+    'confirmation' => hp_gmc_identifier_production_confirmation('apply', $manifestSha),
+    'expected_manifest_rows' => 1,
+    'expected_accepted_rows' => 1,
+    'expected_feed_before_sha256' => $feedSnapshot['sha256'],
+    'expected_feed_product_count' => 530,
+    'approved_by' => 'publish-manager',
+    'approval_reference' => 'publish-ready-frozen:sha256',
+    'approved_at_utc' => '2026-09-02T10:00:00Z',
+    'expires_at_utc' => '2026-09-02T14:00:00Z',
+];
+$authorizationErrors = hp_gmc_identifier_validate_production_authorization(
+    $authorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+);
+$check($authorizationErrors === [], 'fully bound production authorization validates');
+
+$badAuthorization = $authorization;
+$badAuthorization['target_merchant_id_sha256'] = hash('sha256', 'wrong-account');
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], 'merchant-account fingerprint mismatch is rejected');
+
+$badAuthorization = $authorization;
+$badAuthorization['expected_feed_product_count'] = 529;
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], 'served merchant-feed count mismatch is rejected');
+
+$badAuthorization = $authorization;
+$badAuthorization['expires_at_utc'] = '2026-09-02T11:59:59Z';
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], 'expired production authorization is rejected');
+
+$badAuthorization = $authorization;
+$badAuthorization['confirmation'] = 'GO';
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], 'generic confirmation string is rejected');
+
+$badAuthorization = $authorization;
+$badAuthorization['expires_at_utc'] = '2026-09-02T15:00:01Z';
+$check(hp_gmc_identifier_validate_production_authorization(
+    $badAuthorization,
+    'apply',
+    $manifestSha,
+    $production,
+    'https://holisticpeople.com/',
+    'merchant-123',
+    $feedSnapshot,
+    strtotime('2026-09-02T12:00:00Z')
+) !== [], 'authorization window longer than four hours is rejected');
 
 echo $failures === 0 ? "\nALL PASS\n" : "\n{$failures} FAILURE(S)\n";
 exit($failures === 0 ? 0 : 1);
