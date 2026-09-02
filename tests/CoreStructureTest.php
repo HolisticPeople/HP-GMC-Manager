@@ -23,6 +23,7 @@ function check(bool $ok, string $label): void
 $root = dirname(__DIR__);
 $main = file_get_contents($root . '/hp-gmc-manager.php');
 $readme = file_get_contents($root . '/README.md');
+$plugin = file_get_contents($root . '/includes/Plugin.php');
 $client = file_get_contents($root . '/includes/Services/MerchantApiClient.php');
 $feed = file_get_contents($root . '/includes/Services/ProductDataFeed.php');
 $sync = file_get_contents($root . '/includes/Services/ProductSync.php');
@@ -60,10 +61,14 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.7',
-    'current version is pinned exactly to 3.4.7');
+check($constVersion === '3.4.8',
+    'current version is pinned exactly to 3.4.8');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
+check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,
+    'Plugin initializes the canonical merchant return policy schema service');
+check(strpos($plugin, 'StorefrontPolicyContentMigration::run();') !== false,
+    'Plugin runs the reversible storefront policy content migration');
 
 // --- 3.1.0 lesson: Merchant API v1beta was discontinued 2026-02-28 (HTTP 409).
 // No merchantapi.googleapis.com call may target v1beta again.

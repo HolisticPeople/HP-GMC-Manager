@@ -4,6 +4,8 @@ namespace HP_GMC;
 use HP_GMC\Admin\Dashboard;
 use HP_GMC\Services\MerchantApiClient;
 use HP_GMC\Services\IssueMonitor;
+use HP_GMC\Services\MerchantReturnPolicySchemaService;
+use HP_GMC\Services\StorefrontPolicyContentMigration;
 use HP_GMC\Rest\ProductFeedEndpoint;
 use HP_GMC\Rest\FunnelFeedEndpoint;
 use HP_GMC\Rest\SupplementalFeedEndpoint;
@@ -50,6 +52,9 @@ class Plugin
      */
     public static function init(): void
     {
+        MerchantReturnPolicySchemaService::init();
+        StorefrontPolicyContentMigration::run();
+
         // Register admin pages
         add_action('admin_menu', [self::class, 'register_admin_menu']);
         add_action('admin_init', [self::class, 'register_settings']);
