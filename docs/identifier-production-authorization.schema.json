@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HP-GMC Identifier Production Authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "authorization_id",
+    "target_environment",
+    "target_host",
+    "target_site_url",
+    "target_merchant_id_sha256",
+    "manifest_sha256",
+    "operation",
+    "expected_canonical_phase",
+    "confirmation",
+    "expected_manifest_rows",
+    "expected_accepted_rows",
+    "expected_feed_before_sha256",
+    "expected_feed_product_count",
+    "approved_by",
+    "approval_reference",
+    "approved_at_utc",
+    "expires_at_utc"
+  ],
+  "properties": {
+    "schema": {"const": "hp-gmc-identifier-production-authorization/v1"},
+    "authorization_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "target_environment": {"const": "production"},
+    "target_host": {"const": "holisticpeople.com"},
+    "target_site_url": {"const": "https://holisticpeople.com/"},
+    "target_merchant_id_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "operation": {"enum": ["preflight", "apply", "rollback", "regenerate"]},
+    "expected_canonical_phase": {"enum": ["applied", "rolled_back"]},
+    "confirmation": {"type": "string", "minLength": 1},
+    "expected_manifest_rows": {"type": "integer", "minimum": 1},
+    "expected_accepted_rows": {"type": "integer", "minimum": 0},
+    "expected_feed_before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "expected_feed_product_count": {"type": "integer", "minimum": 1},
+    "approved_by": {"type": "string", "minLength": 1},
+    "approval_reference": {"type": "string", "minLength": 1},
+    "approved_at_utc": {"type": "string", "format": "date-time"},
+    "expires_at_utc": {"type": "string", "format": "date-time"}
+  }
+}
