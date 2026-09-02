@@ -8,8 +8,8 @@ if (!defined('ABSPATH')) {
 /**
  * Service for generating a product data feed for funnels.
  * 
- * This feed provides funnel data to GMC for Shopping ads,
- * using the lowest offer price as the product price.
+ * This feed provides offer-level funnel data to GMC for Shopping ads.
+ * Older HP-Funnels versions fall back to one lowest-price row per funnel.
  * Requires HP-Funnels (preferred) or HP-React-Widgets plugin to be active.
  */
 class FunnelDataFeed
@@ -123,10 +123,12 @@ class FunnelDataFeed
             'description',
             'link',
             'image_link',
+            'additional_image_link',
             'price',
             'availability',
             'brand',
             'condition',
+            'is_bundle',
             'shipping_weight',
             'google_product_category',
             'custom_label_0',
@@ -140,9 +142,12 @@ class FunnelDataFeed
         $lines = [];
         $lines[] = implode($delimiter, $headers);
 
-        // Get all GMC-enabled funnels
+        // Prefer offer-level rows so distinct ExpressShop packages can be
+        // targeted truthfully by Merchant Center Promotions.
         $gmcServiceClass = self::resolveGmcServiceClass();
-        $funnels = $gmcServiceClass::getAllGmcEnabledFunnels();
+        $funnels = method_exists($gmcServiceClass, 'getAllGmcEnabledOffers')
+            ? $gmcServiceClass::getAllGmcEnabledOffers()
+            : $gmcServiceClass::getAllGmcEnabledFunnels();
         $count = 0;
 
         foreach ($funnels as $funnel) {
@@ -153,15 +158,17 @@ class FunnelDataFeed
 
             // Build row data
             $row = [
-                self::escapeField('funnel_' . $funnel['funnel_id'], $format),
+                self::escapeField($funnel['feed_id'] ?? ('funnel_' . $funnel['funnel_id']), $format),
                 self::escapeField($funnel['title'], $format),
                 self::escapeField($funnel['description'], $format),
                 self::escapeField($funnel['link'], $format),
                 self::escapeField($funnel['image_link'], $format),
+                self::escapeField($funnel['additional_image_link'] ?? '', $format),
                 self::escapeField($funnel['price_formatted'], $format),
                 self::escapeField($funnel['availability'], $format),
                 self::escapeField($funnel['brand'], $format),
                 self::escapeField($funnel['condition'], $format),
+                self::escapeField($funnel['is_bundle'] ?? 'no', $format),
                 self::escapeField($funnel['shipping_weight_formatted'] ?? '', $format),
                 self::escapeField($funnel['google_product_category'], $format),
                 self::escapeField($funnel['custom_label_0'], $format),
@@ -206,8 +213,8 @@ class FunnelDataFeed
     {
         $delimiter = $format === 'csv' ? ',' : "\t";
         $headers = [
-            'id', 'title', 'description', 'link', 'image_link',
-            'price', 'availability', 'brand', 'condition', 'shipping_weight',
+            'id', 'title', 'description', 'link', 'image_link', 'additional_image_link',
+            'price', 'availability', 'brand', 'condition', 'is_bundle', 'shipping_weight',
             'google_product_category', 'custom_label_0', 'custom_label_1',
             'custom_label_2', 'custom_label_3', 'custom_label_4', 'item_group_id',
         ];

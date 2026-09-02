@@ -23,8 +23,12 @@ function check(bool $ok, string $label): void
 $root = dirname(__DIR__);
 $main = file_get_contents($root . '/hp-gmc-manager.php');
 $readme = file_get_contents($root . '/README.md');
+$plugin = file_get_contents($root . '/includes/Plugin.php');
 $client = file_get_contents($root . '/includes/Services/MerchantApiClient.php');
 $feed = file_get_contents($root . '/includes/Services/ProductDataFeed.php');
+$sync = file_get_contents($root . '/includes/Services/ProductSync.php');
+$identifiers = file_get_contents($root . '/includes/Services/ProductIdentifiers.php');
+$identifierMigration = file_get_contents($root . '/includes/Operations/IdentifierMigrationOperator.php');
 
 function method_body(string $source, string $method): string
 {
@@ -57,10 +61,14 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.4',
-    'current version is pinned exactly to 3.4.4');
+check($constVersion === '3.4.9',
+    'current version is pinned exactly to 3.4.9');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
+check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,
+    'Plugin initializes the canonical merchant return policy schema service');
+check(strpos($plugin, 'StorefrontPolicyContentMigration::init();') !== false,
+    'Plugin defers the reversible storefront policy content migration');
 
 // --- 3.1.0 lesson: Merchant API v1beta was discontinued 2026-02-28 (HTTP 409).
 // No merchantapi.googleapis.com call may target v1beta again.
@@ -76,6 +84,7 @@ check(substr_count($client, 'merchantapi.googleapis.com') >= 3
 $meta = [];
 function get_post_meta($id, $key, $single) { global $meta; return $meta[$id][$key] ?? ''; }
 if (!defined('ABSPATH')) define('ABSPATH', '/');
+require $root . '/includes/Services/ProductIdentifiers.php';
 require $root . '/includes/Services/ProductDataFeed.php';
 
 class WC_Product {}
@@ -87,7 +96,7 @@ class FakeProduct extends WC_Product
     public function get_global_unique_id(): string { return $this->gtin; }
 }
 
-$rm = new ReflectionMethod(\HP_GMC\Services\ProductDataFeed::class, 'getGtin');
+$rm = new ReflectionMethod(\HP_GMC\Services\ProductIdentifiers::class, 'getGtin');
 
 // Native WC field wins and separators are stripped (ISBN-13 with dashes).
 check($rm->invoke(null, new FakeProduct(1, '978-1947925229')) === '9781947925229',
@@ -96,6 +105,10 @@ check($rm->invoke(null, new FakeProduct(1, '978-1947925229')) === '9781947925229
 // Invalid length fails CLOSED (empty), never emitted as-is.
 check($rm->invoke(null, new FakeProduct(2, '12345')) === '',
     'getGtin emits empty for invalid-length values (fail closed)');
+
+// Invalid GS1 check digit also fails closed.
+check($rm->invoke(null, new FakeProduct(5, '679372000058')) === '',
+    'getGtin emits empty for an invalid GS1 check digit');
 
 // Falls back to _global_unique_id meta when the native getter is empty.
 $meta[3] = ['_global_unique_id' => '0123456789012'];
@@ -107,13 +120,39 @@ $meta[4] = ['_wpm_gtin_code' => '4006381333931'];
 check($rm->invoke(null, new FakeProduct(4, '')) === '4006381333931',
     'getGtin honors legacy GTIN meta keys');
 
-// --- 3.4.1: identifier_exists=no only when BOTH GTIN and MPN are absent.
+// --- 3.4.6: MPN and identifier_exists are explicit reviewed data, never SKU inference.
 $rmHeaderCheck = strpos($feed, "'identifier_exists',");
 check($rmHeaderCheck !== false, 'feed header includes identifier_exists column');
-check(strpos($feed, "\$gtin === '' && \$mpn === '' ? 'no' : ''") !== false,
-    'identifier_exists=no requires both GTIN and MPN to be absent');
+check(strpos($feed, 'ProductIdentifiers::getMpn($product)') !== false,
+    'feed MPN comes from the reviewed identifier provider');
+check(strpos($feed, 'ProductIdentifiers::getIdentifierExists($product, $gtin, $mpn, $brand)') !== false,
+    'identifier_exists comes from the explicit reviewed-absence provider');
+check(strpos($feed, '$mpn = trim((string) $product->get_sku())') === false,
+    'feed never copies the internal SKU into MPN');
+check(strpos($sync, 'mapProductToGmc') === false && strpos($sync, 'pushProduct') === false,
+    'obsolete direct product mapper/request path is disabled instead of claiming Merchant API v1 parity');
+check(strpos($identifiers, "'_hp_gmc_mpn_verified'") !== false
+    && strpos($identifiers, "'_hp_gmc_mpn_source'") !== false,
+    'MPN provider requires explicit review and provenance metadata');
 check((bool) preg_match("/'gender',\R\s*'identifier_exists',\R\s*\/\/ UCP checkout-compliance columns \(3\.4\.0\)\./", $feed),
     'identifier_exists remains at the end of the 3.3.0 UCP block');
+check(strpos($identifierMigration, "'target_environment'] ?? '') !== 'staging'") !== false,
+    'identifier migration manifest is staging-targeted');
+check(strpos($identifierMigration, "permitted only on staging") !== false,
+    'identifier migration writes and regeneration fail closed outside staging');
+check(strpos($identifierMigration, "wp_get_environment_type") !== false
+    && strpos($identifierMigration, "environmentType === 'staging'") !== false
+    && strpos($identifierMigration, 'HP_GMC_IDENTIFIER_STAGING_HOST') !== false,
+    'identifier migration requires authoritative staging type and exact approved host');
+check(strpos($identifierMigration, "['_sku', '_global_unique_id', 'sku_mfr']") !== false,
+    'identifier migration fingerprints protected source identifiers');
+check(strpos($identifierMigration, 'hash_equals($expected, $current[$key])') !== false,
+    'identifier migration aborts on protected-field drift');
+check(strpos($identifierMigration, 'Immediate protected-field drift') !== false
+    && strpos($identifierMigration, 'Immediate canonical-field drift') !== false,
+    'identifier migration rechecks every accepted row immediately before writes');
+check(strpos($identifierMigration, 'if ($operation === \'preflight\' && !($result[\'ok\'] ?? false))') !== false,
+    'failed identifier preflight exits nonzero');
 
 // --- Availability doctrine (backorder business model, user 2026-07-03):
 // the feed must use WC is_in_stock(), NOT HP-Inventory sellable QOH — HP sells

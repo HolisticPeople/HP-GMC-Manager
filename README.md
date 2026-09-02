@@ -112,7 +112,60 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
-### 3.4.4 — Current Staging Build
+### 3.4.9
+- Publish the canonical 30-day MerchantReturnPolicy in Yoast's Organization graph, including customer-paid remorse returns, free defect returns, downloadable labels, full refunds, and no restocking fee.
+- Reconcile the public Return & Refund Policy and Terms pages with that policy, retaining one-time content backups for rollback.
+- Defer the one-time page reconciliation until WordPress `init`, after revision and post APIs are fully available to web and WP-CLI requests.
+
+### 3.4.7 — Identifier Migration Operator Candidate
+
+- Added the deploy-visible versioned
+  `includes/Operations/IdentifierMigrationOperator.php` tool for
+  immutable candidate exports and checksum-gated staging preflight, apply,
+  rollback, and feed regeneration. Production is export-only; write operations
+  require both WordPress environment type `staging` and the exact approved
+  staging host, and `_sku`, `_global_unique_id`, and `sku_mfr`
+  are fingerprinted, rechecked immediately before every row write, and verified
+  unchanged. Failed preflight exits nonzero.
+- Added `scripts/compare-identifier-feeds.py` for row-keyed production,
+  staging-before, and staging-after comparisons that separate population drift,
+  identifier changes, and every non-identifier cell change. A staging-after
+  comparison exits nonzero if IDs, headers, GTIN, or any non-identifier cell
+  changes.
+
+### 3.4.6
+
+- Removed the unsafe SKU-to-MPN projection from the canonical pull feed. `mpn`
+  now emits only from a product-level reviewed manufacturer source:
+  `_hp_gmc_mpn`, `_hp_gmc_mpn_verified=yes`, and an approved
+  `_hp_gmc_mpn_source` (`manufacturer`, `manufacturer_catalog`,
+  `authorized_distributor`, or `product_label`). Variations never inherit a
+  parent MPN.
+- Removed the unused flat `mapProductToGmc()` / `pushProduct()` path instead of
+  presenting its obsolete `accounts/{id}/products` POST as Merchant API v1.
+  HP GMC Manager's canonical product publication remains the pull feed at
+  `/wp-json/hp-gmc/v1/product-feed`.
+- `identifier_exists=no` now requires an explicit
+  `_hp_gmc_identifier_exists=no` product review and is suppressed whenever a
+  GTIN, reviewed MPN, or source-backed brand is present. Missing local
+  identifiers remain unresolved instead of being mislabeled as nonexistent.
+- Brand no longer falls back to `HolisticPeople` when no product manufacturer
+  source exists. Variations may inherit a source-backed parent brand, while
+  their GTIN and MPN remain variation-specific.
+- SKU remains the store's internal SKU/offer-join evidence and is never
+  relabeled as a manufacturer identifier. GTIN projection retains the native
+  Woo/legacy source order and now rejects unsupported separators, restricted
+  GS1 prefixes, and invalid check digits. Offer IDs, feed column order, and
+  non-identifier behavior remain unchanged.
+
+### 3.4.5
+
+- Uses HP-Funnels' offer-level GMC contract when available, preserving the
+  legacy starter item while exporting additional ExpressShop packages with
+  stable IDs, bundle status, and component imagery for accurate promotion
+  targeting. Older HP-Funnels versions retain the one-row fallback.
+
+### 3.4.4
 
 - Fixed `additional_image_link` coverage for legacy products whose valid extra
   images are attached to the product but were never added to the WooCommerce
