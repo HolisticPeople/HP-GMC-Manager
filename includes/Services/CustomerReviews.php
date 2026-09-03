@@ -24,7 +24,8 @@ final class CustomerReviews
         if ((string) get_option('hp_gmc_merchant_id', '') !== (string) self::MERCHANT_ID) {
             return self::unavailable('merchant_mismatch');
         }
-        if (!function_exists('hp_checkout_get_review_confirmation_context_v1')) {
+        if (!function_exists('hp_checkout_get_review_confirmation_context_v1')
+            || !function_exists('hp_checkout_render_review_confirmation_auth_fields_v1')) {
             return self::unavailable('provider_missing');
         }
         try {
@@ -84,6 +85,19 @@ final class CustomerReviews
         if ($rendered) { return; }
         $result = self::getOptin();
         if (!in_array($result['status'], ['prompt', 'ready'], true)) { return; }
+        $authFields = '';
+        if ($result['status'] === 'prompt') {
+            // Checkout owns native guest verification fields. Never emit a partial
+            // or looping consent form when that provider is absent/unavailable.
+            ob_start();
+            try {
+                hp_checkout_render_review_confirmation_auth_fields_v1();
+                $authFields = ob_get_clean();
+            } catch (\Throwable $error) {
+                ob_end_clean();
+                return;
+            }
+        }
         $rendered = true;
         echo '<section class="hp-gmc-customer-reviews" aria-labelledby="hp-gmc-gcr-title">';
         echo '<h2 id="hp-gmc-gcr-title">' . esc_html__('Google Customer Reviews', 'hp-gmc-manager') . '</h2>';
@@ -94,7 +108,7 @@ final class CustomerReviews
             echo ' <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">' . esc_html__('Google Privacy Policy', 'hp-gmc-manager') . '</a>. ';
             echo esc_html__('You can manage cookies using your browser’s settings and any privacy choices provided on our site.', 'hp-gmc-manager') . '</p></details>';
             echo '<p>' . esc_html__('We do not award points, discounts, or other incentives for Google store or product reviews. Leaving a review, choosing not to review, or giving any rating does not affect your rewards or support.', 'hp-gmc-manager') . '</p>';
-            echo '<form method="post"><input type="hidden" name="hp_gmc_gcr_nonce" value="' . esc_attr($result['nonce']) . '">';
+            echo '<form method="post">' . $authFields . '<input type="hidden" name="hp_gmc_gcr_nonce" value="' . esc_attr($result['nonce']) . '">';
             echo '<button type="submit" name="hp_gmc_gcr_consent" value="yes">' . esc_html__('Allow sharing and load Google invitation', 'hp-gmc-manager') . '</button></form>';
             echo '<p>' . esc_html__('You can leave this page without loading Google. Your order is already complete.', 'hp-gmc-manager') . '</p>';
         } else {

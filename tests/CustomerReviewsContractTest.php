@@ -18,6 +18,7 @@ function esc_html__($v,$domain) { return htmlspecialchars($v,ENT_QUOTES); }
 function esc_attr($v) { return htmlspecialchars($v,ENT_QUOTES); }
 function esc_url($v) { return $v; }
 function wp_json_encode($v,$flags=0) { return json_encode($v,$flags); }
+function hp_checkout_render_review_confirmation_auth_fields_v1() { if (!empty($GLOBALS['authUnavailable'])) { echo 'PARTIAL-AUTH'; throw new RuntimeException('unavailable'); } }
 function hp_checkout_get_review_confirmation_context_v1() { $GLOBALS['calls']++; return $GLOBALS['context']; }
 function get_post_meta($id,$key,$single=true) { return ''; }
 function wc_get_product($id) { return isset($GLOBALS['products'][$id]) ? new WC_Product($id,$GLOBALS['products'][$id]) : false; }
@@ -61,6 +62,7 @@ $context['context']=$ready;$context['context']['delivery_country']='ZZ';check(GC
 $context['context']=$ready;$context['version']=2;check(GCR::getOptin()['reason']==='context_unavailable','unknown provider version rejected');
 $context=['version'=>1,'status'=>'ready','context'=>$ready];$options['hp_gmc_merchant_id']='123';check(GCR::getOptin()['reason']==='merchant_mismatch','wrong merchant rejected');
 $options['hp_gmc_merchant_id']='5298746911';$_SERVER['REQUEST_METHOD']='GET';
+$authUnavailable=true;ob_start();GCR::render();check(ob_get_clean()==='','failed auth-field helper emits no partial or looping consent form');$authUnavailable=false;
 ob_start();GCR::render();$html=ob_get_clean();
 check(str_contains($html,'hp_gmc_gcr_nonce') && !str_contains($html,$ready['email']) && !str_contains($html,$ready['order_reference']) && !str_contains($html,'apis.google.com') && !str_contains($html,'customer-reviews.js'),'rendered GET is local consent only with no buyer payload or loader');
 ob_start();GCR::render();check(ob_get_clean()==='','second renderer call emits nothing');

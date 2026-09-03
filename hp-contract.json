@@ -12,7 +12,8 @@
     "cross-plugin source mutation without registered contract"
   ],
   "consumes": [
-    "HP-Checkout hp_checkout_get_review_confirmation_context_v1 authenticated immutable new-order context"
+    "HP-Checkout hp_checkout_get_review_confirmation_context_v1 authenticated immutable new-order context",
+    "HP-Checkout hp_checkout_render_review_confirmation_auth_fields_v1 native guest verification fields"
   ],
   "exposes": {
     "cpts": [],
