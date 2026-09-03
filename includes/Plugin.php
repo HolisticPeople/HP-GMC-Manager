@@ -2403,11 +2403,26 @@ class Plugin
         }
 
         $term = sanitize_text_field($_POST['term'] ?? '');
-        $term_lower = mb_strtolower($term);
 
         if (strlen($term) < 2) {
             wp_send_json_success(['products' => []]);
         }
+
+        $results = [];
+        foreach (self::admin_search_keyboard_variants($term) as $query_term) {
+            $results = self::search_products_for_term($query_term);
+            if ($results !== []) {
+                break;
+            }
+        }
+
+        wp_send_json_success(['products' => $results]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private static function search_products_for_term(string $term): array
+    {
+        $term_lower = mb_strtolower($term);
 
         // Include all statuses (publish, draft, private) so segment builder can select historical/disabled products.
         $args = [
@@ -2537,7 +2552,15 @@ class Plugin
             unset($results[$i]['acf_match']);
         }
 
-        wp_send_json_success(['products' => $results]);
+        return $results;
+    }
+
+    /** @return array<int,string> */
+    private static function admin_search_keyboard_variants(string $term): array
+    {
+        return function_exists('\\HP_Core\\admin_search_keyboard_variants')
+            ? \HP_Core\admin_search_keyboard_variants($term)
+            : [$term];
     }
 
     /**

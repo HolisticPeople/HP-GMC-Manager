@@ -112,6 +112,11 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.12
+
+- Product autocomplete, including the audience SKU condition picker, now uses
+  HP Core's literal-first Hebrew-keyboard recovery when the direct search is empty.
+
 ### 3.4.11 — Production Confirmation Helper
 
 - Added a read-only `production-confirmation` operator command that emits the
