@@ -193,6 +193,12 @@ class Plugin
      */
     public static function register_settings(): void
     {
+        register_setting('hp_gmc_settings', 'hp_gmc_customer_reviews_enabled', [
+            'type' => 'string',
+            'default' => 'disabled',
+            'sanitize_callback' => static fn ($value) => $value === 'enabled' ? 'enabled' : 'disabled',
+        ]);
+
         register_setting('hp_gmc_settings', 'hp_gmc_merchant_id', [
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',

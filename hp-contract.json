@@ -3,12 +3,18 @@
   "repo": "HolisticPeople/HP-GMC-Manager",
   "schema_version": "1.0",
   "owns": [
-    "repo-local plugin behavior to be confirmed by owning lane"
+    "Merchant Center feeds and product identifier validation",
+    "Google Customer Reviews configuration, strict survey payload, first-party consent, and single Google survey adapter"
   ],
   "must_not_own": [
+    "checkout order authorization or immutable delivery promises",
+    "HP-Zen confirmation composition",
     "cross-plugin source mutation without registered contract"
   ],
-  "consumes": [],
+  "consumes": [
+    "HP-Checkout hp_checkout_get_review_confirmation_context_v1 authenticated immutable new-order context",
+    "HP-Checkout hp_checkout_render_review_confirmation_auth_fields_v1 native guest verification fields"
+  ],
   "exposes": {
     "cpts": [],
     "rest": [
@@ -36,9 +42,13 @@
       "hp-gmc/v1/supplemental-feed/{id}"
     ],
     "shortcodes": [],
-    "providers": [],
+    "providers": [
+      "hp_gmc_get_customer_reviews_optin_v1",
+      "hp_gmc_render_customer_reviews_optin_v1"
+    ],
     "options": [
-      "hp_gmc_ucp_checkout_eligibility"
+      "hp_gmc_ucp_checkout_eligibility",
+      "hp_gmc_customer_reviews_enabled"
     ]
   },
   "verification": {
