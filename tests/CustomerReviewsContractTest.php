@@ -3,6 +3,8 @@
 define('ABSPATH', '/');
 define('HP_GMC_URL', '/plugin/');
 define('HP_GMC_VERSION', 'test');
+$_SERVER['HTTP_HOST']='holisticpeople.com';
+function wp_get_environment_type() { return $GLOBALS['wpEnvironment'] ?? 'production'; }
 $options=[]; $host='https://holisticpeople.com/'; $override=null; $context=[]; $calls=0; $validNonce=false;
 function get_option($key,$default=false) { return $GLOBALS['options'][$key] ?? $default; }
 function home_url($path='') { return $GLOBALS['host']; }
@@ -12,6 +14,10 @@ function is_email($email) { return filter_var($email,FILTER_VALIDATE_EMAIL); }
 function wp_create_nonce($action) { return 'nonce-'.hash('sha256',$action); }
 function wp_verify_nonce($nonce,$action) { return hash_equals(wp_create_nonce($action),$nonce); }
 function wp_unslash($value) { return $value; }
+function esc_html__($v,$domain) { return htmlspecialchars($v,ENT_QUOTES); }
+function esc_attr($v) { return htmlspecialchars($v,ENT_QUOTES); }
+function esc_url($v) { return $v; }
+function wp_json_encode($v,$flags=0) { return json_encode($v,$flags); }
 function hp_checkout_get_review_confirmation_context_v1() { $GLOBALS['calls']++; return $GLOBALS['context']; }
 function get_post_meta($id,$key,$single=true) { return ''; }
 function wc_get_product($id) { return isset($GLOBALS['products'][$id]) ? new WC_Product($id,$GLOBALS['products'][$id]) : false; }
@@ -31,7 +37,10 @@ check(GCR::getOptin()['reason']==='disabled' && $calls===0,'default off does not
 $options=['hp_gmc_customer_reviews_enabled'=>'enabled','hp_gmc_merchant_id'=>'5298746911','hp_gmc_environment'=>'production'];
 $host='https://unknown.example/';check(Environment::resolve()==='unknown' && GCR::getOptin()['reason']==='outward_silent' && $calls===0,'unknown host silent despite legacy DB override');
 $host='https://staging-hp.kinsta.cloud/';check(GCR::getOptin()['reason']==='outward_silent' && $calls===0,'staging silent despite enabled copied option');
-$override='production';check(Environment::resolve()==='production','explicit environment escape hatch validated');
+$override='production';check(Environment::resolve()==='staging' && GCR::getOptin()['reason']==='outward_silent' && $calls===0,'forced production cannot upgrade staging or request order');
+$host='https://unknown.example/';check(Environment::resolve()==='unknown','forced production cannot upgrade unknown host');
+$host='https://holisticpeople.com/';$_SERVER['HTTP_HOST']='staging-hp.kinsta.cloud';check(GCR::getOptin()['reason']==='outward_silent' && $calls===0,'actual request host blocks copied production home URL');
+$_SERVER['HTTP_HOST']='holisticpeople.com';$wpEnvironment='staging';check(GCR::getOptin()['reason']==='outward_silent' && $calls===0,'WordPress staging identity blocks production host');$wpEnvironment='production';
 $override='bad';check(Environment::resolve()==='unknown','invalid override fails closed');
 $override=null;$host='https://holisticpeople.com/';
 $context=['version'=>1,'status'=>'unavailable','reason'=>'missing_delivery'];check(GCR::getOptin()['reason']==='context_unavailable','missing delivery has no payload');
@@ -51,4 +60,8 @@ $context['context']=$ready;$context['context']['email']='bad';check(GCR::getOpti
 $context['context']=$ready;$context['context']['delivery_country']='ZZ';check(GCR::getOptin()['reason']==='context_invalid','unknown delivery country rejected');
 $context['context']=$ready;$context['version']=2;check(GCR::getOptin()['reason']==='context_unavailable','unknown provider version rejected');
 $context=['version'=>1,'status'=>'ready','context'=>$ready];$options['hp_gmc_merchant_id']='123';check(GCR::getOptin()['reason']==='merchant_mismatch','wrong merchant rejected');
+$options['hp_gmc_merchant_id']='5298746911';$_SERVER['REQUEST_METHOD']='GET';
+ob_start();GCR::render();$html=ob_get_clean();
+check(str_contains($html,'hp_gmc_gcr_nonce') && !str_contains($html,$ready['email']) && !str_contains($html,$ready['order_reference']) && !str_contains($html,'apis.google.com') && !str_contains($html,'customer-reviews.js'),'rendered GET is local consent only with no buyer payload or loader');
+ob_start();GCR::render();check(ob_get_clean()==='','second renderer call emits nothing');
 echo "$n assertions passed; no external requests made.\n";

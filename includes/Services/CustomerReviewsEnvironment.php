@@ -3,19 +3,21 @@ namespace HP_GMC\Services;
 
 if (!defined('ABSPATH')) { exit; }
 
-/** Push-proof GCR gate. Deliberately does not use the legacy DB environment setting. */
+/** Hard GCR gate. Configuration can mute, never upgrade an unsafe host. */
 final class CustomerReviewsEnvironment
 {
     public static function resolve(): string
     {
-        if (defined('HP_GMC_GCR_ENV')) {
-            $environment = HP_GMC_GCR_ENV;
-        } else {
-            $host = strtolower((string) parse_url(home_url('/'), PHP_URL_HOST));
-            $environment = in_array($host, ['holisticpeople.com', 'www.holisticpeople.com'], true)
-                ? 'production'
-                : ((str_contains($host, 'staging') || str_ends_with($host, '.kinsta.cloud') || str_ends_with($host, '.local') || str_contains($host, 'localhost')) ? 'staging' : 'unknown');
+        $allowed = ['holisticpeople.com', 'www.holisticpeople.com'];
+        $homeHost = strtolower((string) parse_url(home_url('/'), PHP_URL_HOST));
+        $requestHost = strtolower((string) parse_url('https://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST));
+        $wpEnvironment = function_exists('wp_get_environment_type') ? wp_get_environment_type() : 'unknown';
+        if (!is_ssl() || !in_array($homeHost, $allowed, true) || !in_array($requestHost, $allowed, true)
+            || $wpEnvironment !== 'production') {
+            return ($wpEnvironment === 'staging' || str_contains($homeHost, 'staging') || str_ends_with($homeHost, '.kinsta.cloud'))
+                ? 'staging' : 'unknown';
         }
+        $environment = defined('HP_GMC_GCR_ENV') ? HP_GMC_GCR_ENV : 'production';
         $environment = apply_filters('hp_gmc_gcr_environment', $environment);
         return in_array($environment, ['production', 'staging', 'unknown'], true) ? $environment : 'unknown';
     }
