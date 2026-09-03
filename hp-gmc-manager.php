@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 3.4.12
+ * Version: 3.4.13
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -25,7 +25,7 @@ if (PHP_VERSION_ID < 80500) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '3.4.12');
+define('HP_GMC_VERSION', '3.4.13');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -63,6 +63,18 @@ spl_autoload_register(function ($class) {
         require $file;
     }
 });
+
+/** Registered server-only GCR contract; no request identity arguments. */
+function hp_gmc_get_customer_reviews_optin_v1(): array
+{
+    return \HP_GMC\Services\CustomerReviews::getOptin();
+}
+
+/** Optional confirmation fragment. HP-Zen owns placement only. */
+function hp_gmc_render_customer_reviews_optin_v1(): void
+{
+    \HP_GMC\Services\CustomerReviews::render();
+}
 
 /**
  * Settings page callback. Resolves SettingsPage only when the page is viewed so a missing file shows a message instead of a fatal.

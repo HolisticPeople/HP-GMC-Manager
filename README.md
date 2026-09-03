@@ -112,6 +112,16 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.13
+
+- Add dormant, default-off Google Customer Reviews store/product survey support.
+- Consume the authenticated Checkout confirmation contract; require first-party
+  sharing consent before emitting buyer data or loading Google. Unknown/staging
+  hosts stay silent regardless of copied database settings.
+- Reuse validated distinct purchased GTINs; no feed changes or historical backfill.
+- Production activation remains gated on trusted delivery promises, disclosure,
+  duplicate-integration review and exact release acceptance.
+
 ### 3.4.12
 
 - Product autocomplete, including the audience SKU condition picker, now uses
