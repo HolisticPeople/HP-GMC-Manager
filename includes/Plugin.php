@@ -423,6 +423,9 @@ class Plugin
      */
     public static function enqueue_store_widget(): void
     {
+        foreach (['is_checkout', 'is_account_page', 'is_cart', 'is_shop', 'is_product', 'is_product_category'] as $helper) {
+            if (!function_exists($helper)) { return; }
+        }
         if (is_admin()
             || get_option('hp_gmc_store_widget_enabled', 'disabled') !== 'enabled'
             || \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent()
