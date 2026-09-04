@@ -43,6 +43,10 @@ final class GoogleSubmitDataPage
             'Imported widget evidence' => wp_json_encode(StoreQualitySnapshot::widgetObservation() ?: ['status' => 'not_observed', 'google_receipt' => 'not_observed']),
             'Widget receipt' => __('Not observed. Script load or start attempt is not widget visibility or Google receipt.', 'hp-gmc-manager'),
         ]);
+        $reviews = StoreQualitySnapshot::reviewsObservation();
+        self::section(__('Google review observations · owner Google Merchant Center', 'hp-gmc-manager'), $reviews ? [
+            'GCR status' => $reviews['gcr_status'], 'Survey opt-ins' => $reviews['survey_optins'] === null ? 'No data' : (string) $reviews['survey_optins'], 'Surveys offered' => $reviews['surveys_offered'] === null ? 'No data' : (string) $reviews['surveys_offered'], 'Survey responses' => $reviews['survey_responses'] === null ? 'No data' : (string) $reviews['survey_responses'], 'Product reviews status' => $reviews['product_reviews_status'], 'Matched GTINs' => $reviews['matched_gtins'] === null ? 'No data' : (string) $reviews['matched_gtins'],
+        ] : ['Status' => 'No imported Merchant Center observation.']);
         self::quality($quality);
         echo '</div>';
     }

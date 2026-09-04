@@ -10,6 +10,7 @@ final class StoreQualitySnapshot
     public const HISTORY_OPTION = 'hp_gmc_store_quality_history_v1';
     public const WIDGET_OBSERVATION_OPTION = 'hp_gmc_store_widget_observation_v1';
     public const ERROR_OPTION = 'hp_gmc_store_quality_last_error_v1';
+    public const REVIEWS_OPTION = 'hp_gmc_google_reviews_observation_v1';
     private const SOURCE_URL = 'https://merchants.google.com/mc/quality?a=5298746911&region=US';
     private const METRICS = [
         'overall_quality', 'delivery', 'shipping_cost', 'return_window', 'return_cost',
@@ -95,6 +96,22 @@ final class StoreQualitySnapshot
         $value = get_option(self::WIDGET_OBSERVATION_OPTION, null);
         return is_array($value) ? $value : null;
     }
+
+    /** Import fixed GCR/Product Reviews panel facts; null means Merchant Center displayed No data. */
+    public static function importReviewsObservation(array $value)
+    {
+        $allowed = ['no_optin_notification_more_than_30_days', 'inactive', 'active'];
+        if (($value['version'] ?? null) !== 1 || !in_array($value['gcr_status'] ?? '', $allowed, true) || !in_array($value['product_reviews_status'] ?? '', $allowed, true)) {
+            return new \WP_Error('hp_gmc_reviews_observation_invalid', 'Google Reviews observation is invalid.');
+        }
+        foreach (['survey_optins','surveys_offered','survey_responses','matched_gtins','product_survey_responses'] as $key) {
+            if (!array_key_exists($key, $value) || (!is_null($value[$key]) && (!is_int($value[$key]) || $value[$key] < 0))) { return new \WP_Error('hp_gmc_reviews_counter_invalid', 'Google Reviews counters are invalid.'); }
+        }
+        update_option(self::REVIEWS_OPTION, ['version'=>1,'observed_at'=>gmdate('c'),'gcr_status'=>$value['gcr_status'],'product_reviews_status'=>$value['product_reviews_status'],'survey_optins'=>$value['survey_optins'],'surveys_offered'=>$value['surveys_offered'],'survey_responses'=>$value['survey_responses'],'matched_gtins'=>$value['matched_gtins'],'product_survey_responses'=>$value['product_survey_responses']], false);
+        return true;
+    }
+
+    public static function reviewsObservation(): ?array { $value = get_option(self::REVIEWS_OPTION, null); return is_array($value) ? $value : null; }
 
     /** @return array<string,mixed>|\WP_Error */
     private static function sanitize(array $snapshot, bool $isImport = true)
