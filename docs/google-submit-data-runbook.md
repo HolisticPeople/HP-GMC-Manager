@@ -31,3 +31,10 @@ setting. It remains distinct from `hp_gmc_customer_reviews_enabled`, which
 controls the order-confirmation survey opt-in. The widget is restricted to the
 actual production HTTPS host and public home/shop/product/category/reviews
 routes; checkout, cart, account, order and `key` routes cannot enqueue it.
+
+An authorized read-only observer may import one fresh bounded observation after
+the Merchant Center UI is checked. Preserve the last good snapshot on an
+observer/import failure, record only its short error and timestamp, and notify
+only when freshness becomes stale, an import fails, or a metric/status changes.
+No observer may enable settings, call customer/order routes, submit surveys, or
+claim Google receipt from a script load.

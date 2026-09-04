@@ -427,14 +427,18 @@ class Plugin
             || get_option('hp_gmc_store_widget_enabled', 'disabled') !== 'enabled'
             || \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent()
             || !is_ssl()
+            || is_preview()
             || is_checkout()
             || is_account_page()
             || is_cart()
-            || isset($_GET['key'])) {
+            || !empty($_GET)) {
             return;
         }
 
-        $allowed = is_front_page() || is_home() || is_shop() || is_product() || is_product_category()
+        if ((function_exists('post_password_required') && post_password_required()) || (function_exists('is_user_logged_in') && is_user_logged_in() && !is_front_page() && !is_shop() && !is_product_category())) {
+            return;
+        }
+        $allowed = is_front_page() || is_shop() || is_product() || is_product_category()
             || is_page('reviews');
         if (!$allowed) {
             return;
@@ -450,7 +454,7 @@ class Plugin
             HP_GMC_VERSION,
             true
         );
-        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"RIGHT_BOTTOM",region:"US"};', 'before');
+        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:33,mobileSideMargin:11,mobileBottomMargin:19};', 'before');
     }
 
     /**

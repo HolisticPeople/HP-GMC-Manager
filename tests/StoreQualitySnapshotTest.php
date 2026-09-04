@@ -14,12 +14,13 @@ foreach (['overall_quality','delivery','shipping_cost','return_window','return_c
     $metrics[$name] = ['value' => null, 'rating' => 'incomplete'];
 }
 $metrics['overall_quality'] = ['value' => null, 'rating' => 'great'];
-$valid = ['version' => 1, 'observed_at' => '2026-09-04T12:00:00Z', 'source' => ['url' => 'https://merchants.google.com/mc/store-quality?merchantId=5298746911', 'country' => 'US', 'window' => 'trailing_30_days', 'scope' => 'all_stores'], 'metrics' => $metrics, 'errors' => []];
+$metrics['ewallet'] = ['value' => 1, 'denominator' => 4, 'providers' => ['PayPal'], 'rating' => 'fair'];
+$valid = ['version' => 1, 'observed_at' => '2025-09-04T12:00:00Z', 'source' => ['url' => 'https://merchants.google.com/mc/quality?a=5298746911&region=US', 'country' => 'US', 'window' => 'trailing_30_days', 'scope' => 'all_stores'], 'metrics' => $metrics, 'errors' => []];
 check(StoreQualitySnapshot::import($valid) === true, 'allowlisted snapshot imports');
 check(StoreQualitySnapshot::current()['metrics']['overall_quality']['rating'] === 'great', 'current snapshot is local and typed');
 $invalid = $valid; $invalid['source']['country'] = 'CA';
 check(is_wp_error(StoreQualitySnapshot::import($invalid)), 'foreign scope is rejected');
-StoreQualitySnapshot::import(array_merge($valid, ['observed_at' => '2026-09-04T13:00:00Z']));
+StoreQualitySnapshot::import(array_merge($valid, ['observed_at' => '2025-09-04T13:00:00Z']));
 check(count(StoreQualitySnapshot::history()) === 1, 'bounded history retains prior observation');
-check(StoreQualitySnapshot::importWidgetObservation(['version' => 1, 'observed_at' => '2026-09-04T13:10:00Z', 'route' => '/shop/', 'status' => 'script_loaded']) === true, 'safe widget observation imports');
+check(StoreQualitySnapshot::importWidgetObservation(['version' => 1, 'observed_at' => '2025-09-04T13:10:00Z', 'route' => '/shop/', 'status' => 'script_loaded']) === true, 'safe widget observation imports');
 check(StoreQualitySnapshot::widgetObservation()['google_receipt'] === 'not_observed', 'widget load is never a receipt');

@@ -1,7 +1,7 @@
 /** Optional Google Merchant Center store widget. It never handles order or survey data. */
 (function () {
     'use strict';
-    if (window.HPGMCStoreWidget || window.location.protocol !== 'https:' ||
+    if (window.HPGMCStoreWidget || window.location.protocol !== 'https:' || window.location.search ||
         !['holisticpeople.com', 'www.holisticpeople.com'].includes(window.location.hostname)) { return; }
 
     window.HPGMCStoreWidget = { status: 'not_started' };
@@ -25,7 +25,7 @@
             window.HPGMCStoreWidget.status = 'start_attempted';
             var config = window.HPGMCStoreWidgetConfig || {};
             if (config.merchantId !== 5298746911) { window.HPGMCStoreWidget.status = 'merchant_mismatch'; return; }
-            window.merchantwidget.start({ merchant_id: config.merchantId, position: config.position || 'RIGHT_BOTTOM', region: config.region || 'US' });
+            window.merchantwidget.start({ merchant_id: config.merchantId, position: config.position || 'LEFT_BOTTOM', region: config.region || 'US', sideMargin: config.sideMargin || 21, bottomMargin: config.bottomMargin || 33, mobileSideMargin: config.mobileSideMargin || 11, mobileBottomMargin: config.mobileBottomMargin || 19 });
         } catch (error) {
             window.HPGMCStoreWidget.status = 'start_failed';
         }

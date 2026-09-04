@@ -9,7 +9,7 @@ final class StoreQualitySnapshot
     public const OPTION = 'hp_gmc_store_quality_snapshot_v1';
     public const HISTORY_OPTION = 'hp_gmc_store_quality_history_v1';
     public const WIDGET_OBSERVATION_OPTION = 'hp_gmc_store_widget_observation_v1';
-    private const SOURCE_URL = 'https://merchants.google.com/mc/store-quality?merchantId=5298746911';
+    private const SOURCE_URL = 'https://merchants.google.com/mc/quality?a=5298746911&region=US';
     private const METRICS = [
         'overall_quality', 'delivery', 'shipping_cost', 'return_window', 'return_cost',
         'promotions_rejection', 'ewallet', 'high_resolution_images', 'images_per_offer', 'store_rating',
@@ -36,14 +36,16 @@ final class StoreQualitySnapshot
     public static function current(): ?array
     {
         $value = get_option(self::OPTION, null);
-        return is_array($value) ? $value : null;
+        $clean = is_array($value) ? self::sanitize($value, false) : null;
+        return is_array($clean) ? $clean : null;
     }
 
     /** @return array<int,array<string,mixed>> */
     public static function history(): array
     {
         $value = get_option(self::HISTORY_OPTION, []);
-        return is_array($value) ? array_slice($value, 0, 30) : [];
+        if (!is_array($value)) { return []; }
+        return array_values(array_filter(array_slice($value, 0, 30), static fn ($row) => is_array(self::sanitize($row, false))));
     }
 
     /** @return array<string,string> A display-only diff against the immediately prior snapshot. */
@@ -85,7 +87,7 @@ final class StoreQualitySnapshot
     }
 
     /** @return array<string,mixed>|\WP_Error */
-    private static function sanitize(array $snapshot)
+    private static function sanitize(array $snapshot, bool $isImport = true)
     {
         if (($snapshot['version'] ?? null) !== 1 || ($snapshot['source']['url'] ?? '') !== self::SOURCE_URL
             || ($snapshot['source']['country'] ?? '') !== 'US' || ($snapshot['source']['window'] ?? '') !== 'trailing_30_days'
@@ -93,17 +95,32 @@ final class StoreQualitySnapshot
             return new \WP_Error('hp_gmc_store_quality_invalid_source', 'Store Quality source scope is not allowlisted.');
         }
         $observed = (string) ($snapshot['observed_at'] ?? '');
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/D', $observed)) {
+        try { $date = new \DateTimeImmutable($observed); } catch (\Throwable $error) { $date = null; }
+        if (!$date || $date->getTimestamp() > time() + 60) {
             return new \WP_Error('hp_gmc_store_quality_invalid_time', 'observed_at must be UTC RFC3339.');
+        }
+        $observed = $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d\\TH:i:s\\Z');
+        $current = get_option(self::OPTION, null);
+        if ($isImport && is_array($current) && isset($current['observed_at']) && $observed <= (string) $current['observed_at']) {
+            return new \WP_Error('hp_gmc_store_quality_nonmonotonic', 'observed_at must advance.');
         }
         $metrics = $snapshot['metrics'] ?? [];
         if (!is_array($metrics) || array_diff(array_keys($metrics), self::METRICS) || array_diff(self::METRICS, array_keys($metrics))) {
             return new \WP_Error('hp_gmc_store_quality_invalid_metrics', 'Store Quality metric keys are fixed.');
         }
-        foreach ($metrics as $metric) {
-            if (!is_array($metric) || !in_array($metric['rating'] ?? '', ['exceptional', 'great', 'good', 'fair', 'incomplete'], true)) {
+        $cleanMetrics = [];
+        foreach ($metrics as $name => $metric) {
+            if (!is_array($metric) || !in_array($metric['rating'] ?? '', ['exceptional', 'great', 'good', 'fair', 'low', 'incomplete'], true)
+                || array_diff(array_keys($metric), ['value','unit','rating','denominator','providers'])) {
                 return new \WP_Error('hp_gmc_store_quality_invalid_metric', 'A Store Quality rating is invalid.');
             }
+            $value = $metric['value'] ?? null;
+            if (!is_null($value) && !is_numeric($value)) { return new \WP_Error('hp_gmc_store_quality_invalid_value', 'Metric values must be numeric or null.'); }
+            $unit = $metric['unit'] ?? null;
+            if ($unit !== null && !in_array($unit, ['days','USD','percent','count'], true)) { return new \WP_Error('hp_gmc_store_quality_invalid_unit', 'Metric unit is invalid.'); }
+            if (($name === 'ewallet') && (!isset($metric['denominator']) || !is_int($metric['denominator']) || $metric['denominator'] < 1 || $metric['denominator'] > 20)) { return new \WP_Error('hp_gmc_store_quality_invalid_ewallet', 'Ewallet denominator is invalid.'); }
+            if (isset($metric['providers']) && (!is_array($metric['providers']) || count($metric['providers']) > 10 || array_filter($metric['providers'], static fn ($p) => !is_string($p) || strlen($p) > 40))) { return new \WP_Error('hp_gmc_store_quality_invalid_providers', 'Providers are invalid.'); }
+            $cleanMetrics[$name] = array_filter(['value' => $value, 'unit' => $unit, 'rating' => $metric['rating'], 'denominator' => $metric['denominator'] ?? null, 'providers' => $metric['providers'] ?? null], static fn ($v) => $v !== null);
         }
         $errors = $snapshot['errors'] ?? [];
         if (!is_array($errors) || count($errors) > 10 || array_filter($errors, static fn ($error) => !is_string($error) || strlen($error) > 180)) {
@@ -112,7 +129,7 @@ final class StoreQualitySnapshot
         return [
             'version' => 1, 'observed_at' => $observed,
             'source' => ['url' => self::SOURCE_URL, 'country' => 'US', 'window' => 'trailing_30_days', 'scope' => 'all_stores'],
-            'metrics' => $metrics, 'errors' => array_values($errors),
+            'metrics' => $cleanMetrics, 'errors' => array_values($errors),
         ];
     }
 }
