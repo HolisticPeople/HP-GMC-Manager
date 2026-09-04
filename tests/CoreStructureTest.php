@@ -61,14 +61,20 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.13',
-    'current version is pinned exactly to 3.4.13');
+check($constVersion === '3.4.14',
+    'current version is pinned exactly to 3.4.14');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,
     'Plugin initializes the canonical merchant return policy schema service');
 check(strpos($plugin, 'StorefrontPolicyContentMigration::init();') !== false,
     'Plugin defers the reversible storefront policy content migration');
+check(strpos($plugin, 'GoogleSubmitDataPage::class') !== false
+    && strpos($plugin, "'hp-gmc-google-submit-data'") !== false,
+    'Plugin registers the read-only Google Submit Data page');
+check(strpos($plugin, 'enqueue_store_widget') !== false
+    && strpos($plugin, 'hp_gmc_store_widget_enabled') !== false,
+    'Store widget has a separate default-off state');
 
 // --- 3.1.0 lesson: Merchant API v1beta was discontinued 2026-02-28 (HTTP 409).
 // No merchantapi.googleapis.com call may target v1beta again.

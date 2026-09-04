@@ -25,30 +25,10 @@ class ProductDataFeed
     /** @var string Option key for product count */
     private const PRODUCT_COUNT_KEY = 'hp_gmc_primary_feed_product_count';
 
-    /**
-     * Generate the product data feed content.
-     *
-     * @param string $format Output format: 'tsv' or 'csv'
-     * @param bool $forceRegenerate Skip cache and regenerate
-     * @return string Feed content
-     */
-    public static function generateFeed(string $format = 'tsv', bool $forceRegenerate = false, string $profile = 'merchant'): string
+    /** Read-only field inventory, shared with the actual feed generator. */
+    public static function getSubmittedFieldNames(): array
     {
-        $profile = in_array($profile, ['agent', 'openai'], true) ? $profile : 'merchant';
-
-        // Check cache first (unless force regenerate)
-        if (!$forceRegenerate) {
-            $cached = get_transient(self::CACHE_KEY . '_' . $format . '_' . $profile);
-            if ($cached !== false) {
-                return $cached;
-            }
-        }
-
-        $delimiter = $format === 'csv' ? ',' : "\t";
-        $products = self::getPublishedProducts();
-        // Build header row
-        // NOTE: shipping_weight uses GMC format (e.g., "0.15 lb") NOT WooCommerce "lbs"
-        $headers = [
+        return [
             'id',
             'title',
             'description',
@@ -82,6 +62,32 @@ class ProductDataFeed
             'consumer_notice(notice_type:notice_message)',
             'merchant_item_id',
         ];
+    }
+
+    /**
+     * Generate the product data feed content.
+     *
+     * @param string $format Output format: 'tsv' or 'csv'
+     * @param bool $forceRegenerate Skip cache and regenerate
+     * @return string Feed content
+     */
+    public static function generateFeed(string $format = 'tsv', bool $forceRegenerate = false, string $profile = 'merchant'): string
+    {
+        $profile = in_array($profile, ['agent', 'openai'], true) ? $profile : 'merchant';
+
+        // Check cache first (unless force regenerate)
+        if (!$forceRegenerate) {
+            $cached = get_transient(self::CACHE_KEY . '_' . $format . '_' . $profile);
+            if ($cached !== false) {
+                return $cached;
+            }
+        }
+
+        $delimiter = $format === 'csv' ? ',' : "\t";
+        $products = self::getPublishedProducts();
+        // Build header row
+        // NOTE: shipping_weight uses GMC format (e.g., "0.15 lb") NOT WooCommerce "lbs"
+        $headers = self::getSubmittedFieldNames();
 
         $lines = [];
         $lines[] = implode($delimiter, $headers);

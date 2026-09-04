@@ -62,6 +62,7 @@ class Plugin
 
         // Enqueue admin assets
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_store_widget']);
 
         // Register GMC category (must happen before abilities)
         add_action('wp_abilities_api_categories_init', [self::class, 'register_ability_category']);
@@ -177,6 +178,15 @@ class Plugin
             'hp_gmc_render_settings_page'
         );
 
+        add_submenu_page(
+            'hp-gmc-manager',
+            __('Google Submit Data', 'hp-gmc-manager'),
+            __('Google Submit Data', 'hp-gmc-manager'),
+            'manage_woocommerce',
+            'hp-gmc-google-submit-data',
+            [Admin\GoogleSubmitDataPage::class, 'render']
+        );
+
         // Campaign ROI submenu
         add_submenu_page(
             'hp-gmc-manager',
@@ -194,6 +204,12 @@ class Plugin
     public static function register_settings(): void
     {
         register_setting('hp_gmc_settings', 'hp_gmc_customer_reviews_enabled', [
+            'type' => 'string',
+            'default' => 'disabled',
+            'sanitize_callback' => static fn ($value) => $value === 'enabled' ? 'enabled' : 'disabled',
+        ]);
+
+        register_setting('hp_gmc_settings', 'hp_gmc_store_widget_enabled', [
             'type' => 'string',
             'default' => 'disabled',
             'sanitize_callback' => static fn ($value) => $value === 'enabled' ? 'enabled' : 'disabled',
@@ -399,6 +415,49 @@ class Plugin
                 'error' => __('An error occurred. Please try again.', 'hp-gmc-manager'),
             ],
         ]);
+    }
+
+    /**
+     * Load Google's optional store widget only on explicit public catalogue routes.
+     * This is intentionally independent from the order-confirmation survey adapter.
+     */
+    public static function enqueue_store_widget(): void
+    {
+        foreach (['is_checkout', 'is_account_page', 'is_cart', 'is_shop', 'is_product', 'is_product_category'] as $helper) {
+            if (!function_exists($helper)) { return; }
+        }
+        if (is_admin()
+            || get_option('hp_gmc_store_widget_enabled', 'disabled') !== 'enabled'
+            || \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent()
+            || !is_ssl()
+            || (function_exists('is_preview') && is_preview())
+            || (function_exists('is_checkout') && is_checkout())
+            || (function_exists('is_account_page') && is_account_page())
+            || (function_exists('is_cart') && is_cart())) {
+            return;
+        }
+        $safeQuery = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','gclid','gbraid','wbraid'];
+        foreach (array_keys($_GET) as $key) { if (!in_array($key, $safeQuery, true) || !is_scalar($_GET[$key]) || strlen((string) $_GET[$key]) > 160) { return; } }
+        if ((function_exists('post_password_required') && post_password_required()) || (function_exists('is_singular') && is_singular() && function_exists('get_post_status') && get_post_status() !== 'publish')) {
+            return;
+        }
+        $allowed = is_front_page() || is_shop() || is_product() || is_product_category()
+            || is_page('reviews');
+        if (!$allowed) {
+            return;
+        }
+        if ((string) get_option('hp_gmc_merchant_id', '') !== '5298746911') {
+            return;
+        }
+
+        wp_enqueue_script(
+            'hp-gmc-store-widget',
+            HP_GMC_URL . 'assets/js/store-widget.js',
+            [],
+            HP_GMC_VERSION,
+            true
+        );
+        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:33,mobileSideMargin:11,mobileBottomMargin:96};', 'before');
     }
 
     /**

@@ -118,6 +118,16 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 - Consume the authenticated Checkout confirmation contract; require first-party
   sharing consent before emitting buyer data or loading Google. Unknown/staging
   hosts stay silent regardless of copied database settings.
+
+### 3.4.14
+
+- Add the read-only **Google Submit Data** administrator view. It reports only
+  local configuration/cache, bounded operator-imported Store Quality snapshots,
+  and explicit unknown receipt state; it never contacts Google or offers saves.
+- Keep the optional Merchant Center store widget separate from review-survey
+  opt-in. It can run only on explicit public catalogue routes on the actual
+  production HTTPS host; checkout, order, account, cart and key-bearing routes
+  are excluded.
 - Reuse validated distinct purchased GTINs; no feed changes or historical backfill.
 - Production activation remains gated on trusted delivery promises, disclosure,
   duplicate-integration review and exact release acceptance.
