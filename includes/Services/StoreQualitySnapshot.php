@@ -9,6 +9,7 @@ final class StoreQualitySnapshot
     public const OPTION = 'hp_gmc_store_quality_snapshot_v1';
     public const HISTORY_OPTION = 'hp_gmc_store_quality_history_v1';
     public const WIDGET_OBSERVATION_OPTION = 'hp_gmc_store_widget_observation_v1';
+    public const ERROR_OPTION = 'hp_gmc_store_quality_last_error_v1';
     private const SOURCE_URL = 'https://merchants.google.com/mc/quality?a=5298746911&region=US';
     private const METRICS = [
         'overall_quality', 'delivery', 'shipping_cost', 'return_window', 'return_cost',
@@ -22,13 +23,14 @@ final class StoreQualitySnapshot
     public static function import(array $snapshot)
     {
         $clean = self::sanitize($snapshot);
-        if (is_wp_error($clean)) { return $clean; }
+        if (is_wp_error($clean)) { update_option(self::ERROR_OPTION, ['at' => gmdate('c'), 'message' => $clean->get_error_message()], false); return $clean; }
         $history = get_option(self::HISTORY_OPTION, []);
         $history = is_array($history) ? $history : [];
         $prior = get_option(self::OPTION, null);
         if (is_array($prior)) { array_unshift($history, $prior); }
         update_option(self::OPTION, $clean, false);
         update_option(self::HISTORY_OPTION, array_slice($history, 0, 30), false);
+        delete_option(self::ERROR_OPTION);
         return true;
     }
 
@@ -61,6 +63,14 @@ final class StoreQualitySnapshot
             if ($before !== $after) { $diff[$key] = $before . ' → ' . $after; }
         }
         return $diff;
+    }
+
+    /** @return array{status:string,age_seconds:int|null,error:string|null} */
+    public static function freshness(): array
+    {
+        $current = self::current(); $error = get_option(self::ERROR_OPTION, []);
+        $age = $current ? max(0, time() - strtotime((string) $current['observed_at'])) : null;
+        return ['status' => $age === null ? 'missing' : ($age > 172800 ? 'stale' : 'fresh'), 'age_seconds' => $age, 'error' => is_array($error) ? ($error['message'] ?? null) : null];
     }
 
     /** Import trusted browser evidence separately; a load never becomes a receipt or visibility claim. */

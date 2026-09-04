@@ -3,8 +3,9 @@ define('ABSPATH', '/');
 $options = [];
 function get_option($key, $default = false) { return $GLOBALS['options'][$key] ?? $default; }
 function update_option($key, $value, $autoload = null) { $GLOBALS['options'][$key] = $value; return true; }
+function delete_option($key) { unset($GLOBALS['options'][$key]); return true; }
 function wp_json_encode($value) { return json_encode($value); }
-class WP_Error { public function __construct(public string $code, public string $message) {} }
+class WP_Error { public function __construct(public string $code, public string $message) {} public function get_error_message() { return $this->message; } }
 function is_wp_error($value) { return $value instanceof WP_Error; }
 require dirname(__DIR__) . '/includes/Services/StoreQualitySnapshot.php';
 use HP_GMC\Services\StoreQualitySnapshot;
