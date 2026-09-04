@@ -61,7 +61,8 @@
       "hp_gmc_store_widget_observation_v1",
       "hp_gmc_google_reviews_observation_v1",
       "hp_gmc_google_reviews_history_v1"
-      ,"hp_gmc_submitted_settings_v1"
+      ,"hp_gmc_submitted_settings_v1",
+      "hp_gmc_submitted_settings_history_v1"
     ]
   },
   "verification": {
