@@ -427,15 +427,15 @@ class Plugin
             || get_option('hp_gmc_store_widget_enabled', 'disabled') !== 'enabled'
             || \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent()
             || !is_ssl()
-            || is_preview()
-            || is_checkout()
-            || is_account_page()
-            || is_cart()
-            || !empty($_GET)) {
+            || (function_exists('is_preview') && is_preview())
+            || (function_exists('is_checkout') && is_checkout())
+            || (function_exists('is_account_page') && is_account_page())
+            || (function_exists('is_cart') && is_cart())) {
             return;
         }
-
-        if ((function_exists('post_password_required') && post_password_required()) || (function_exists('is_user_logged_in') && is_user_logged_in() && !is_front_page() && !is_shop() && !is_product_category())) {
+        $safeQuery = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','gclid','gbraid','wbraid'];
+        foreach (array_keys($_GET) as $key) { if (!in_array($key, $safeQuery, true) || !is_scalar($_GET[$key]) || strlen((string) $_GET[$key]) > 160) { return; } }
+        if ((function_exists('post_password_required') && post_password_required()) || (function_exists('is_singular') && is_singular() && function_exists('get_post_status') && get_post_status() !== 'publish')) {
             return;
         }
         $allowed = is_front_page() || is_shop() || is_product() || is_product_category()
@@ -454,7 +454,7 @@ class Plugin
             HP_GMC_VERSION,
             true
         );
-        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:33,mobileSideMargin:11,mobileBottomMargin:19};', 'before');
+        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:33,mobileSideMargin:11,mobileBottomMargin:96};', 'before');
     }
 
     /**

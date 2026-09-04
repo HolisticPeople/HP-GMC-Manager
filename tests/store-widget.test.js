@@ -4,6 +4,7 @@ const code = fs.readFileSync(__dirname + '/../assets/js/store-widget.js', 'utf8'
 let appended;
 const script = { addEventListener(type, callback) { this[type] = callback; } };
 const context = {
+  URLSearchParams,
   window: { location: { protocol: 'https:', hostname: 'holisticpeople.com' }, HPGMCStoreWidgetConfig: { merchantId: 5298746911, position: 'LEFT_BOTTOM', region: 'US', sideMargin: 21, bottomMargin: 33, mobileSideMargin: 11, mobileBottomMargin: 19 }, merchantwidget: { start(args) { context.args = args; } } },
   document: { getElementById() { return null; }, querySelector() { return null; }, createElement() { return script; }, head: { appendChild(node) { appended = node; } } }
 };

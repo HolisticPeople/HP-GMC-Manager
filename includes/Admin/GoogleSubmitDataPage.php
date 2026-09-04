@@ -66,7 +66,9 @@ final class GoogleSubmitDataPage
         $rows = ['Observed at' => (string) $snapshot['observed_at'], 'Source URL' => (string) $snapshot['source']['url'], 'Scope' => 'US · trailing 30 days · all stores', 'Freshness' => $fresh['status'] . ($fresh['age_seconds'] !== null ? ' (' . $fresh['age_seconds'] . ' seconds old)' : ''), 'Last import error' => (string) ($fresh['error'] ?: 'None')];
         foreach (($snapshot['metrics'] ?? []) as $name => $metric) { $rows[(string) $name] = self::metric($metric); }
         $rows['Changed metrics'] = implode(', ', array_keys(StoreQualitySnapshot::diff())) ?: 'None';
-        $history = StoreQualitySnapshot::history(); $rows['History retained'] = implode('; ', array_map(static fn($row) => $row['observed_at'] . ' delivery ' . self::metric($row['metrics']['delivery']), $history)) ?: 'None';
+        $history = StoreQualitySnapshot::history();
+        $rows['History retained'] = implode('; ', array_map(static fn($row) => $row['observed_at'] . ' overall ' . self::metric($row['metrics']['overall_quality']) . ' · ' . implode(', ', array_map(static fn($name,$metric) => $name . ' ' . self::metric($metric), array_keys($row['metrics']), $row['metrics'])), $history)) ?: 'None';
+        foreach (StoreQualitySnapshot::diff() as $name => $change) { $rows['Changed ' . $name] = self::metric($change['before']) . ' → ' . self::metric($change['after']); }
         $rows['Observation errors'] = implode('; ', $snapshot['errors'] ?? []) ?: 'None';
         self::section(__('Imported Merchant Center snapshot', 'hp-gmc-manager'), $rows);
     }
