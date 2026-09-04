@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 3.4.13
+ * Version: 3.4.14
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -25,7 +25,7 @@ if (PHP_VERSION_ID < 80500) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '3.4.13');
+define('HP_GMC_VERSION', '3.4.14');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -74,6 +74,18 @@ function hp_gmc_get_customer_reviews_optin_v1(): array
 function hp_gmc_render_customer_reviews_optin_v1(): void
 {
     \HP_GMC\Services\CustomerReviews::render();
+}
+
+/** Trusted operator/WP-CLI import only. No admin, REST, or browser writer exists. */
+function hp_gmc_import_store_quality_snapshot_v1(array $snapshot)
+{
+    return \HP_GMC\Services\StoreQualitySnapshot::import($snapshot);
+}
+
+/** Trusted operator/WP-CLI import only; a loader attempt is never a Google receipt. */
+function hp_gmc_import_store_widget_observation_v1(array $observation)
+{
+    return \HP_GMC\Services\StoreQualitySnapshot::importWidgetObservation($observation);
 }
 
 /**
