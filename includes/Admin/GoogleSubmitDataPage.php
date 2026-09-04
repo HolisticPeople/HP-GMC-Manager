@@ -22,18 +22,18 @@ final class GoogleSubmitDataPage
         self::section(__('Merchant and disclosures · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Merchant ID' => (string) get_option('hp_gmc_merchant_id', '') ?: __('Not configured', 'hp-gmc-manager'),
             'Privacy' => home_url('/privacy-policy-holisticpeople/'), 'Terms' => home_url('/terms-service-holisticpeople/'), 'Returns' => home_url('/return-policy/'),
-            'Support' => $submitted ? $submitted['support']['url'] . ' · ' . $submitted['support']['email'] . ' · ' . $submitted['support']['phone'] : 'No imported Google support observation',
+            'Support' => $submitted ? $submitted['support']['url'] . ' · ' . $submitted['support']['email'] . ' · ' . $submitted['support']['phone'] . ' · observed ' . $submitted['observed_at'] : 'No imported Google support observation',
         ]);
         self::delivery($ship);
         self::section(__('Returns and loyalty disclosures · owner HP-GMC Manager', 'hp-gmc-manager'), [
-            'Return policy' => $submitted ? 'Policy ' . $submitted['returns']['policy_id'] . ' · ' . $submitted['returns']['status'] . ' · ' . $submitted['returns']['days'] . ' days · products ' . ($submitted['returns']['products'] ?? 'not observed') : 'No imported Google return observation',
+            'Return policy' => $submitted ? 'Policy ' . $submitted['returns']['policy_id'] . ' · ' . $submitted['returns']['status'] . ' · ' . $submitted['returns']['days'] . ' days · ' . $submitted['returns']['cost'] . ' · products ' . ($submitted['returns']['products'] ?? 'not observed') . ' · observed ' . $submitted['observed_at'] : 'No imported Google return observation',
             'Loyalty submitted state' => $submitted ? $submitted['loyalty']['status'] : 'No imported Google loyalty observation',
         ]);
         self::section(__('Feed and product identifiers · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Local merchant feed rows' => (string) ($feed['product_count'] ?? 0),
             'Last locally generated' => (string) ($feed['last_generated'] ?? __('Never', 'hp-gmc-manager')),
             'Google receipt' => __('Not observed by this local report.', 'hp-gmc-manager'),
-            'Submitted data shape' => 'id, title, link, image_link, price, availability, brand, mpn, gtin, identifier_exists, shipping dimensions (no customer data)',
+            'Feed fields' => implode(', ', ProductDataFeed::getSubmittedFieldNames()) . ' (no customer data)',
         ]);
         self::section(__('Customer Reviews and store widget · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Survey opt-in' => (string) get_option('hp_gmc_customer_reviews_enabled', 'disabled'),
@@ -91,8 +91,8 @@ final class GoogleSubmitDataPage
         $rows = ['Provider status' => is_array($ship) ? (string) ($ship['status'] ?? 'unknown') : 'Unavailable'];
         if (is_array($ship)) {
             $transit = $ship['configuration']['transit_rules'] ?? []; $handling = $ship['configuration']['handling'] ?? [];
-            $rows['Valid rules'] = (string) ($transit['valid_rule_count'] ?? 0); $rows['Invalid rules'] = (string) ($transit['invalid_rule_count'] ?? 0);
-            $rows['Handling'] = isset($handling['max_days']) ? $handling['max_days'] . ' days · ' . ($handling['calendar'] ?? '') : 'Unavailable';
+            $rows['Valid rules'] = (string) ($transit['valid_rule_count'] ?? 0); $rows['Rejected rules'] = (string) ($transit['rejected_rule_count'] ?? 0); $rows['Ambiguous rules']=(string)($transit['ambiguous_rule_count']??0);
+            $rows['Handling'] = isset($handling['max_days']) ? $handling['max_days'] . ' days · ' . ($handling['calendar'] ?? '') . ' · cutoff ' . ($handling['cutoff'] ?? '') . ' · ' . ($handling['timezone'] ?? '') : 'Unavailable';
             $rows['Limitations'] = implode(', ', array_map('strval', $ship['limitations'] ?? [])) ?: 'None reported';
             foreach (($transit['rules'] ?? []) as $i => $rule) { if (is_array($rule)) { $rows['Service ' . ($i + 1)] = implode(' · ', array_filter([(string) ($rule['service_key'] ?? ''), (string) ($rule['country'] ?? ''), implode(',', (array) ($rule['states'] ?? [])), isset($rule['max_days']) ? $rule['max_days'] . ' days' : '', (string) ($rule['day_type'] ?? ''), (string) ($rule['calendar'] ?? '')])); } }
         }
