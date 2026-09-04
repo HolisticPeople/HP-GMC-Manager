@@ -47,7 +47,10 @@
       "hp_gmc_get_customer_reviews_optin_v1",
       "hp_gmc_render_customer_reviews_optin_v1",
       "hp_gmc_import_store_quality_snapshot_v1",
-      "hp_gmc_import_store_widget_observation_v1"
+      "hp_gmc_import_store_widget_observation_v1",
+      "hp_gmc_import_google_reviews_observation_v1",
+      "hp_gmc_record_google_observation_failure_v1",
+      "hp_gmc_import_google_submitted_settings_v1"
     ],
     "options": [
       "hp_gmc_ucp_checkout_eligibility",
@@ -55,7 +58,10 @@
       "hp_gmc_store_widget_enabled",
       "hp_gmc_store_quality_snapshot_v1",
       "hp_gmc_store_quality_history_v1",
-      "hp_gmc_store_widget_observation_v1"
+      "hp_gmc_store_widget_observation_v1",
+      "hp_gmc_google_reviews_observation_v1",
+      "hp_gmc_google_reviews_history_v1"
+      ,"hp_gmc_submitted_settings_v1"
     ]
   },
   "verification": {

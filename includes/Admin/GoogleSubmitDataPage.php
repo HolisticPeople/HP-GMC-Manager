@@ -3,6 +3,7 @@ namespace HP_GMC\Admin;
 
 use HP_GMC\Services\ProductDataFeed;
 use HP_GMC\Services\StoreQualitySnapshot;
+use HP_GMC\Services\GoogleSubmittedSettings;
 
 if (!defined('ABSPATH')) { exit; }
 
@@ -17,35 +18,32 @@ final class GoogleSubmitDataPage
         try { $ship = function_exists('hp_ss_get_google_submit_data_v1') ? hp_ss_get_google_submit_data_v1() : null; } catch (\Throwable $error) { $ship = null; }
         echo '<div class="wrap hp-gmc-google-submit-data"><h1>' . esc_html__('Google Submit Data', 'hp-gmc-manager') . '</h1>';
         echo '<p>' . esc_html__('Read-only local reporting. Configuration, local generation, and Google receipt are different facts.', 'hp-gmc-manager') . '</p>';
+        $submitted = GoogleSubmittedSettings::current();
         self::section(__('Merchant and disclosures · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Merchant ID' => (string) get_option('hp_gmc_merchant_id', '') ?: __('Not configured', 'hp-gmc-manager'),
             'Privacy' => home_url('/privacy-policy-holisticpeople/'), 'Terms' => home_url('/terms-service-holisticpeople/'), 'Returns' => home_url('/return-policy/'),
-            'Support' => __('No support submission is asserted by this local report.', 'hp-gmc-manager'),
+            'Support' => $submitted ? $submitted['support']['url'] . ' · ' . $submitted['support']['email'] . ' · ' . $submitted['support']['phone'] : 'No imported Google support observation',
         ]);
-        self::section(__('Delivery configuration · owner HP ShipStation Rates', 'hp-gmc-manager'), [
-            'Owner' => 'HP ShipStation Rates',
-            'Provider status' => is_array($ship) ? (string) ($ship['status'] ?? 'unknown') : __('Unavailable', 'hp-gmc-manager'),
-            'Transit rules' => is_array($ship) ? (string) (($ship['configuration']['transit_rules']['valid_rules'] ?? 0)) : __('Unavailable', 'hp-gmc-manager'),
-        ]);
+        self::delivery($ship);
         self::section(__('Returns and loyalty disclosures · owner HP-GMC Manager', 'hp-gmc-manager'), [
-            'Return policy URL' => home_url('/return-policy/'),
-            'Loyalty submitted state' => __('No locally stored Merchant Center loyalty submission.', 'hp-gmc-manager'),
+            'Return policy' => $submitted ? 'Policy ' . $submitted['returns']['policy_id'] . ' · ' . $submitted['returns']['status'] . ' · ' . $submitted['returns']['days'] . ' days · products ' . ($submitted['returns']['products'] ?? 'not observed') : 'No imported Google return observation',
+            'Loyalty submitted state' => $submitted ? $submitted['loyalty']['status'] : 'No imported Google loyalty observation',
         ]);
         self::section(__('Feed and product identifiers · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Local merchant feed rows' => (string) ($feed['product_count'] ?? 0),
             'Last locally generated' => (string) ($feed['last_generated'] ?? __('Never', 'hp-gmc-manager')),
             'Google receipt' => __('Not observed by this local report.', 'hp-gmc-manager'),
-            'Submitted data shape' => 'id, brand, mpn, gtin, identifier_exists (no customer data)',
+            'Submitted data shape' => 'id, title, link, image_link, price, availability, brand, mpn, gtin, identifier_exists, shipping dimensions (no customer data)',
         ]);
         self::section(__('Customer Reviews and store widget · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Survey opt-in' => (string) get_option('hp_gmc_customer_reviews_enabled', 'disabled'),
             'Store widget' => (string) get_option('hp_gmc_store_widget_enabled', 'disabled'),
-            'Imported widget evidence' => wp_json_encode(StoreQualitySnapshot::widgetObservation() ?: ['status' => 'not_observed', 'google_receipt' => 'not_observed']),
+            'Imported widget evidence' => self::widgetEvidence(),
             'Widget receipt' => __('Not observed. Script load or start attempt is not widget visibility or Google receipt.', 'hp-gmc-manager'),
         ]);
         $reviews = StoreQualitySnapshot::reviewsObservation();
         self::section(__('Google review observations · owner Google Merchant Center', 'hp-gmc-manager'), $reviews ? [
-            'GCR status' => $reviews['gcr_status'], 'Survey opt-ins' => $reviews['survey_optins'] === null ? 'No data' : (string) $reviews['survey_optins'], 'Surveys offered' => $reviews['surveys_offered'] === null ? 'No data' : (string) $reviews['surveys_offered'], 'Survey responses' => $reviews['survey_responses'] === null ? 'No data' : (string) $reviews['survey_responses'], 'Product reviews status' => $reviews['product_reviews_status'], 'Matched GTINs' => $reviews['matched_gtins'] === null ? 'No data' : (string) $reviews['matched_gtins'],
+            'GCR status' => $reviews['gcr_status'], 'Survey opt-ins' => $reviews['survey_optins'] === null ? 'No data' : (string) $reviews['survey_optins'], 'Surveys offered' => $reviews['surveys_offered'] === null ? 'No data' : (string) $reviews['surveys_offered'], 'Survey responses' => $reviews['survey_responses'] === null ? 'No data' : (string) $reviews['survey_responses'], 'Product reviews status' => $reviews['product_reviews_status'], 'Matched GTINs' => $reviews['matched_gtins'] === null ? 'No data' : (string) $reviews['matched_gtins'], 'Product survey responses' => $reviews['product_survey_responses'] === null ? 'No data' : (string) $reviews['product_survey_responses'], 'Observed at' => $reviews['observed_at'],
         ] : ['Status' => 'No imported Merchant Center observation.']);
         self::quality($quality);
         echo '</div>';
@@ -63,12 +61,12 @@ final class GoogleSubmitDataPage
     private static function quality(?array $snapshot): void
     {
         echo '<h2>' . esc_html__('Store Quality observations', 'hp-gmc-manager') . '</h2>';
-        if (!$snapshot) { echo '<p>' . esc_html__('No imported observation. This page does not contact Google.', 'hp-gmc-manager') . '</p>'; return; }
         $fresh = StoreQualitySnapshot::freshness();
+        if (!$snapshot) { self::section(__('Store Quality observations', 'hp-gmc-manager'), ['Freshness'=>$fresh['status'],'Last import error'=>(string)($fresh['error']?:'None'),'History'=>'None']); return; }
         $rows = ['Observed at' => (string) $snapshot['observed_at'], 'Source URL' => (string) $snapshot['source']['url'], 'Scope' => 'US · trailing 30 days · all stores', 'Freshness' => $fresh['status'] . ($fresh['age_seconds'] !== null ? ' (' . $fresh['age_seconds'] . ' seconds old)' : ''), 'Last import error' => (string) ($fresh['error'] ?: 'None')];
         foreach (($snapshot['metrics'] ?? []) as $name => $metric) { $rows[(string) $name] = self::metric($metric); }
         $rows['Changed metrics'] = implode(', ', array_keys(StoreQualitySnapshot::diff())) ?: 'None';
-        $rows['History retained'] = (string) count(StoreQualitySnapshot::history()) . ' / 30';
+        $history = StoreQualitySnapshot::history(); $rows['History retained'] = implode('; ', array_map(static fn($row) => $row['observed_at'] . ' delivery ' . self::metric($row['metrics']['delivery']), $history)) ?: 'None';
         $rows['Observation errors'] = implode('; ', $snapshot['errors'] ?? []) ?: 'None';
         self::section(__('Imported Merchant Center snapshot', 'hp-gmc-manager'), $rows);
     }
@@ -80,5 +78,24 @@ final class GoogleSubmitDataPage
         if (isset($metric['unit'])) { $value .= ' ' . $metric['unit']; }
         if (!empty($metric['providers'])) { $value .= ' (' . implode(', ', $metric['providers']) . ')'; }
         return $value . ' · ' . ($metric['rating'] ?? 'unknown');
+    }
+
+    private static function widgetEvidence(): string
+    {
+        $value = StoreQualitySnapshot::widgetObservation();
+        return !$value ? 'Not observed' : ($value['status'] ?? 'not_observed') . ' · ' . ($value['observed_at'] ?? 'unknown time') . ' · Google receipt: not observed';
+    }
+
+    private static function delivery($ship): void
+    {
+        $rows = ['Provider status' => is_array($ship) ? (string) ($ship['status'] ?? 'unknown') : 'Unavailable'];
+        if (is_array($ship)) {
+            $transit = $ship['configuration']['transit_rules'] ?? []; $handling = $ship['configuration']['handling'] ?? [];
+            $rows['Valid rules'] = (string) ($transit['valid_rule_count'] ?? 0); $rows['Invalid rules'] = (string) ($transit['invalid_rule_count'] ?? 0);
+            $rows['Handling'] = isset($handling['max_days']) ? $handling['max_days'] . ' days · ' . ($handling['calendar'] ?? '') : 'Unavailable';
+            $rows['Limitations'] = implode(', ', array_map('strval', $ship['limitations'] ?? [])) ?: 'None reported';
+            foreach (($transit['rules'] ?? []) as $i => $rule) { if (is_array($rule)) { $rows['Service ' . ($i + 1)] = implode(' · ', array_filter([(string) ($rule['service_key'] ?? ''), (string) ($rule['country'] ?? ''), implode(',', (array) ($rule['states'] ?? [])), isset($rule['max_days']) ? $rule['max_days'] . ' days' : '', (string) ($rule['day_type'] ?? ''), (string) ($rule['calendar'] ?? '')])); } }
+        }
+        self::section(__('Delivery configuration · owner HP ShipStation Rates', 'hp-gmc-manager'), $rows);
     }
 }

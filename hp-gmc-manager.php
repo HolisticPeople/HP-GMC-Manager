@@ -89,6 +89,8 @@ function hp_gmc_import_store_widget_observation_v1(array $observation)
 }
 
 function hp_gmc_import_google_reviews_observation_v1(array $observation) { return \HP_GMC\Services\StoreQualitySnapshot::importReviewsObservation($observation); }
+function hp_gmc_record_google_observation_failure_v1(string $code) { return \HP_GMC\Services\StoreQualitySnapshot::recordFailure($code); }
+function hp_gmc_import_google_submitted_settings_v1(array $observation) { return \HP_GMC\Services\GoogleSubmittedSettings::import($observation); }
 
 /**
  * Settings page callback. Resolves SettingsPage only when the page is viewed so a missing file shows a message instead of a fatal.
