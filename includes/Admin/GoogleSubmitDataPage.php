@@ -14,7 +14,7 @@ final class GoogleSubmitDataPage
         if (!current_user_can('manage_woocommerce')) { wp_die(esc_html__('You do not have permission to view Google Submit Data.', 'hp-gmc-manager')); }
         $feed = ProductDataFeed::getStatus();
         $quality = StoreQualitySnapshot::current();
-        $ship = function_exists('hp_ss_get_google_submit_data_v1') ? hp_ss_get_google_submit_data_v1() : null;
+        try { $ship = function_exists('hp_ss_get_google_submit_data_v1') ? hp_ss_get_google_submit_data_v1() : null; } catch (\Throwable $error) { $ship = null; }
         echo '<div class="wrap hp-gmc-google-submit-data"><h1>' . esc_html__('Google Submit Data', 'hp-gmc-manager') . '</h1>';
         echo '<p>' . esc_html__('Read-only local reporting. Configuration, local generation, and Google receipt are different facts.', 'hp-gmc-manager') . '</p>';
         self::section(__('Merchant and disclosures', 'hp-gmc-manager'), [
@@ -24,7 +24,8 @@ final class GoogleSubmitDataPage
         ]);
         self::section(__('Delivery configuration', 'hp-gmc-manager'), [
             'Owner' => 'HP ShipStation Rates',
-            'Provider report' => is_array($ship) ? wp_json_encode($ship, JSON_UNESCAPED_SLASHES) : __('Unavailable; no provider report was read.', 'hp-gmc-manager'),
+            'Provider status' => is_array($ship) ? (string) ($ship['status'] ?? 'unknown') : __('Unavailable', 'hp-gmc-manager'),
+            'Transit rules' => is_array($ship) ? (string) (($ship['configuration']['transit_rules']['valid_rules'] ?? 0)) : __('Unavailable', 'hp-gmc-manager'),
         ]);
         self::section(__('Returns and loyalty disclosures', 'hp-gmc-manager'), [
             'Return policy schema' => __('Local canonical schema is present; this is not a Merchant Center receipt.', 'hp-gmc-manager'),
