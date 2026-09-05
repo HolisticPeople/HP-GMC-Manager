@@ -112,6 +112,13 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.16
+
+- Prefer typed return and loyalty observations over redundant legacy disclosure
+  rows, keeping each legacy fallback only when its typed observation is missing.
+- Show Store Quality's overall rating without an inapplicable numeric value,
+  and distinguish initial observations from unchanged prior observations.
+
 ### 3.4.15
 
 - Extend Google Submit Data with separately sourced shipping, country coverage,

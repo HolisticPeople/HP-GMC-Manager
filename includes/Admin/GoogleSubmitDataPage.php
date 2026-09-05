@@ -29,10 +29,14 @@ final class GoogleSubmitDataPage
         self::health('submitted', $submitted['observed_at'] ?? null);
         self::delivery($ship);
         foreach (GoogleSubmissionObservation::definitions() as $scope => $definition) { self::observation($scope, $definition); }
-        self::section(__('Returns and loyalty disclosures · owner HP-GMC Manager', 'hp-gmc-manager'), [
-            'Return policy' => $submitted ? 'Policy ' . $submitted['returns']['policy_id'] . ' · ' . $submitted['returns']['status'] . ' · ' . ($submitted['returns']['days'] ?? 'No data') . ' days · ' . $submitted['returns']['cost'] . ' · products ' . ($submitted['returns']['products'] ?? 'not observed') . ' · observed ' . $submitted['observed_at'] : 'No imported Google return observation',
-            'Loyalty submitted state' => $submitted ? $submitted['loyalty']['status'] : 'No imported Google loyalty observation',
-        ]);
+        $legacyDisclosures = [];
+        if (!GoogleSubmissionObservation::current('returns')) {
+            $legacyDisclosures['Return policy'] = $submitted ? 'Policy ' . $submitted['returns']['policy_id'] . ' · ' . $submitted['returns']['status'] . ' · ' . ($submitted['returns']['days'] ?? 'No data') . ' days · ' . $submitted['returns']['cost'] . ' · products ' . ($submitted['returns']['products'] ?? 'not observed') . ' · observed ' . $submitted['observed_at'] : 'No imported Google return observation';
+        }
+        if (!GoogleSubmissionObservation::current('loyalty')) {
+            $legacyDisclosures['Loyalty submitted state'] = $submitted ? $submitted['loyalty']['status'] : 'No imported Google loyalty observation';
+        }
+        if ($legacyDisclosures) { self::section(__('Returns and loyalty disclosures · owner HP-GMC Manager', 'hp-gmc-manager'), $legacyDisclosures); }
         self::section(__('Feed and product identifiers · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Local merchant feed rows' => empty($feed['last_generated']) ? 'No data' : (string) ($feed['product_count'] ?? 'No data'),
             'Last locally generated' => (string) ($feed['last_generated'] ?? __('Never', 'hp-gmc-manager')),
@@ -74,8 +78,9 @@ final class GoogleSubmitDataPage
         } else { echo '<p>' . esc_html('Source: existing local shipment records and operator-reviewed carrier guidance.') . '</p>'; }
         if (!$value) { echo '<p>' . esc_html('No imported observation. Configuration does not prove Google receipt.') . '</p>'; return; }
         $changes = GoogleSubmissionObservation::changedRows($scope);
-        self::section('Evidence', ['State'=>$value['state'], 'Observed environment'=>$value['environment'], 'Changed rows'=>implode(', ', $changes) ?: 'None compared with previous observation',
-            'Previous observations'=>implode(', ', array_column(array_slice(GoogleSubmissionObservation::history($scope), 0, 5), 'observed_at')) ?: 'None']);
+        $history = GoogleSubmissionObservation::history($scope);
+        self::section('Evidence', ['State'=>$value['state'], 'Observed environment'=>$value['environment'], 'Changed rows'=>$history ? (implode(', ', $changes) ?: 'None compared with previous observation') : 'No previous observation',
+            'Previous observations'=>implode(', ', array_column(array_slice($history, 0, 5), 'observed_at')) ?: 'None']);
         echo '<details open><summary>' . esc_html(count($value['rows']) . ' observed rows') . '</summary><div class="hp-gmc-observation-scroll" tabindex="0" role="region" aria-label="' . esc_attr($definition['title']) . '"><table class="widefat striped"><thead><tr><th scope="col">Item</th>';
         foreach ($definition['columns'] as $name => $type) { echo '<th scope="col">' . esc_html(ucwords(str_replace('_', ' ', $name))) . '</th>'; }
         echo '</tr></thead><tbody>';
@@ -107,17 +112,18 @@ final class GoogleSubmitDataPage
         self::health('quality', $snapshot['observed_at'] ?? null);
         if (!$snapshot) { self::section(__('Store Quality observations', 'hp-gmc-manager'), ['Freshness'=>$fresh['status'],'Last import error'=>(string)($fresh['error']?:'None'),'History'=>'None']); return; }
         $rows = ['Observed at' => (string) $snapshot['observed_at'], 'Source URL' => (string) $snapshot['source']['url'], 'Scope' => 'US · trailing 30 days · all stores', 'Freshness' => $fresh['status'] . ($fresh['age_seconds'] !== null ? ' (' . $fresh['age_seconds'] . ' seconds old)' : ''), 'Last import error' => (string) ($fresh['error'] ?: 'None')];
-        foreach (($snapshot['metrics'] ?? []) as $name => $metric) { $rows[(string) $name] = self::metric($metric); }
-        $rows['Changed metrics'] = implode(', ', array_keys(StoreQualitySnapshot::diff())) ?: 'None';
+        foreach (($snapshot['metrics'] ?? []) as $name => $metric) { $rows[(string) $name] = self::metric($metric, $name); }
         $history = StoreQualitySnapshot::history();
-        $rows['History retained'] = implode('; ', array_map(static fn($row) => $row['observed_at'] . ' overall ' . self::metric($row['metrics']['overall_quality']) . ' · ' . implode(', ', array_map(static fn($name,$metric) => $name . ' ' . self::metric($metric), array_keys($row['metrics']), $row['metrics'])), $history)) ?: 'None';
-        foreach (StoreQualitySnapshot::diff() as $name => $change) { $rows['Changed ' . $name] = self::metric($change['before']) . ' → ' . self::metric($change['after']); }
+        $rows['Changed metrics'] = $history ? (implode(', ', array_keys(StoreQualitySnapshot::diff())) ?: 'None') : 'No previous observation';
+        $rows['History retained'] = implode('; ', array_map(static fn($row) => $row['observed_at'] . ' overall ' . self::metric($row['metrics']['overall_quality'], 'overall_quality') . ' · ' . implode(', ', array_map(static fn($name,$metric) => $name . ' ' . self::metric($metric, $name), array_keys($row['metrics']), $row['metrics'])), $history)) ?: 'None';
+        foreach (StoreQualitySnapshot::diff() as $name => $change) { $rows['Changed ' . $name] = self::metric($change['before'], $name) . ' → ' . self::metric($change['after'], $name); }
         $rows['Observation errors'] = implode('; ', $snapshot['errors'] ?? []) ?: 'None';
         self::section(__('Imported Merchant Center snapshot', 'hp-gmc-manager'), $rows);
     }
 
-    private static function metric(array $metric): string
+    private static function metric(array $metric, string $name): string
     {
+        if ($name === 'overall_quality') { return ucfirst($metric['rating'] ?? 'unknown'); }
         $value = array_key_exists('value', $metric) && $metric['value'] !== null ? (string) $metric['value'] : 'No data';
         if (isset($metric['denominator'])) { $value .= '/' . $metric['denominator']; }
         if (isset($metric['unit'])) { $value .= ' ' . $metric['unit']; }
