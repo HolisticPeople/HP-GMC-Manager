@@ -112,6 +112,14 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.17
+
+- Register the optional, consent-gated Customer Reviews renderer on WooCommerce's
+  native thank-you hook. The hook ignores its order ID and continues to obtain
+  authorization solely through HP-Checkout's public current-request contract.
+- Preserve one fragment when a current or future HP-Zen explicit mount also runs;
+  the provider's existing static render guard suppresses the second call.
+
 ### 3.4.16
 
 - Prefer typed return and loyalty observations over redundant legacy disclosure

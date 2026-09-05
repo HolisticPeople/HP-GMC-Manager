@@ -64,6 +64,7 @@ class Plugin
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_store_widget']);
         add_action('wp_footer', [self::class, 'render_google_store_reviews_link']);
+        \HP_GMC\Services\CustomerReviews::register();
 
         // Register GMC category (must happen before abilities)
         add_action('wp_abilities_api_categories_init', [self::class, 'register_ability_category']);
