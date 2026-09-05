@@ -31,6 +31,7 @@ foreach (['ProductDataFeed','StoreQualitySnapshot','GoogleSubmittedSettings','Go
 require dirname(__DIR__) . '/includes/Admin/GoogleSubmitDataPage.php';
 use HP_GMC\Admin\GoogleSubmitDataPage as Page;
 use HP_GMC\Services\GoogleSubmissionObservation as Observation;
+use HP_GMC\Services\StoreQualitySnapshot as Quality;
 function check($condition, $message) { if (!$condition) { throw new RuntimeException($message); } echo "ok $message\n"; }
 function renderPage(): string {
     $writes = $GLOBALS['writes']; $http = $GLOBALS['http'];
@@ -56,6 +57,7 @@ foreach (Observation::definitions() as $definition) {
     check(str_contains($html, esc_html($definition['title'] . ' · owner ' . $definition['owner'])), 'section and repository owner are displayed');
 }
 check(str_contains($html, 'Configuration does not prove Google receipt'), 'missing external observations explicitly remain unknown');
+check(str_contains($html, 'No imported Google return observation') && str_contains($html, 'No imported Google loyalty observation'), 'legacy disclosure fallback remains when both typed observations are missing');
 check(str_contains($html, '/privacy-policy-holisticpeople/') && str_contains($html, '/terms-service-holisticpeople/'), 'existing canonical disclosure URLs are reported');
 check(preg_match('~Local merchant feed rows</th><td><code>No data</code>~', $html), 'ungenerated feed count stays unknown');
 $GLOBALS['options']['hp_gmc_primary_feed_last_generated'] = gmdate('Y-m-d H:i:s');
@@ -65,6 +67,8 @@ check(preg_match('~Local merchant feed rows</th><td><code>0</code>~', $html), 'a
 check(str_contains($html, 'Local Google Customer Reviews invitation timing. These rules do not submit shipping speeds to Merchant Center.'), 'local invitation estimates are distinguished from Google shipping submission');
 $base = ['version'=>1,'section'=>'countries','source'=>Observation::definitions()['countries']['source'],'environment'=>'production','state'=>'submitted','observed_at'=>gmdate('Y-m-d\TH:i:s\Z', time()-120),'rows'=>['us'=>['country'=>'US','approved_products'=>0,'total_products'=>512,'shipping_covered'=>null]]];
 check(Observation::import($base) === true, 'valid observation fixture uses actual importer');
+$html = renderPage();
+check(str_contains($html, 'Changed rows</th><td><code>No previous observation</code>') && !str_contains($html, 'None compared with previous observation'), 'initial observation is a baseline rather than an unchanged comparison');
 $next = $base; $next['observed_at'] = gmdate('Y-m-d\TH:i:s\Z', time()-60); $next['rows']['us']['shipping_covered'] = true;
 check(Observation::import($next) === true, 'second observation retains history');
 Observation::recordFailure('authentication_required', 'countries');
@@ -72,6 +76,32 @@ $html = renderPage();
 check(str_contains($html, '<td>0</td>') && str_contains($html, '<td>No data</td>') && str_contains($html, '<td>Yes</td>'), 'observed zero unknown and true are rendered distinctly');
 check(str_contains($html, 'authentication_required') && str_contains($html, $base['observed_at']) && str_contains($html, '<code>us</code>'), 'source error previous observation and changed row remain visible');
 check(Observation::health('payments', null)['last_error'] === null, 'one source failure does not contaminate other sources');
+$same = $next; $same['observed_at'] = gmdate('Y-m-d\TH:i:s\Z', time()-30);
+check(Observation::import($same) === true, 'identical newer observation imports');
+$html = renderPage(); check(str_contains($html, 'None compared with previous observation'), 'unchanged rows have a real prior comparison');
+foreach (['returns'=>['standard'=>['policy_id'=>9298149193,'status'=>'verified','window_days'=>30]], 'loyalty'=>['rewards'=>['program'=>'Rewards','status'=>'not_submitted']]] as $scope=>$rows) {
+    $observation = $base; $observation['section']=$scope; $observation['source']=Observation::definitions()[$scope]['source']; $observation['rows']=$rows;
+    check(Observation::import($observation) === true, $scope . ' typed disclosure fixture imports');
+    $html = renderPage();
+    check(!str_contains($html, 'No imported Google return observation'), 'typed returns replace contradictory missing legacy returns');
+    if ($scope === 'returns') { check(str_contains($html, 'No imported Google loyalty observation'), 'missing typed loyalty keeps its independent legacy fallback'); }
+}
+check(!str_contains($html, 'Returns and loyalty disclosures') && !str_contains($html, 'No imported Google loyalty observation'), 'both typed disclosures suppress the redundant legacy section');
+unset($GLOBALS['options'][Observation::OPTION]['returns']);
+$html = renderPage(); check(str_contains($html, 'No imported Google return observation') && !str_contains($html, 'No imported Google loyalty observation'), 'missing typed returns retain their fallback without contradicting typed loyalty');
+$metrics=[];
+foreach (['overall_quality','delivery','shipping_cost','return_window','return_cost','promotions_rejection','ewallet','high_resolution_images','images_per_offer','store_rating'] as $name) { $metrics[$name]=['value'=>null,'rating'=>'incomplete']; }
+$metrics['overall_quality']['rating']='great';
+$metrics['ewallet']['denominator']=4;
+$snapshot=['version'=>1,'observed_at'=>$base['observed_at'],'source'=>['url'=>'https://merchants.google.com/mc/quality?a=5298746911&region=US','country'=>'US','window'=>'trailing_30_days','scope'=>'all_stores'],'metrics'=>$metrics,'errors'=>[]];
+check(Quality::import($snapshot) === true, 'rating-only Store Quality fixture imports');
+$html=renderPage();
+check(str_contains($html, 'overall_quality</th><td><code>Great</code>') && !str_contains($html, 'No data · great'), 'overall quality displays its rating without a nonexistent numeric score');
+check(str_contains($html, 'delivery</th><td><code>No data days · incomplete</code>') && str_contains($html, 'Changed metrics</th><td><code>No previous observation</code>'), 'numeric unknowns remain unknown and quality baseline has no previous observation');
+$snapshot['observed_at']=$next['observed_at'];$snapshot['metrics']['overall_quality']['rating']='exceptional';
+check(Quality::import($snapshot) === true, 'second rating-only Store Quality fixture imports');
+$html=renderPage();
+check(str_contains($html, 'Changed overall_quality</th><td><code>Great → Exceptional</code>') && !str_contains($html, 'No data · great'), 'overall rating history and change use the same human display');
 $bad = $next; $bad['rows']['us']['customer_email'] = 'private@example.test';
 check(Observation::import($bad) instanceof WP_Error, 'unexpected customer field is rejected');
 $html = renderPage(); check(!str_contains($html, 'private@example.test'), 'rejected private data never reaches report');
