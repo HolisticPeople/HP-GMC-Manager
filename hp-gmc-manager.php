@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HP GMC Manager
  * Description: Google Merchant Center management with admin dashboard and MCP abilities. Complements Google Listings & Ads with monitoring, shipping settings, and AI-powered operations.
- * Version: 3.4.11
+ * Version: 3.4.16
  * Author: Holistic People
  * Author URI: https://holisticpeople.com
  * License: GPL v2 or later
@@ -25,7 +25,7 @@ if (PHP_VERSION_ID < 80500) {
 }
 
 // Plugin constants
-define('HP_GMC_VERSION', '3.4.11');
+define('HP_GMC_VERSION', '3.4.16');
 define('HP_GMC_FILE', __FILE__);
 define('HP_GMC_PATH', plugin_dir_path(__FILE__));
 define('HP_GMC_URL', plugin_dir_url(__FILE__));
@@ -63,6 +63,55 @@ spl_autoload_register(function ($class) {
         require $file;
     }
 });
+
+/** Registered server-only GCR contract; no request identity arguments. */
+function hp_gmc_get_customer_reviews_optin_v1(): array
+{
+    return \HP_GMC\Services\CustomerReviews::getOptin();
+}
+
+/** Optional confirmation fragment. HP-Zen owns placement only. */
+function hp_gmc_render_customer_reviews_optin_v1(): void
+{
+    \HP_GMC\Services\CustomerReviews::render();
+}
+
+/** Trusted operator/WP-CLI import only. No admin, REST, or browser writer exists. */
+function hp_gmc_import_store_quality_snapshot_v1(array $snapshot)
+{
+    $result = \HP_GMC\Services\StoreQualitySnapshot::import($snapshot);
+    \HP_GMC\Services\GoogleSubmissionObservation::trackImportResult('quality', $result);
+    return $result;
+}
+
+/** Trusted operator/WP-CLI import only; a loader attempt is never a Google receipt. */
+function hp_gmc_import_store_widget_observation_v1(array $observation)
+{
+    $result = \HP_GMC\Services\StoreQualitySnapshot::importWidgetObservation($observation);
+    \HP_GMC\Services\GoogleSubmissionObservation::trackImportResult('widget', $result);
+    return $result;
+}
+
+function hp_gmc_import_google_reviews_observation_v1(array $observation) {
+    $result = \HP_GMC\Services\StoreQualitySnapshot::importReviewsObservation($observation);
+    \HP_GMC\Services\GoogleSubmissionObservation::trackImportResult('reviews', $result);
+    return $result;
+}
+function hp_gmc_record_google_observation_failure_v1(string $code, string $section = 'quality') {
+    $result = \HP_GMC\Services\GoogleSubmissionObservation::recordFailure($code, $section);
+    if ($result === true && $section === 'quality') { return \HP_GMC\Services\StoreQualitySnapshot::recordFailure($code); }
+    return $result;
+}
+function hp_gmc_import_google_submitted_settings_v1(array $observation) {
+    $result = \HP_GMC\Services\GoogleSubmittedSettings::import($observation);
+    \HP_GMC\Services\GoogleSubmissionObservation::trackImportResult('submitted', $result);
+    return $result;
+}
+
+/** Explicit operator import of public business evidence; never exposed to browser writers. */
+function hp_gmc_import_submission_observation_v1(array $observation) {
+    return \HP_GMC\Services\GoogleSubmissionObservation::import($observation);
+}
 
 /**
  * Settings page callback. Resolves SettingsPage only when the page is viewed so a missing file shows a message instead of a fatal.

@@ -62,6 +62,8 @@ class Plugin
 
         // Enqueue admin assets
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueue_store_widget']);
+        add_action('wp_footer', [self::class, 'render_google_store_reviews_link']);
 
         // Register GMC category (must happen before abilities)
         add_action('wp_abilities_api_categories_init', [self::class, 'register_ability_category']);
@@ -177,6 +179,15 @@ class Plugin
             'hp_gmc_render_settings_page'
         );
 
+        add_submenu_page(
+            'hp-gmc-manager',
+            __('Google Submit Data', 'hp-gmc-manager'),
+            __('Google Submit Data', 'hp-gmc-manager'),
+            'manage_woocommerce',
+            'hp-gmc-google-submit-data',
+            [Admin\GoogleSubmitDataPage::class, 'render']
+        );
+
         // Campaign ROI submenu
         add_submenu_page(
             'hp-gmc-manager',
@@ -193,6 +204,18 @@ class Plugin
      */
     public static function register_settings(): void
     {
+        register_setting('hp_gmc_settings', 'hp_gmc_customer_reviews_enabled', [
+            'type' => 'string',
+            'default' => 'disabled',
+            'sanitize_callback' => static fn ($value) => $value === 'enabled' ? 'enabled' : 'disabled',
+        ]);
+
+        register_setting('hp_gmc_settings', 'hp_gmc_store_widget_enabled', [
+            'type' => 'string',
+            'default' => 'disabled',
+            'sanitize_callback' => static fn ($value) => $value === 'enabled' ? 'enabled' : 'disabled',
+        ]);
+
         register_setting('hp_gmc_settings', 'hp_gmc_merchant_id', [
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
@@ -393,6 +416,74 @@ class Plugin
                 'error' => __('An error occurred. Please try again.', 'hp-gmc-manager'),
             ],
         ]);
+    }
+
+    /**
+     * Load Google's optional store widget only on explicit public catalogue routes.
+     * This is intentionally independent from the order-confirmation survey adapter.
+     */
+    public static function enqueue_store_widget(): void
+    {
+        foreach (['is_checkout', 'is_account_page', 'is_cart', 'is_shop', 'is_product', 'is_product_category'] as $helper) {
+            if (!function_exists($helper)) { return; }
+        }
+        if (is_admin()
+            || get_option('hp_gmc_store_widget_enabled', 'disabled') !== 'enabled'
+            || \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent()
+            || !is_ssl()
+            || (function_exists('is_preview') && is_preview())
+            || (function_exists('is_account_page') && is_account_page())
+            || (function_exists('is_cart') && is_cart())) {
+            return;
+        }
+        $safeQuery = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','utm_id','gclid','gbraid','wbraid'];
+        foreach (array_keys($_GET) as $key) { if (!in_array($key, $safeQuery, true) || !is_scalar($_GET[$key]) || strlen((string) $_GET[$key]) > 160) { return; } }
+        if ((function_exists('post_password_required') && post_password_required()) || (function_exists('is_singular') && is_singular() && function_exists('get_post_status') && get_post_status() !== 'publish')) {
+            return;
+        }
+        $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+        if (preg_match('~(?:^|/)(?:order-pay|order-received|my-account|hp-account|cart|wp-admin)(?:/|$)~i', rawurldecode($path))
+            || (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url())) {
+            return;
+        }
+        $checkout = is_checkout() || is_page('hp-checkout');
+        // Only the public custom checkout entry may load this presentation widget.
+        // Pay/received endpoints and every order-bearing query remain excluded.
+        if ($checkout && !in_array($path, ['/hp-checkout', '/hp-checkout/'], true)) {
+            return;
+        }
+        $allowed = is_front_page() || is_shop() || is_product() || is_product_category()
+            || is_page('reviews') || $checkout;
+        if (!$allowed) {
+            return;
+        }
+        if ((string) get_option('hp_gmc_merchant_id', '') !== '5298746911') {
+            return;
+        }
+
+        wp_enqueue_script(
+            'hp-gmc-store-widget',
+            HP_GMC_URL . 'assets/js/store-widget.js',
+            [],
+            HP_GMC_VERSION,
+            true
+        );
+        $bottomMargin = $checkout ? 96 : 33;
+        $mobileBottomMargin = $checkout ? 144 : 96;
+        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:' . $bottomMargin . ',mobileSideMargin:11,mobileBottomMargin:' . $mobileBottomMargin . '};', 'before');
+    }
+
+    /** A plain Google-owned destination, never a promise of a rating or review form. */
+    public static function render_google_store_reviews_link(): void
+    {
+        $homeHost = strtolower((string) parse_url(home_url('/'), PHP_URL_HOST));
+        if (is_admin() || !is_page('reviews') || is_preview() || post_password_required()
+            || get_post_status() !== 'publish'
+            || !is_ssl() || !in_array($homeHost, ['holisticpeople.com', 'www.holisticpeople.com', 'env-holisticpeoplecom-hpdevplus.kinsta.cloud'], true)
+            || (string) get_option('hp_gmc_merchant_id', '') !== '5298746911') {
+            return;
+        }
+        echo '<section class="hp-gmc-google-store-reviews" aria-label="Google store reviews"><p><a href="https://www.google.com/storepages?q=holisticpeople.com&amp;c=US" target="_blank" rel="noopener noreferrer">View store reviews on Google</a></p></section>';
     }
 
     /**
@@ -2403,11 +2494,26 @@ class Plugin
         }
 
         $term = sanitize_text_field($_POST['term'] ?? '');
-        $term_lower = mb_strtolower($term);
 
         if (strlen($term) < 2) {
             wp_send_json_success(['products' => []]);
         }
+
+        $results = [];
+        foreach (self::admin_search_keyboard_variants($term) as $query_term) {
+            $results = self::search_products_for_term($query_term);
+            if ($results !== []) {
+                break;
+            }
+        }
+
+        wp_send_json_success(['products' => $results]);
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private static function search_products_for_term(string $term): array
+    {
+        $term_lower = mb_strtolower($term);
 
         // Include all statuses (publish, draft, private) so segment builder can select historical/disabled products.
         $args = [
@@ -2537,7 +2643,15 @@ class Plugin
             unset($results[$i]['acf_match']);
         }
 
-        wp_send_json_success(['products' => $results]);
+        return $results;
+    }
+
+    /** @return array<int,string> */
+    private static function admin_search_keyboard_variants(string $term): array
+    {
+        return function_exists('\\HP_Core\\admin_search_keyboard_variants')
+            ? \HP_Core\admin_search_keyboard_variants($term)
+            : [$term];
     }
 
     /**

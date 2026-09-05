@@ -39,6 +39,11 @@ class SettingsPage
             <form method="post" action="options.php">
                 <?php settings_fields('hp_gmc_settings'); ?>
 
+                <h2><?php esc_html_e('Google Customer Reviews', 'hp-gmc-manager'); ?></h2>
+                <p><?php echo esc_html(sprintf(__('Detected survey environment: %s. Staging and unknown hosts never load Google, even when enabled.', 'hp-gmc-manager'), \HP_GMC\Services\CustomerReviewsEnvironment::resolve())); ?></p>
+                <p><?php esc_html_e('Enable only after delivery promises, disclosure, duplicate-integration checks and release acceptance are complete. Customers first choose to share data and load Google; Google then asks separately about survey emails. This does not award a store badge.', 'hp-gmc-manager'); ?></p>
+                <label><input type="hidden" name="hp_gmc_customer_reviews_enabled" value="disabled"><input type="checkbox" name="hp_gmc_customer_reviews_enabled" value="enabled" <?php checked(get_option('hp_gmc_customer_reviews_enabled', 'disabled'), 'enabled'); ?>> <?php esc_html_e('Offer optional Google store and product surveys for eligible new orders', 'hp-gmc-manager'); ?></label>
+
                 <h2><?php esc_html_e('API Configuration', 'hp-gmc-manager'); ?></h2>
                 <table class="form-table">
                     <tr>
