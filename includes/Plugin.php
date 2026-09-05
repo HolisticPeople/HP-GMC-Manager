@@ -63,6 +63,7 @@ class Plugin
         // Enqueue admin assets
         add_action('admin_enqueue_scripts', [self::class, 'enqueue_admin_assets']);
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_store_widget']);
+        add_action('wp_footer', [self::class, 'render_google_store_reviews_link']);
 
         // Register GMC category (must happen before abilities)
         add_action('wp_abilities_api_categories_init', [self::class, 'register_ability_category']);
@@ -431,7 +432,6 @@ class Plugin
             || \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent()
             || !is_ssl()
             || (function_exists('is_preview') && is_preview())
-            || (function_exists('is_checkout') && is_checkout())
             || (function_exists('is_account_page') && is_account_page())
             || (function_exists('is_cart') && is_cart())) {
             return;
@@ -441,8 +441,19 @@ class Plugin
         if ((function_exists('post_password_required') && post_password_required()) || (function_exists('is_singular') && is_singular() && function_exists('get_post_status') && get_post_status() !== 'publish')) {
             return;
         }
+        $path = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+        if (preg_match('~(?:^|/)(?:order-pay|order-received|my-account|hp-account|cart|wp-admin)(?:/|$)~i', rawurldecode($path))
+            || (function_exists('is_wc_endpoint_url') && is_wc_endpoint_url())) {
+            return;
+        }
+        $checkout = is_checkout() || is_page('hp-checkout');
+        // Only the public custom checkout entry may load this presentation widget.
+        // Pay/received endpoints and every order-bearing query remain excluded.
+        if ($checkout && !in_array($path, ['/hp-checkout', '/hp-checkout/'], true)) {
+            return;
+        }
         $allowed = is_front_page() || is_shop() || is_product() || is_product_category()
-            || is_page('reviews');
+            || is_page('reviews') || $checkout;
         if (!$allowed) {
             return;
         }
@@ -457,7 +468,22 @@ class Plugin
             HP_GMC_VERSION,
             true
         );
-        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:33,mobileSideMargin:11,mobileBottomMargin:96};', 'before');
+        $bottomMargin = $checkout ? 96 : 33;
+        $mobileBottomMargin = $checkout ? 144 : 96;
+        wp_add_inline_script('hp-gmc-store-widget', 'window.HPGMCStoreWidgetConfig={merchantId:5298746911,position:"LEFT_BOTTOM",region:"US",sideMargin:21,bottomMargin:' . $bottomMargin . ',mobileSideMargin:11,mobileBottomMargin:' . $mobileBottomMargin . '};', 'before');
+    }
+
+    /** A plain Google-owned destination, never a promise of a rating or review form. */
+    public static function render_google_store_reviews_link(): void
+    {
+        $homeHost = strtolower((string) parse_url(home_url('/'), PHP_URL_HOST));
+        if (is_admin() || !is_page('reviews') || is_preview() || post_password_required()
+            || get_post_status() !== 'publish'
+            || !is_ssl() || !in_array($homeHost, ['holisticpeople.com', 'www.holisticpeople.com', 'env-holisticpeoplecom-hpdevplus.kinsta.cloud'], true)
+            || (string) get_option('hp_gmc_merchant_id', '') !== '5298746911') {
+            return;
+        }
+        echo '<section class="hp-gmc-google-store-reviews" aria-label="Google store reviews"><p><a href="https://www.google.com/storepages?q=holisticpeople.com&amp;c=US" target="_blank" rel="noopener noreferrer">View store reviews on Google</a></p></section>';
     }
 
     /**

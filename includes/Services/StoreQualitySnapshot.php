@@ -187,7 +187,7 @@ final class StoreQualitySnapshot
         $statuses = ['script_loaded', 'script_load_failed', 'start_attempted', 'start_failed', 'widget_visible', 'not_observed'];
         if (!is_array($value) || ($value['version'] ?? null) !== 1 || !self::validTime($value['observed_at'] ?? null)
             || !in_array($value['status'] ?? null, $statuses, true) || !is_string($value['route'] ?? null)
-            || !preg_match('~^/(?:|shop/|reviews/|product/[a-z0-9-]+/|product-category/[a-z0-9/-]+/)$~D', $value['route'])
+            || !preg_match('~^/(?:|shop/|reviews/|hp-checkout/|product/[a-z0-9-]+/|product-category/[a-z0-9/-]+/)$~D', $value['route'])
             || strlen($value['route']) > 160) { return self::error('Invalid public widget observation.'); }
         $variant = $value['variant'] ?? 'not_observed';
         if (!in_array($variant, ['not_observed', 'store_quality', 'store_rating', 'top_quality_store'], true)

@@ -50,7 +50,8 @@
       "hp_gmc_import_store_widget_observation_v1",
       "hp_gmc_import_google_reviews_observation_v1",
       "hp_gmc_record_google_observation_failure_v1",
-      "hp_gmc_import_google_submitted_settings_v1"
+      "hp_gmc_import_google_submitted_settings_v1",
+      "hp_gmc_import_submission_observation_v1"
     ],
     "options": [
       "hp_gmc_ucp_checkout_eligibility",
@@ -62,7 +63,10 @@
       "hp_gmc_google_reviews_observation_v1",
       "hp_gmc_google_reviews_history_v1"
       ,"hp_gmc_submitted_settings_v1",
-      "hp_gmc_submitted_settings_history_v1"
+      "hp_gmc_submitted_settings_history_v1",
+      "hp_gmc_submission_observations_v1",
+      "hp_gmc_submission_observation_history_v1",
+      "hp_gmc_observation_errors_v1"
     ]
   },
   "verification": {

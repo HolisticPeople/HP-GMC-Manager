@@ -112,6 +112,19 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.15
+
+- Extend Google Submit Data with separately sourced shipping, country coverage,
+  returns/refund details, payments, feed processing, Yotpo, SEO, loyalty,
+  proposed delivery estimates and analytics observations. Each section keeps
+  its own freshness, errors and bounded history; missing values stay unknown.
+- Permit the optional official widget on the clean public HP checkout route,
+  retaining default-off production-only execution and excluding all order,
+  payment, account and private query routes. Add a plain Google store review
+  link on the public reviews page.
+- Keep local review-invitation dates visibly separate from shipping submitted
+  to Merchant Center. Report rendering performs no writes or external calls.
+
 ### 3.4.13
 
 - Add dormant, default-off Google Customer Reviews store/product survey support.
