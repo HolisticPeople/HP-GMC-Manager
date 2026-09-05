@@ -8,6 +8,37 @@ final class CustomerReviews
 {
     public const MERCHANT_ID = 5298746911;
 
+    /** Register the provider-owned standard Woo confirmation placement. */
+    public static function register(): void
+    {
+        add_action('woocommerce_thankyou', [self::class, 'renderOnThankyou'], 20, 0);
+        add_action('wp_enqueue_scripts', [self::class, 'enqueueAssets'], 20);
+    }
+
+    /** Woo hook placement never receives or trusts an order identifier. */
+    public static function renderOnThankyou(): void
+    {
+        $bufferLevel = ob_get_level();
+        ob_start();
+        try {
+            self::render();
+            echo ob_get_clean(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+        } catch (\Throwable $error) {
+            while (ob_get_level() > $bufferLevel) {
+                ob_end_clean();
+            }
+        }
+    }
+
+    /** GCR's small presentation component stays isolated from theme internals. */
+    public static function enqueueAssets(): void
+    {
+        if (!function_exists('is_order_received_page') || !is_order_received_page()) {
+            return;
+        }
+        wp_enqueue_style('hp-gmc-customer-reviews', HP_GMC_URL . 'assets/css/customer-reviews.css', [], HP_GMC_VERSION);
+    }
+
     private static function unavailable(string $reason): array
     {
         return ['version' => 1, 'status' => 'unavailable', 'reason' => $reason];
