@@ -454,7 +454,8 @@ class Plugin
             return;
         }
         $allowed = is_front_page() || is_shop() || is_product() || is_product_category()
-            || is_page('reviews') || $checkout;
+            || is_page('reviews') || is_page('privacy-policy-holisticpeople')
+            || is_page('terms-service-holisticpeople') || is_page('return-policy') || $checkout;
         if (!$allowed) {
             return;
         }
