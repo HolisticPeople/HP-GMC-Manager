@@ -61,8 +61,8 @@ $headerVersion = $mHeader[1] ?? '';
 $constVersion = $mConst[1] ?? '';
 check($headerVersion !== '' && $headerVersion === $constVersion,
     "plugin header Version ($headerVersion) matches HP_GMC_VERSION ($constVersion)");
-check($constVersion === '3.4.17',
-    'current version is pinned exactly to 3.4.17');
+check($constVersion === '3.4.18',
+    'current version is pinned exactly to 3.4.18');
 check(strpos($readme, "### $constVersion") !== false,
     "README changelog has an entry for $constVersion");
 check(strpos($plugin, 'MerchantReturnPolicySchemaService::init();') !== false,

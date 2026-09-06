@@ -50,6 +50,13 @@ verifyWidget(['checkout'=>true,'path'=>'/hp-checkout/','endpoint'=>true], [], fa
 verifyWidget(['checkout'=>true,'path'=>'/hp-checkout/'], ['order_id'=>'123'], false, 'checkout order query suppressed');
 verifyWidget(['path'=>'/hp-checkout/%6frder-pay/123/'], [], false, 'encoded payment endpoint suppressed');
 verifyWidget(['product'=>false,'page'=>'reviews','path'=>'/reviews/'], [], true, 'reviews page remains eligible');
+foreach (['privacy-policy-holisticpeople', 'terms-service-holisticpeople', 'return-policy'] as $policy) {
+    $route = ['product'=>false, 'page'=>$policy, 'path'=>'/' . $policy . '/'];
+    verifyWidget($route, [], true, $policy . ' public policy eligible');
+    verifyWidget($route + ['password'=>true], [], false, $policy . ' protected policy suppressed');
+    verifyWidget($route + ['environment'=>'staging'], [], false, $policy . ' staging outbound suppressed');
+    verifyWidget($route, ['key'=>'private-order-key'], false, $policy . ' order query suppressed');
+}
 verifyWidget(['product'=>false,'page'=>'unrelated','path'=>'/unrelated/'], [], false, 'unrelated page suppressed');
 verifyWidget(['account'=>true], [], false, 'account suppressed');
 verifyWidget(['environment'=>'staging','override'=>'production'], [], false, 'staging cannot be upgraded');
