@@ -112,6 +112,9 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
 
 ## Changelog
 
+### 3.4.18
+- Include the public privacy, terms and return-policy pages in the optional Google store widget coverage. Preserve environment, privacy and order-access guards. This does not grant a Google badge or guarantee Google review-form availability.
+
 ### 3.4.17
 
 - Register the optional, consent-gated Customer Reviews renderer on WooCommerce's
