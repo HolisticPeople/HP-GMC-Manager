@@ -1,0 +1,8 @@
+/* GMC-owned optional confirmation component; Zen tokens are advisory fallbacks. */
+.hp-gmc-customer-reviews { min-width: 0; display: grid; gap: 12px; margin-block-start: 20px; padding-block-start: 20px; border-block-start: 1px solid var(--hp-order-border, rgba(246, 239, 225, 0.16)); color: var(--hp-order-body, rgba(246, 239, 225, 0.82)); overflow-wrap: anywhere; }
+.hp-gmc-customer-reviews :is(p, details) { max-width: 65ch; line-height: 1.6; }
+.hp-gmc-customer-reviews h2 { color: var(--hp-order-heading, #f6efe1); font-size: 1.25rem; line-height: 1.4; }
+.hp-gmc-customer-reviews form { display: grid; justify-items: start; gap: 12px; }
+.hp-gmc-customer-reviews a { color: var(--hp-order-action, #f1d18a); text-decoration: underline; text-underline-offset: 3px; }
+.hp-gmc-customer-reviews button { min-height: 44px; max-width: 100%; padding: 10px 20px; border: 1px solid var(--hp-order-action, #f1d18a); border-radius: 8px; background: var(--hp-order-action, #f1d18a); color: var(--hp-order-action-text, #17120b); font: inherit; white-space: normal; cursor: pointer; }
+.hp-gmc-customer-reviews :is(button, a, summary):focus-visible { outline: 2px solid var(--hp-order-focus, #f1d18a); outline-offset: 4px; }
