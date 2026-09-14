@@ -2,6 +2,8 @@
 
 Google Merchant Center management plugin for WordPress/WooCommerce with admin dashboard and MCP abilities.
 
+3.4.20 adds a guarded, customer-activated [staff presentation preview](docs/google-quality-preview-v1.md). Public presentation remains unchanged pending production-domain visual acceptance.
+
 ## Features
 
 - **Admin Dashboard**: Visual overview of GMC product statuses, issues, and exclusions
@@ -111,6 +113,10 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
   migrating those flags to `_hp_gmc_excluded`
 
 ## Changelog
+
+### 3.4.20
+- Add a staff-only, customer-activated Google quality preview with a shared optional provider for Zen and Checkout.
+- Preserve public presentation, GCR and feeds; staging stays outward silent. Report frame visibility separately from Google receipt or award.
 
 ### 3.4.18
 - Include the public privacy, terms and return-policy pages in the optional Google store widget coverage. Preserve environment, privacy and order-access guards. This does not grant a Google badge or guarantee Google review-form availability.
