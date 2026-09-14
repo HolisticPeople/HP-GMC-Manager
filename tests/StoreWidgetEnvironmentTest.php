@@ -2,6 +2,10 @@
 /** Exercise the actual production gate without fetching any external script. */
 define('ABSPATH', '/'); define('HP_GMC_URL', 'https://holisticpeople.com/plugin/'); define('HP_GMC_VERSION', 'test');
 $state = [];
+function __($text, $domain = '') { return $text; }
+function esc_html($text) { return htmlspecialchars($text, ENT_QUOTES); }
+function esc_html__($text, $domain = '') { return esc_html($text); }
+function esc_url($url) { return htmlspecialchars($url, ENT_QUOTES); }
 function get_option($name, $default = false) { return $GLOBALS['state']['options'][$name] ?? $default; }
 function home_url($path = '') { return $GLOBALS['state']['home'] . $path; }
 function wp_get_environment_type() { return $GLOBALS['state']['environment']; }
@@ -24,6 +28,7 @@ function post_password_required() { return $GLOBALS['state']['password'] ?? fals
 function wp_enqueue_script(...$args) { $GLOBALS['state']['enqueued'][] = $args; }
 function wp_add_inline_script(...$args) { $GLOBALS['state']['inline'][] = $args; }
 require dirname(__DIR__) . '/includes/Services/CustomerReviewsEnvironment.php';
+require dirname(__DIR__) . '/includes/Services/StoreQualityLink.php';
 require dirname(__DIR__) . '/includes/Plugin.php';
 function verifyWidget(array $changes, array $query, bool $expected, string $label): void {
     $GLOBALS['state'] = array_replace(['home'=>'https://holisticpeople.com','environment'=>'production','product'=>true,'singular'=>true,'options'=>['hp_gmc_store_widget_enabled'=>'enabled','hp_gmc_merchant_id'=>'5298746911']], $changes);
@@ -67,11 +72,11 @@ verifyWidget(['ssl'=>false], [], false, 'HTTP suppressed');
 verifyWidget(['options'=>['hp_gmc_merchant_id'=>'5298746911']], [], false, 'default disabled');
 $GLOBALS['state']['page'] = 'reviews';
 ob_start(); HP_GMC\Plugin::render_google_store_reviews_link(); $link = ob_get_clean();
-if (!str_contains($link, 'https://www.google.com/storepages?q=holisticpeople.com&amp;c=US') || !str_contains($link, 'View store reviews on Google') || str_contains($link, '<script')) { throw new RuntimeException('public Google store link'); }
+if (!str_contains($link, 'https://www.google.com/storepages?q=holisticpeople.com&amp;c=US') || !str_contains($link, 'View store quality on Google') || str_contains($link, '<script')) { throw new RuntimeException('public Google store link'); }
 $GLOBALS['state']['environment'] = 'staging';
 $GLOBALS['state']['home'] = 'https://env-holisticpeoplecom-hpdevplus.kinsta.cloud';
 ob_start(); HP_GMC\Plugin::render_google_store_reviews_link(); $link = ob_get_clean();
-if (!str_contains($link, 'View store reviews on Google') || str_contains($link, '<script')) { throw new RuntimeException('static staging link renders without a script'); }
+if (!str_contains($link, 'View store quality on Google') || str_contains($link, '<script')) { throw new RuntimeException('static staging link renders without a script'); }
 $GLOBALS['state']['home'] = 'https://unknown.example';
 ob_start(); HP_GMC\Plugin::render_google_store_reviews_link(); $link = ob_get_clean();
 if ($link !== '') { throw new RuntimeException('unknown host link gate'); }
