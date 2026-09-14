@@ -46,7 +46,8 @@ final class GoogleSubmitDataPage
         self::section(__('Customer Reviews and store widget · owner HP-GMC Manager', 'hp-gmc-manager'), [
             'Survey opt-in' => (string) get_option('hp_gmc_customer_reviews_enabled', 'disabled'),
             'Store widget' => (string) get_option('hp_gmc_store_widget_enabled', 'disabled'),
-            'Environment gate' => \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent() ? 'Outward silent: Google scripts and surveys suppressed' : 'Production host; each feature still requires its own enabled setting',
+            'Customer-activated presentation' => 'Staff preview only: authorized staff plus hp_google_quality_preview=1; public activation awaits visual acceptance. Loading is not visibility or a Google award.',
+            'Environment gate' => \HP_GMC\Services\CustomerReviewsEnvironment::isOutwardSilent() ? 'Outward silent: Google scripts and surveys suppressed' : 'Production host; legacy widget and surveys require their settings. Staff preview requires authorization and an explicit click.',
             'Imported widget evidence' => self::widgetEvidence(),
             'Widget receipt' => __('Not observed. Script load or start attempt is not widget visibility or Google receipt.', 'hp-gmc-manager'),
         ]);
