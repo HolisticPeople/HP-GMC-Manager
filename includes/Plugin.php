@@ -485,7 +485,9 @@ class Plugin
             || (string) get_option('hp_gmc_merchant_id', '') !== '5298746911') {
             return;
         }
-        echo '<section class="hp-gmc-google-store-reviews" aria-label="Google store reviews"><p><a href="https://www.google.com/storepages?q=holisticpeople.com&amp;c=US" target="_blank" rel="noopener noreferrer">View store reviews on Google</a></p></section>';
+        $link = \HP_GMC\Services\StoreQualityLink::get();
+        if ($link === null) { return; }
+        echo '<section class="hp-gmc-google-store-reviews" aria-label="Google store reviews"><p><a href="' . esc_url($link['url']) . '" target="_blank" rel="noopener noreferrer">' . esc_html($link['label']) . ' <span aria-hidden="true">↗</span><span class="screen-reader-text">' . esc_html__(' (opens in a new tab)', 'hp-gmc-manager') . '</span></a></p></section>';
     }
 
     /**
