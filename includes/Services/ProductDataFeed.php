@@ -871,6 +871,11 @@ class ProductDataFeed
         $maxDepth = -1;
 
         foreach ($terms as $term) {
+            // Ingredient annotations describe contents, not the commercial aisle.
+            // Deeper ingredient subgroups must never win over real product categories.
+            if (self::isIngredientCategory((int) $term->term_id)) {
+                continue;
+            }
             $depth = self::getCategoryDepth($term->term_id);
             if ($depth > $maxDepth) {
                 $maxDepth = $depth;
@@ -879,7 +884,7 @@ class ProductDataFeed
         }
 
         if (!$deepestTerm) {
-            return $terms[0]->name;
+            return '';
         }
 
         // Build hierarchy path
@@ -900,6 +905,31 @@ class ProductDataFeed
         }
 
         return implode(' > ', $hierarchy);
+    }
+
+    /** The Ingredient root and all descendants are content annotations. */
+    private static function isIngredientCategory(int $termId): bool
+    {
+        $seen = [];
+        $term = get_term($termId, 'product_cat');
+        while ($term && !is_wp_error($term)) {
+            $id = (int) $term->term_id;
+            if (isset($seen[$id])) {
+                return true; // Invalid ancestry is never a trustworthy product aisle.
+            }
+            $seen[$id] = true;
+            if ((string) $term->slug === 'ingredients' && (int) $term->parent > 0) {
+                $parent = get_term((int) $term->parent, 'product_cat');
+                if ($parent && !is_wp_error($parent) && (string) $parent->slug === 'dietary-supplements') {
+                    return true;
+                }
+            }
+            if ((int) $term->parent <= 0) {
+                break;
+            }
+            $term = get_term((int) $term->parent, 'product_cat');
+        }
+        return false;
     }
 
     /**
