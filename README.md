@@ -2,6 +2,10 @@
 
 Google Merchant Center management plugin for WordPress/WooCommerce with admin dashboard and MCP abilities.
 
+3.4.21 excludes the Ingredients taxonomy branch from commercial `product_type` selection.
+Actual commercial category specificity and the existing product feed schema remain intact.
+No production feed regeneration or UCP catalog activation is part of this change.
+
 3.4.20 adds a guarded, customer-activated [staff presentation preview](docs/google-quality-preview-v1.md). Public presentation remains unchanged pending production-domain visual acceptance.
 
 ## Features
