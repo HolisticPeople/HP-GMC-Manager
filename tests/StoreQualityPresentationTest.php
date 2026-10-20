@@ -38,7 +38,7 @@ require dirname(__DIR__) . '/includes/Services/StoreQualityPresentation.php';
 function previewCase(array $changes, array $query, bool $expected, string $label): void {
     $GLOBALS['state'] = array_replace(['home'=>'https://holisticpeople.com','environment'=>'production','product'=>true,'singular'=>true,'options'=>['hp_gmc_merchant_id'=>'5298746911']], $changes);
     $_SERVER['HTTP_HOST'] = $GLOBALS['state']['host'] ?? 'holisticpeople.com';
-    $_SERVER['REQUEST_URI'] = $GLOBALS['state']['path'] ?? '/product/example/'; $_GET = $query;
+    $_SERVER['REQUEST_URI'] = ($GLOBALS['state']['path'] ?? '/product/example/') . '?' . http_build_query($query) . ($GLOBALS['state']['extra_query'] ?? ''); $_GET = $query;
     $value = HP_GMC\Services\StoreQualityPresentation::get();
     if (($value !== null) !== $expected) { throw new RuntimeException($label); }
     HP_GMC\Services\StoreQualityPresentation::enqueue();
@@ -49,6 +49,7 @@ function previewCase(array $changes, array $query, bool $expected, string $label
 $q = ['hp_google_quality_preview'=>'1'];
 previewCase([], [], false, 'ordinary public baseline');
 previewCase([], $q, true, 'administrator preview');
+previewCase(['extra_query'=>'&hp_google_quality_preview=1'], $q, false, 'duplicate preview query denied');
 previewCase(['caps'=>['manage_woocommerce']], $q, true, 'shop manager preview');
 previewCase(['logged'=>false], $q, false, 'anonymous denied');
 previewCase(['caps'=>['read']], $q, false, 'subscriber denied');

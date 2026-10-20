@@ -28,6 +28,9 @@ final class StoreQualityPresentation
         if (($_GET['hp_google_quality_preview'] ?? null) !== '1'
             || !is_user_logged_in() || !(current_user_can('manage_options') || current_user_can('manage_woocommerce'))
             || is_admin() || !is_ssl() || is_preview()) { return null; }
+        $rawQuery = (string) parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_QUERY);
+        $previewKeys = array_filter(explode('&', $rawQuery), static fn($pair) => rawurldecode(explode('=', $pair, 2)[0]) === 'hp_google_quality_preview');
+        if (count($previewKeys) !== 1) { return null; }
         $link = StoreQualityLink::get();
         $host = strtolower((string) parse_url(home_url('/'), PHP_URL_HOST));
         $requestHost = strtolower((string) parse_url('https://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST));
