@@ -9,6 +9,15 @@ missing site Organization does not trigger a name-based or type-only fallback.
 This changes schema attribution only; feed values and storefront policy terms
 are unchanged.
 
+The same candidate qualifies the existing staging deployment before copying:
+the fixed WordPress root and exact staging home/environment must match, staging
+must remain noindex, GMC must resolve to a silent mode, and the existing policy
+content migration must already be complete. Selected installed source hashes
+are checked before the existing object-cache clear; cache failures now fail the
+workflow. Ordinary plugins and themes are skipped for these deployment reads.
+MU plugins/drop-ins retain their WordPress bootstrap behavior. No activation,
+option update, new feed run, page-cache purge or production deployment is added.
+
 3.4.21 excludes the Ingredients taxonomy branch from commercial `product_type` selection.
 Actual commercial category specificity and the existing product feed schema remain intact.
 No production feed regeneration or UCP catalog activation is part of this change.
