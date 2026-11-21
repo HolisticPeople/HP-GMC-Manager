@@ -6,8 +6,8 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Publishes the canonical storefront return policy in Yoast's Organization
- * graph so Google receives the same policy configured in Merchant Center.
+ * Publishes the canonical storefront return policy on Yoast's identified site
+ * Organization. Manufacturer and practitioner identities retain their own data.
  */
 final class MerchantReturnPolicySchemaService
 {
@@ -29,8 +29,11 @@ final class MerchantReturnPolicySchemaService
             return [];
         }
 
+        $store_organization_id = home_url('/#organization');
+
         foreach ($graph as $index => $node) {
-            if (!is_array($node) || !self::isOrganizationNode($node)) {
+            if (!is_array($node) || !self::isOrganizationNode($node)
+                || ($node['@id'] ?? null) !== $store_organization_id) {
                 continue;
             }
 

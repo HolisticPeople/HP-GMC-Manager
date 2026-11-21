@@ -14,7 +14,7 @@ on:
 
 concurrency:
   group: deploy-staging-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -29,6 +29,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Validate selected staging revision
+        env:
+          SELECTED_SHA: ${{ github.sha }}
+          SELECTED_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$SELECTED_REF" == refs/heads/dev ]]
+          [[ "$(git rev-parse HEAD)" == "$SELECTED_SHA" ]]
+          python3 -B .github/hp-deploy/staging-target-check-test.py
 
       - name: Test staging lease check
         run: python3 -B .github/hp-deploy/staging-lease-check-test.py
@@ -94,16 +106,21 @@ jobs:
 
       - name: Resolve deploy path
         run: |
-          REMOTE_PATH="${KINSTA_PLUGINS_BASE%/}/hp-gmc-manager"
-          echo "Deploying plugin to: ${REMOTE_PATH}"
+          set -euo pipefail
+          [[ "${KINSTA_PLUGINS_BASE%/}" == /www/holisticpeoplecom_349/public/wp-content/plugins ]]
+          REMOTE_PATH=/www/holisticpeoplecom_349/public/wp-content/plugins/hp-gmc-manager
           echo "REMOTE_PATH=$REMOTE_PATH" >> $GITHUB_ENV
-          # Ensure remote dir exists
-          ssh -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" "mkdir -p '${REMOTE_PATH}'"
+          # Qualify the existing installation before any copy or Composer work.
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" \
+            "bash -s -- preflight /www/holisticpeoplecom_349/public/wp-content/plugins /www/holisticpeoplecom_349/public https://env-holisticpeoplecom-hpdevplus.kinsta.cloud 3.4.22 - -" \
+            < .github/hp-deploy/staging-target-check.sh
 
       - name: Rsync to Kinsta staging
         run: |
           rsync -avz --delete \
             --exclude='vendor' \
+            --exclude='composer.lock' \
+            --exclude='.env' \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='.specstory' \
@@ -116,9 +133,15 @@ jobs:
       - name: Install Composer dependencies
         run: |
           ssh -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" \
-            "cd ${REMOTE_PATH} && composer install --no-dev --optimize-autoloader --no-interaction"
+            "cd ${REMOTE_PATH} && composer install --no-dev --optimize-autoloader --no-interaction --no-scripts"
 
-      - name: Clear WordPress cache
+      - name: Verify selected installation and clear required cache
         run: |
-          ssh -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" \
-            "cd ${KINSTA_PLUGINS_BASE%/plugins}/ && wp cache flush 2>/dev/null || echo 'Cache flush skipped'"
+          set -euo pipefail
+          expected_version=$(sed -n 's/^ \* Version: //p' hp-gmc-manager.php)
+          [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          header_sha=$(sha256sum hp-gmc-manager.php | cut -d ' ' -f1)
+          policy_sha=$(sha256sum includes/Services/MerchantReturnPolicySchemaService.php | cut -d ' ' -f1)
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -p "${KINSTA_PORT:-22}" "${KINSTA_USER}@${KINSTA_HOST}" \
+            "bash -s -- installed /www/holisticpeoplecom_349/public/wp-content/plugins /www/holisticpeoplecom_349/public https://env-holisticpeoplecom-hpdevplus.kinsta.cloud $expected_version $header_sha $policy_sha" \
+            < .github/hp-deploy/staging-target-check.sh

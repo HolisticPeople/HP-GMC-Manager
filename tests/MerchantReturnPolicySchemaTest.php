@@ -26,8 +26,24 @@ $graph = [
     ['@type' => 'WebSite', '@id' => 'site'],
     [
         '@type' => ['Organization', 'OnlineStore'],
-        '@id' => 'organization',
+        '@id' => 'https://example.test/#organization',
         'hasMerchantReturnPolicy' => ['merchantReturnLink' => 'https://example.test/terms/'],
+    ],
+    ['@type' => 'Organization', '@id' => 'https://example.test/pro/doterra/#profile', 'name' => 'doTERRA'],
+    [
+        '@type' => 'Corporation',
+        '@id' => 'https://example.test/pro/premier-research-labs/#profile',
+        'name' => 'Premier Research Labs',
+        'hasMerchantReturnPolicy' => ['merchantReturnLink' => 'https://manufacturer.test/returns/'],
+    ],
+    ['@type' => 'Person', '@id' => 'https://example.test/pro/paul-stamets/#profile'],
+    ['@type' => 'Brand', '@id' => 'https://example.test/supplements-brand/doterra/#brand'],
+    ['@type' => 'Organization', 'name' => 'Unidentified organization'],
+    ['@type' => 'OnlineStore', '@id' => ['not-a-string']],
+    [
+        '@type' => 'Offer',
+        'seller' => ['@id' => 'https://example.test/#organization'],
+        'hasMerchantReturnPolicy' => ['merchantReturnDays' => 14],
     ],
 ];
 $result = MerchantReturnPolicySchemaService::enrichYoastGraph($graph);
@@ -59,6 +75,18 @@ if (($policy['itemCondition'] ?? []) !== [
     'https://schema.org/DamagedCondition',
 ]) {
     fwrite(STDERR, "Return policy must accept new and damaged conditions.\n");
+    exit(1);
+}
+
+foreach ($graph as $index => $node) {
+    if ($index !== 1 && $result[$index] !== $node) {
+        fwrite(STDERR, "Only the identified HP retailer may receive HP's return policy; foreign identities and offers must be preserved.\n");
+        exit(1);
+    }
+}
+
+if (MerchantReturnPolicySchemaService::enrichYoastGraph(null) !== []) {
+    fwrite(STDERR, "Malformed graph input must retain the existing fail-soft response.\n");
     exit(1);
 }
 
