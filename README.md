@@ -2,6 +2,13 @@
 
 Google Merchant Center management plugin for WordPress/WooCommerce with admin dashboard and MCP abilities.
 
+3.4.22 attaches HP's return policy only to the identified site Organization
+(`home_url('/#organization')`). Manufacturer Profiles, practitioners, Brand nodes,
+unidentified organizations and individual Offer policies remain unchanged. A
+missing site Organization does not trigger a name-based or type-only fallback.
+This changes schema attribution only; feed values and storefront policy terms
+are unchanged.
+
 3.4.21 excludes the Ingredients taxonomy branch from commercial `product_type` selection.
 Actual commercial category specificity and the existing product feed schema remain intact.
 No production feed regeneration or UCP catalog activation is part of this change.
@@ -117,6 +124,10 @@ before 2026-07); HP GMC Manager is the sole primary product source (pull feed
   migrating those flags to `_hp_gmc_excluded`
 
 ## Changelog
+
+### 3.4.22
+- Scope the existing return-policy graph enrichment to HP's canonical site Organization ID. Preserve manufacturer identities, unidentified organizations and individual Offer policies.
+- Add regressions using the observed doTERRA and Premier identities; keep the policy terms and product-feed behavior unchanged.
 
 ### 3.4.20
 - Add a staff-only, customer-activated Google quality preview with a shared optional provider for Zen and Checkout.
