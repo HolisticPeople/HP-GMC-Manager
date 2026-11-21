@@ -21,6 +21,8 @@ with tempfile.TemporaryDirectory(prefix='gmc-staging-target-') as temp:
     header.write_text('<?php\n/**\n * Version: 3.4.22\n */\n')
     policy = plugin / 'includes/Services/MerchantReturnPolicySchemaService.php'
     policy.write_text('<?php // selected policy fixture\n')
+    lock = plugin / 'composer.lock'
+    lock.write_text('{}\n')
     bin_dir = base / 'bin'
     bin_dir.mkdir()
     fake_wp = bin_dir / 'wp'
@@ -83,6 +85,9 @@ print(pathlib.Path(sys.argv[-1]).resolve(strict=True))
     run('missing-root', candidate_root=base / 'missing', expected_calls=0)
     run('wrong-plugins-root', candidate_base=base, expected_calls=0)
     run('foreign-home-argument', candidate_home='https://holisticpeople.com', expected_calls=0)
+    lock.unlink()
+    run('missing-dependency-lock', expected_calls=0)
+    lock.write_text('{}\n')
     for name, delta in [
         ('production-home', {'home': 'https://holisticpeople.com'}),
         ('production-site', {'site': 'https://holisticpeople.com'}),

@@ -17,6 +17,7 @@ base=$(realpath -e "$plugins_base")
 [[ "$root" == "$expected_root" && "$base" == "$root/wp-content/plugins" ]] || exit 2
 plugin="$base/hp-gmc-manager"
 [[ -d "$plugin" && ! -L "$plugin" && "$(realpath -e "$plugin")" == "$plugin" ]] || exit 2
+[[ -f "$plugin/composer.lock" && ! -L "$plugin/composer.lock" ]] || { echo 'Existing dependency lock required' >&2; exit 2; }
 
 # Skip ordinary plugins/themes: in particular do not invoke GMC's legacy init
 # migration while establishing the destination. MU/drop-ins remain WP bootstrap.
